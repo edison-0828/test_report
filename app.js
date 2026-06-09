@@ -176,7 +176,7 @@ function hydrateReportChrome() {
 
   if (headerTitle) headerTitle.textContent = "测试报告";
   if (headerDesc) headerDesc.textContent = "基于当前批次 / 任务 / 模块范围，自动汇总用例执行与 BUG 状态。";
-  if (exportBtn) exportBtn.textContent = "导出HTML报告";
+  if (exportBtn) exportBtn.textContent = "导出PDF";
 
   const headingTexts = ["报告摘要", "风险与结论", "执行状态分布", "BUG 状态分布", "BUG 严重级别", "重点关注"];
   headings.forEach((node, index) => {
@@ -2791,7 +2791,7 @@ function exportReport() {
     report.scope.batch?.version || "no-version",
     report.scope.task?.name || "summary"
   ].map(sanitizeFileName).join("-");
-  downloadFile(`${fileBaseName}.html`, html, "text/html;charset=utf-8");
+  printReportPdf(`${fileBaseName}.pdf`, html);
 }
 
 function buildReportHtml(report) {
@@ -2905,6 +2905,12 @@ function buildReportHtml(report) {
     .text-area-like, .multiline-cell { white-space: pre-wrap; line-height: 1.8; color: var(--text); word-break: break-word; }
     .empty-cell { text-align: center; color: var(--muted); padding: 22px 14px; }
     .owner-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    @page { size: A4; margin: 14mm; }
+    @media print {
+      body { background: #fff; }
+      .page { max-width: none; padding: 0; gap: 12px; }
+      .hero, .health, .panel { box-shadow: none; break-inside: avoid; }
+    }
     @media (max-width: 1180px) { .hero-wrap, .grid-2 { grid-template-columns: 1fr; } }
     @media (max-width: 720px) { .page, .meta-grid { grid-template-columns: 1fr; padding: 18px; } }
   </style>
@@ -3000,6 +3006,40 @@ function buildReportHtml(report) {
   </main>
 </body>
 </html>`;
+}
+
+function printReportPdf(fileName, html) {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  document.body.appendChild(iframe);
+
+  const frameWindow = iframe.contentWindow;
+  if (!frameWindow) {
+    iframe.remove();
+    alert("当前浏览器不支持直接导出 PDF。");
+    return;
+  }
+
+  frameWindow.document.open();
+  frameWindow.document.write(html);
+  frameWindow.document.close();
+  frameWindow.document.title = fileName.replace(/\.pdf$/i, "");
+
+  const cleanup = () => {
+    setTimeout(() => iframe.remove(), 1000);
+  };
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      frameWindow.focus();
+      frameWindow.print();
+      cleanup();
+    }, 300);
+  };
 }
 
 function downloadFile(fileName, content, mimeType) {
