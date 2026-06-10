@@ -19,8 +19,8 @@ const BUSINESS_ALIAS_MAP = {
   "本地收单": "本地收单业务",
   "本地收单业务": "本地收单业务"
 };
-const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "lastGeneration"];
-const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "settings", "uiMode"];
+const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
+const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode"];
 
 const state = loadState();
 
@@ -87,6 +87,8 @@ const els = {
   reportBugSeverityBars: document.getElementById("reportBugSeverityBars"),
   reportHighlights: document.getElementById("reportHighlights"),
   reportConclusion: document.getElementById("reportConclusion"),
+  reportVersionCards: document.getElementById("reportVersionCards"),
+  reportDetailHeader: document.getElementById("reportDetailHeader"),
   exportReport: document.getElementById("exportReport"),
   seedDemo: document.getElementById("seedDemo"),
   caseTemplate: document.getElementById("caseTemplate"),
@@ -107,7 +109,6 @@ let persistSharedTimer = 0;
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
-els.reportConclusion.value = state.reportConclusion || "";
 autoResizeTextarea();
 
 ensureSeedMetadata();
@@ -146,11 +147,6 @@ function bindEvents() {
   els.bugBatchFilter.addEventListener("change", renderBugs);
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
-  els.reportConclusion.addEventListener("input", () => {
-    state.reportConclusion = els.reportConclusion.value;
-    persist();
-    renderReport();
-  });
   els.exportReport.addEventListener("click", exportReport);
   els.seedDemo.addEventListener("click", seedDemoData);
   els.saveApiKey.addEventListener("click", saveApiSettings);
@@ -518,6 +514,9 @@ function ensureSeedMetadata() {
   if (!Array.isArray(state.teamMembers)) {
     state.teamMembers = [];
   }
+  if (!state.reportConclusions || typeof state.reportConclusions !== "object") {
+    state.reportConclusions = {};
+  }
   state.modules = BUSINESS_OPTIONS.map((name) => ({
     id: slugifyBusiness(name),
     name
@@ -533,6 +532,9 @@ function ensureSeedMetadata() {
   }
   if (state.activeTaskId === undefined) {
     state.activeTaskId = "";
+  }
+  if (state.activeReportBatchId === undefined) {
+    state.activeReportBatchId = "";
   }
   if (!state.uiMode) {
     state.uiMode = "guide";
@@ -557,6 +559,10 @@ function ensureSeedMetadata() {
 
   if (!state.activeTaskId || !state.tasks.some((item) => item.id === state.activeTaskId)) {
     state.activeTaskId = state.tasks.find((item) => item.batchId === state.generationBatchId)?.id || state.tasks[0]?.id || "";
+  }
+
+  if (!state.activeReportBatchId || !state.batches.some((item) => item.id === state.activeReportBatchId)) {
+    state.activeReportBatchId = state.activeBatchId || state.generationBatchId || state.batches[0]?.id || "";
   }
 }
 
@@ -2265,6 +2271,28 @@ function getReportScope() {
   };
 }
 
+function getReportScopeByBatch(batchId) {
+  const batch = getBatchById(batchId);
+  const tasks = state.tasks.filter((item) => item.batchId === batchId);
+  const taskIds = new Set(tasks.map((item) => item.id));
+  const cases = state.cases.filter((item) => item.batchId === batchId || taskIds.has(item.taskId));
+  const caseIds = new Set(cases.map((item) => item.id));
+  const bugs = state.bugs.filter((item) => {
+    const byBatch = item.batchId === batchId || taskIds.has(item.taskId);
+    const byCase = !item.caseId || caseIds.has(item.caseId) || !cases.length;
+    return byBatch && byCase;
+  });
+
+  return {
+    batch,
+    task: null,
+    module: batch?.moduleId ? getModuleById(batch.moduleId) : null,
+    tasks,
+    cases,
+    bugs
+  };
+}
+
 function renderCaseFilters() {
   fillSelectFromItems(els.caseBatchFilter, state.batches, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
   fillSelectFromItems(els.bugBatchFilter, state.batches, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
@@ -2278,6 +2306,36 @@ function renderCaseFilters() {
 
   els.caseTaskFilter.value = caseTaskValue;
   els.bugTaskFilter.value = bugTaskValue;
+}
+
+function getReportConclusionForBatch(batchId) {
+  if (!batchId) {
+    return state.reportConclusion || "";
+  }
+  return state.reportConclusions?.[batchId] || "";
+}
+
+function setReportConclusionForBatch(batchId, value) {
+  if (!batchId) {
+    state.reportConclusion = value;
+    return;
+  }
+  state.reportConclusions = {
+    ...(state.reportConclusions || {}),
+    [batchId]: value
+  };
+  state.reportConclusion = value;
+}
+
+function getReportBatchCards() {
+  return state.batches.map((batch) => {
+    const scope = getReportScopeByBatch(batch.id);
+    const report = buildReportViewModel(scope);
+    return {
+      batch,
+      report
+    };
+  });
 }
 
 function renderQuickStats() {
@@ -2643,71 +2701,89 @@ function getBugStatusTone(status) {
 }
 
 function renderReport() {
-  const report = buildReportViewModel();
-  const ownerTags = report.testOwners.length
-    ? report.testOwners.map((owner) => `<span class="badge tone-green">${escapeHtml(owner)}</span>`).join("")
-    : `<span class="badge tone-gray">未分配</span>`;
+  const versionCards = getReportBatchCards();
+  const activeBatchId = state.activeReportBatchId || versionCards[0]?.batch.id || "";
+  const activeCard = versionCards.find((item) => item.batch.id === activeBatchId) || versionCards[0];
 
-  els.reportHero.innerHTML = `
-    <div class="report-title-wrap">
-      <span class="summary-label">测试报告</span>
-      <h3>${escapeHtml(report.heroTitle)}</h3>
-      <p>${escapeHtml(report.scopeLabel)}</p>
-      <div class="card-meta report-owner-tags">
-        <span class="summary-label">测试负责人</span>
-        ${ownerTags}
-      </div>
-    </div>
-    <div class="report-hero-meta">
-      <div class="hero-meta-item">
-        <span>版本</span>
-        <strong>${escapeHtml(report.batchVersion)}</strong>
-      </div>
-      <div class="hero-meta-item">
-        <span>任务</span>
-        <strong>${escapeHtml(report.taskName)}</strong>
-      </div>
-      <div class="hero-meta-item">
-        <span>生成时间</span>
-        <strong>${escapeHtml(report.generatedAt)}</strong>
-      </div>
-    </div>
-  `;
+  if (els.reportVersionCards) {
+    els.reportVersionCards.innerHTML = versionCards.length
+      ? versionCards.map(({ batch, report }) => {
+        const isActive = batch.id === activeCard?.batch.id;
+        return `
+          <article class="report-version-card ${isActive ? "active" : ""}" data-report-batch-id="${batch.id}">
+            <div class="report-version-top">
+              <div>
+                <h4>${escapeHtml(batch.version || "未命名版本")}</h4>
+                <div class="card-meta">
+                  <span class="badge subtle ${report.releaseDecision.tone}">${escapeHtml(report.releaseDecision.label)}</span>
+                  <span class="badge subtle">${escapeHtml(batch.status || "进行中")}</span>
+                </div>
+              </div>
+              ${isActive ? `<span class="badge tone-orange">当前查看</span>` : ""}
+            </div>
+            <div class="report-version-stats">
+              <div><span>任务</span><strong>${report.versionTaskCount}</strong></div>
+              <div><span>用例</span><strong>${report.total}</strong></div>
+              <div><span>失败</span><strong>${report.statusCounts["失败"] || 0}</strong></div>
+              <div><span>待跟进BUG</span><strong>${report.openBugs}</strong></div>
+            </div>
+            <div class="report-version-foot">
+              <span>执行率 ${escapeHtml(report.executionRate)}</span>
+              <span>通过率 ${escapeHtml(report.passRate)}</span>
+            </div>
+          </article>
+        `;
+      }).join("")
+      : `
+        <div class="empty-state empty-state-rich">
+          <strong>还没有可查看的版本报告</strong>
+          <p>先创建版本、任务并导入测试用例，这里就会自动生成版本报告卡片。</p>
+        </div>
+      `;
 
-  els.reportHealthCard.innerHTML = `
-    <span class="summary-label">测试范围摘要</span>
-    <div class="summary-grid">
-      ${report.scopeSummaryItems.map(([label, value]) => `
-        <div class="stat-item">
+    els.reportVersionCards.querySelectorAll("[data-report-batch-id]").forEach((node) => {
+      node.addEventListener("click", () => {
+        state.activeReportBatchId = node.dataset.reportBatchId || "";
+        persist();
+        renderReport();
+      });
+    });
+  }
+
+  if (!activeCard) {
+    els.reportDetailHeader.textContent = "当前版本详情";
+    els.reportSummary.innerHTML = "";
+    els.reportHighlights.innerHTML = "";
+    return;
+  }
+
+  const report = activeCard.report;
+  state.activeReportBatchId = activeCard.batch.id;
+  els.reportDetailHeader.textContent = `${activeCard.batch.version || "未命名版本"} 详情`;
+  const fixedSummary = [
+    ["版本", report.batchVersion],
+    ["负责人", report.testOwners.join("、") || "未分配"],
+    ["任务数", String(report.versionTaskCount)],
+    ["用例总数", String(report.total)],
+    ["执行用例", String(report.executed)],
+    ["成功用例", String(report.passed)],
+    ["失败用例", String(report.statusCounts["失败"] || 0)],
+    ["阻塞用例", String(report.statusCounts["阻塞"] || 0)],
+    ["BUG总数", String(report.scope.bugs.length)],
+    ["已修复BUG", String(report.bugStatusCounts["已修复"] || 0)],
+    ["未修复BUG", String(report.openBugs)]
+  ];
+
+  els.reportSummary.innerHTML = `
+    <div class="report-simple-grid">
+      ${fixedSummary.map(([label, value]) => `
+        <article class="report-simple-item">
           <span>${escapeHtml(label)}</span>
           <strong>${escapeHtml(value)}</strong>
-        </div>
+        </article>
       `).join("")}
     </div>
-    <div class="summary-note">
-      <strong>${escapeHtml(report.releaseDecision.label)}</strong>
-      <p>${escapeHtml(report.releaseDecision.desc)}</p>
-    </div>
   `;
-
-  els.reportMetrics.innerHTML = report.metricCards.map(([label, value, tone]) => `
-    <article class="metric-card">
-      <span>${label}</span>
-      <strong>${value}</strong>
-      <i class="metric-accent ${tone}"></i>
-    </article>
-  `).join("");
-
-  els.reportSummary.innerHTML = report.documentInfoItems.map(([label, value]) => `
-    <div class="stat-item">
-      <span>${label}</span>
-      <strong>${escapeHtml(value)}</strong>
-    </div>
-  `).join("");
-
-  renderReportBars(els.reportExecutionBars, report.executionBars);
-  renderReportBars(els.reportBugStatusBars, report.bugStatusBars);
-  renderReportBars(els.reportBugSeverityBars, report.bugSeverityBars);
 
   els.reportHighlights.innerHTML = `
     <section class="attention-section">
@@ -2763,8 +2839,7 @@ function renderReport() {
   `;
 }
 
-function buildReportViewModel() {
-  const scope = getReportScope();
+function buildReportViewModel(scope = getReportScope()) {
   const total = scope.cases.length;
   const resolvedBatchVersion = scope.batch?.version || scope.task?.batchVersion || scope.cases[0]?.batchVersion || "未选择";
   const resolvedBusinessName = scope.module?.name || scope.task?.moduleName || scope.batch?.moduleName || scope.cases[0]?.module || "未选择";
@@ -2787,6 +2862,7 @@ function buildReportViewModel() {
   const passRate = executed ? `${Math.round((passed / executed) * 100)}%` : "0%";
   const openBugs = scope.bugs.filter((bug) => !["已验证", "已关闭"].includes(bug.status)).length;
   const testOwners = getReportOwners(scope);
+  const versionTaskCount = scope.tasks?.length || (scope.task ? 1 : 0);
   const releaseDecision = getReleaseDecision({
     failed: statusCounts["失败"] || 0,
     blocked: statusCounts["阻塞"] || 0,
@@ -2837,6 +2913,7 @@ function buildReportViewModel() {
     summaryItems: [
       ["当前范围", scopeLabel],
       ["测试负责人", testOwners.join("、") || "未分配"],
+      ["测试任务数", versionTaskCount],
       ["测试用例总数", total],
       ["版本负责人", getOwnerDisplay(scope.batch?.owners || scope.batch?.owner) || "未分配"],
       ["任务负责人", getOwnerDisplay(scope.task?.owners || scope.task?.owner) || "未分配"],
@@ -2851,7 +2928,9 @@ function buildReportViewModel() {
       ["失败用例对应BUG数", failedCaseBugCount]
     ],
     releaseDecision,
+    versionTaskCount,
     metricCards: [
+      ["测试任务", versionTaskCount, "tone-gray"],
       ["用例总数", total, "tone-gray"],
       ["执行用例", executed, "tone-green"],
       ["成功用例", passed, "tone-green"],
@@ -2998,7 +3077,8 @@ function renderReportBars(container, items) {
 }
 
 async function exportReport() {
-  const report = buildReportViewModel();
+  const report = buildReportViewModel(getReportScopeByBatch(state.activeReportBatchId));
+  const reportConclusion = getReportConclusionForBatch(state.activeReportBatchId);
   const fileBaseName = [
     "report",
     report.scope.batch?.version || report.batchVersion || "no-version",
@@ -3024,7 +3104,7 @@ async function exportReport() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         report,
-        reportConclusion: state.reportConclusion || "",
+        reportConclusion,
         fileBaseName
       })
     });
@@ -3052,14 +3132,11 @@ function buildReportExportChecks(report) {
   if (report.openBugs > 0) {
     warnings.push(`当前还有 ${report.openBugs} 个未关闭 BUG。`);
   }
-  if (!(state.reportConclusion || "").trim()) {
-    warnings.push("风险与结论还没有填写补充说明。");
-  }
   return warnings;
 }
 
 function buildReportHtml(report) {
-  const conclusion = state.reportConclusion || "暂无补充结论。";
+  const conclusion = getReportConclusionForBatch(report.scope.batch?.id) || "暂无补充结论。";
   const ownerTags = report.testOwners.length
     ? report.testOwners.map((owner) => `<span class="badge tone-green">${escapeHtml(owner)}</span>`).join("")
     : `<span class="badge tone-gray">未分配</span>`;
@@ -3518,6 +3595,10 @@ function seedDemoData() {
     createdAt: new Date().toLocaleString("zh-CN")
   };
   state.reportConclusion = "当前接口主流程可用，但异常参数校验存在阻塞问题，建议修复后回归。";
+  state.reportConclusions = {
+    "batch-demo-va": state.reportConclusion
+  };
+  state.activeReportBatchId = "batch-demo-va";
 
   persist();
   saveTeamMembersConfig();
@@ -3549,7 +3630,9 @@ function defaultState() {
     generationBatchId: "",
     activeTaskId: "",
     activeModuleId: "",
+    activeReportBatchId: "",
     reportConclusion: "",
+    reportConclusions: {},
     lastGeneration: null,
     settings: {
       apiKey: "",
