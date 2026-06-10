@@ -59,6 +59,7 @@ const els = {
   versionsPanel: document.getElementById("versions"),
   quickStats: document.getElementById("quickStats"),
   sidebarContext: document.getElementById("sidebarContext"),
+  sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
   saveApiKey: document.getElementById("saveApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
@@ -68,8 +69,6 @@ const els = {
   caseImportInput: document.getElementById("caseImportInput"),
   caseBatchFilter: document.getElementById("caseBatchFilter"),
   caseTaskFilter: document.getElementById("caseTaskFilter"),
-  caseSearch: document.getElementById("caseSearch"),
-  caseModuleFilter: document.getElementById("caseModuleFilter"),
   executionBatchFilter: document.getElementById("executionBatchFilter"),
   executionTaskFilter: document.getElementById("executionTaskFilter"),
   executionModuleFilter: document.getElementById("executionModuleFilter"),
@@ -77,7 +76,6 @@ const els = {
   executionList: document.getElementById("executionList"),
   bugBatchFilter: document.getElementById("bugBatchFilter"),
   bugTaskFilter: document.getElementById("bugTaskFilter"),
-  bugModuleFilter: document.getElementById("bugModuleFilter"),
   bugList: document.getElementById("bugList"),
   addBug: document.getElementById("addBug"),
   reportHero: document.getElementById("reportHero"),
@@ -142,14 +140,11 @@ function bindEvents() {
   els.activeModuleSelect.addEventListener("change", handleActiveModuleChange);
   els.createBatchBtn.addEventListener("click", createBatch);
   els.createTaskBtn.addEventListener("click", createTask);
-  els.caseSearch.addEventListener("input", renderCases);
   els.caseImportInput.addEventListener("change", handleCaseImport);
   els.caseBatchFilter.addEventListener("change", renderCases);
   els.caseTaskFilter.addEventListener("change", renderCases);
-  els.caseModuleFilter.addEventListener("change", renderCases);
   els.bugBatchFilter.addEventListener("change", renderBugs);
   els.bugTaskFilter.addEventListener("change", renderBugs);
-  els.bugModuleFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.reportConclusion.addEventListener("input", () => {
     state.reportConclusion = els.reportConclusion.value;
@@ -161,7 +156,16 @@ function bindEvents() {
   els.saveApiKey.addEventListener("click", saveApiSettings);
   els.clearApiKey.addEventListener("click", clearApiSettings);
   els.modelSelect.addEventListener("change", saveApiSettings);
+  els.sidebarBackToTop?.addEventListener("click", scrollSidebarToTop);
   document.addEventListener("click", handleGlobalActionClick);
+}
+
+function scrollSidebarToTop() {
+  const sidebar = document.querySelector(".sidebar");
+  sidebar?.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  document.documentElement.scrollTo?.({ top: 0, behavior: "smooth" });
+  document.body.scrollTo?.({ top: 0, behavior: "smooth" });
 }
 
 function hydrateReportChrome() {
@@ -293,6 +297,7 @@ function switchTab(tabId) {
   els.panels.forEach((panel) => {
     panel.classList.toggle("active", panel.id === tabId);
   });
+  els.sidebarBackToTop?.classList.toggle("hidden-field", tabId !== "upload");
 }
 
 function handleGlobalActionClick(event) {
@@ -607,11 +612,6 @@ function createBatch() {
   const owner = els.batchOwnerSelect?.value.trim() || "";
   const duplicateBatch = state.batches.find((item) => item.version === version && item.id !== editingBatchId);
 
-  if (!moduleItem) {
-    setGenerationStatus("请先选择当前业务。", "warn");
-    return;
-  }
-
   if (!version) {
     setGenerationStatus("请先填写版本号。", "warn");
     return;
@@ -624,11 +624,11 @@ function createBatch() {
 
   const batch = {
     id: editingBatchId || `batch-${Date.now()}`,
-    name: moduleItem.name,
+    name: moduleItem?.name || getBatchById(editingBatchId)?.name || "",
     version,
     scope: getBatchById(editingBatchId)?.scope || "",
-    moduleId: moduleItem.id,
-    moduleName: moduleItem.name,
+    moduleId: moduleItem?.id || getBatchById(editingBatchId)?.moduleId || "",
+    moduleName: moduleItem?.name || getBatchById(editingBatchId)?.moduleName || "",
     owner,
     owners: splitOwnerValues(owner),
     status: getBatchById(editingBatchId)?.status || "进行中"
@@ -643,15 +643,19 @@ function createBatch() {
   }
   state.activeBatchId = batch.id;
   state.generationBatchId = batch.id;
-  state.activeModuleId = moduleItem.id;
+  state.activeModuleId = batch.moduleId || state.activeModuleId;
   els.batchVersionInput.value = "";
   fillOwnerSelect(els.batchOwnerSelect, "");
   editingBatchId = "";
-  els.createBatchBtn.textContent = "4. 保存当前版本";
+  els.createBatchBtn.textContent = "保存当前版本";
   autoResizeTextarea();
   persist();
   renderAll();
-  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}版本：${formatBatchLabel(batch)}。下一步请新增测试任务。`, "ok");
+  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}版本：${batch.version}。下一步请新增测试任务。`, "ok");
+  switchTab("upload");
+  els.taskBatchSelect.value = batch.id;
+  els.taskNameInput.focus();
+  els.taskNameInput.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function createTask() {
@@ -1616,44 +1620,12 @@ function renderMetaControls() {
   fillSelectFromItems(els.taskBatchSelect, state.batches, "请选择版本", els.taskBatchSelect.value || state.activeBatchId, (item) => formatTaskBatchLabel(item));
   fillOwnerSelect(els.batchOwnerSelect, editingBatchId ? (getBatchById(editingBatchId)?.owner || "") : "");
   fillOwnerSelect(els.taskOwnerSelect, editingTaskId ? (getTaskById(editingTaskId)?.owner || "") : "");
-  const activeBatch = getBatchById(state.activeBatchId);
-  const activeModule = getModuleById(state.activeModuleId);
   const activeTask = getTaskById(state.activeTaskId);
   const generationBatch = getBatchById(activeTask?.batchId || state.generationBatchId);
   const generationModule = getModuleById(activeTask?.moduleId || generationBatch?.moduleId);
 
-  els.currentVersionSummary.innerHTML = activeBatch
-    ? `
-      <div class="version-summary-card">
-        <span class="summary-label">当前已保存</span>
-        <strong>${escapeHtml((activeModule?.name || activeBatch.moduleName || activeBatch.name || "").trim())} ${escapeHtml(activeBatch.version || "")}</strong>
-        <p>${escapeHtml(getOwnerDisplay(activeBatch.owners || activeBatch.owner) ? `负责人：${getOwnerDisplay(activeBatch.owners || activeBatch.owner)}` : "已保存当前版本，可继续上传文档并生成用例。")}</p>
-      </div>
-    `
-    : `
-      <div class="version-summary-card version-summary-empty">
-        <span class="summary-label">当前已保存</span>
-        <strong>还没有保存版本</strong>
-        <p>先按上面的 4 步填写，保存后这里会显示当前版本。</p>
-      </div>
-    `;
-
-  els.currentTaskSummary.innerHTML = activeTask
-    ? `
-      <div class="version-summary-card">
-        <span class="summary-label">当前任务</span>
-        <strong>${escapeHtml(activeTask.name)}</strong>
-        <p>${escapeHtml(activeTask.scope || `${activeTask.batchVersion || "未关联版本"} / ${activeTask.moduleName || "未分类业务"}`)}</p>
-        <p>${escapeHtml(getOwnerDisplay(activeTask.owners || activeTask.owner) ? `负责人：${getOwnerDisplay(activeTask.owners || activeTask.owner)}` : "还没指定负责人")}</p>
-      </div>
-    `
-    : `
-      <div class="version-summary-card version-summary-empty">
-        <span class="summary-label">当前任务</span>
-        <strong>还没有保存任务</strong>
-        <p>先给版本下面建一个测试任务，再去生成对应的用例。</p>
-      </div>
-    `;
+  els.currentVersionSummary.innerHTML = "";
+  els.currentTaskSummary.innerHTML = "";
 
   els.generationVersionSummary.innerHTML = `
     <label class="generation-version-field">
@@ -1705,7 +1677,6 @@ function renderVersionManager() {
   els.versionManagerList.innerHTML = "";
   state.batches.forEach((batch) => {
     const relatedTasks = state.tasks.filter((task) => task.batchId === batch.id);
-    const moduleName = batch.moduleName || getModuleNameById(batch.moduleId) || batch.name || "未分类";
     const isActive = batch.id === state.activeBatchId;
     const isSuspended = batch.status === "已挂起";
     const isCompleted = batch.status === "已完成";
@@ -1716,7 +1687,6 @@ function renderVersionManager() {
         <div>
           <h3 class="case-title-text">${escapeHtml(batch.version || "未命名版本")}</h3>
           <div class="card-meta">
-            <span class="badge">${escapeHtml(moduleName)}</span>
             <span class="badge subtle ${isCompleted ? "tone-green" : isSuspended ? "tone-gray" : "tone-orange"}">${escapeHtml(batch.status || "进行中")}</span>
             <span class="badge subtle">${relatedTasks.length} 个任务</span>
             ${isActive ? `<span class="badge tone-orange">当前版本</span>` : ""}
@@ -1733,10 +1703,6 @@ function renderVersionManager() {
       </div>
       <div class="version-card-detail hidden-field">
         <div class="version-card-body">
-          <div class="summary-block">
-            <span class="summary-label">业务</span>
-            <p>${escapeHtml(moduleName)}</p>
-          </div>
           <div class="summary-block">
             <span class="summary-label">负责人</span>
             <p>${escapeHtml(getOwnerDisplay(batch.owners || batch.owner) || "未分配")}</p>
@@ -1757,7 +1723,6 @@ function renderVersionManager() {
                     <div>
                       <strong>${escapeHtml(task.name || "未命名任务")}</strong>
                       <div class="card-meta">
-                        <span class="badge subtle">${escapeHtml(task.moduleName || moduleName)}</span>
                         ${isTaskActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
                       </div>
                     </div>
@@ -1878,18 +1843,30 @@ function handleVersionAction(action, batchId) {
   }
 
   if (action === "complete") {
+    const taskIdsToClear = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
     state.batches = state.batches.map((item) => (
       item.id === batch.id ? { ...item, status: "已完成" } : item
     ));
+    state.cases = state.cases.filter((item) => item.batchId !== batch.id && !taskIdsToClear.includes(item.taskId));
     persist();
     renderAll();
-    setGenerationStatus(`已完成版本：${formatBatchLabel(batch)}。完成后将不允许删除。`, "ok");
+    setGenerationStatus(`已完成版本：${formatBatchLabel(batch)}。该版本下的测试用例已清空。`, "ok");
     return;
   }
 
   if (action === "delete") {
     if (batch.status === "已完成") {
       setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，不能删除。`, "warn");
+      return;
+    }
+    const relatedTaskCount = state.tasks.filter((item) => item.batchId === batch.id).length;
+    const confirmed = window.confirm([
+      `确认删除版本：${batch.version || "未命名版本"}？`,
+      `该版本下共有 ${relatedTaskCount} 个任务，相关用例和 BUG 记录也会一起删除。`,
+      "",
+      "删除后不可恢复。"
+    ].join("\n"));
+    if (!confirmed) {
       return;
     }
     const taskIdsToDelete = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
@@ -2104,8 +2081,7 @@ function formatTaskBatchLabel(batch) {
   if (!batch) {
     return "未关联版本";
   }
-  const moduleName = batch.moduleName || batch.name || "";
-  return [batch.version || "未命名版本", moduleName].filter(Boolean).join(" / ");
+  return batch.version || "未命名版本";
 }
 
 function formatTaskLabel(task) {
@@ -2240,30 +2216,23 @@ function getCaseTasks() {
 }
 
 function getFilteredCasesForView() {
-  const keyword = els.caseSearch.value.trim().toLowerCase();
   const batchFilter = els.caseBatchFilter.value;
   const taskFilter = els.caseTaskFilter.value;
-  const moduleFilter = els.caseModuleFilter.value;
 
   return state.cases.filter((item) => {
-    const haystack = [item.title, item.module, item.type, item.batchName, item.taskName].join(" ").toLowerCase();
-    return (!keyword || haystack.includes(keyword))
-      && (!batchFilter || item.batchId === batchFilter)
-      && (!taskFilter || item.taskName === taskFilter)
-      && (!moduleFilter || item.module === moduleFilter);
+    return (!batchFilter || item.batchId === batchFilter)
+      && (!taskFilter || item.taskName === taskFilter);
   });
 }
 
 function getFilteredBugs() {
   const batchFilter = els.bugBatchFilter.value;
   const taskFilter = els.bugTaskFilter.value;
-  const moduleFilter = els.bugModuleFilter.value;
 
   return state.bugs.filter((bug) => {
     const byBatch = !batchFilter || bug.batchId === batchFilter;
     const byTask = !taskFilter || bug.taskName === taskFilter;
-    const byModule = !moduleFilter || bug.moduleId === moduleFilter;
-    return byBatch && byTask && byModule;
+    return byBatch && byTask;
   });
 }
 
@@ -2297,21 +2266,16 @@ function getReportScope() {
 }
 
 function renderCaseFilters() {
-  fillSelectFromItems(els.caseBatchFilter, state.batches, "全部批次", els.caseBatchFilter.value, formatBatchLabel);
-  fillSelectFromItems(els.bugBatchFilter, state.batches, "全部批次", els.bugBatchFilter.value, formatBatchLabel);
-  fillSelectFromItems(els.bugModuleFilter, state.modules, "全部模块", els.bugModuleFilter.value, (item) => item.name);
+  fillSelectFromItems(els.caseBatchFilter, state.batches, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
+  fillSelectFromItems(els.bugBatchFilter, state.batches, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
 
-  const modules = getCaseModules();
   const tasks = getCaseTasks();
-  const caseModuleValue = modules.includes(els.caseModuleFilter.value) ? els.caseModuleFilter.value : "";
   const caseTaskValue = tasks.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
   const bugTaskValue = tasks.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
 
-  els.caseModuleFilter.innerHTML = `<option value="">全部模块</option>${modules.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
 
-  els.caseModuleFilter.value = caseModuleValue;
   els.caseTaskFilter.value = caseTaskValue;
   els.bugTaskFilter.value = bugTaskValue;
 }
@@ -2322,6 +2286,9 @@ function renderQuickStats() {
   const activeTask = getTaskById(state.activeTaskId);
   const activeBatch = getBatchById(state.activeBatchId || activeTask?.batchId);
   const activeModule = getModuleById(state.activeModuleId || activeTask?.moduleId || activeBatch?.moduleId);
+  if (!els.quickStats || !els.sidebarContext) {
+    return;
+  }
   const stats = [
     ["文档数", state.documents.length],
     ["用例数", state.cases.length],

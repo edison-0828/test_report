@@ -24,11 +24,10 @@
         <button class="nav-link" data-tab="report">测试报告</button>
       </nav>
 
-      <section class="summary-card">
-        <h2>当前概览</h2>
-        <div id="quickStats" class="quick-stats"></div>
-        <div id="sidebarContext" class="sidebar-context"></div>
-      </section>
+      <button id="sidebarBackToTop" class="sidebar-back-top" type="button" aria-label="返回顶部菜单" title="返回顶部菜单">
+        <span class="sidebar-back-icon" aria-hidden="true">&#8593;</span>
+        <span class="sidebar-back-text">点击我回到顶部</span>
+      </button>
     </aside>
 
     <main class="content">
@@ -97,29 +96,24 @@
               </label>
             </div>
 
-            <div class="version-flow">
-              <label class="step-field">
-                <span class="step-label">1. 手动输入版本号</span>
-                <input type="text" id="batchVersionInput" placeholder="例如：V2026.06.10">
-              </label>
-
-              <label class="step-field">
-                <span class="step-label">2. 选择当前业务</span>
+            <div class="form-row hidden-field">
+              <label>
+                当前业务
                 <select id="activeModuleSelect">
                   <option value="">未选择</option>
                 </select>
               </label>
+            </div>
 
-              <label class="step-field step-field-wide">
-                <span class="step-label">3. 这一版要测试什么</span>
-                <textarea id="versionScopeInput" class="md-textarea" rows="8"
-                  placeholder="支持直接输入Markdown，例如：&#10;# 回归范围&#10;- 登录&#10;- 下单&#10;- 退款&#10;&#10;## 风险点&#10;- 渠道超时&#10;- 金额边界"></textarea>
-                <span class="field-tip">可以直接粘贴Markdown格式内容，输入区会按内容高度自动调整。</span>
+            <div class="version-flow simple-version-flow">
+              <label class="step-field">
+                <span class="step-label">版本号</span>
+                <input type="text" id="batchVersionInput" placeholder="例如：V2026.06.10">
               </label>
             </div>
 
             <div class="inline-actions">
-              <button id="createBatchBtn" class="ghost-button">4. 保存当前版本</button>
+              <button id="createBatchBtn" class="ghost-button">保存当前版本</button>
             </div>
 
             <div id="currentVersionSummary" class="version-summary"></div>
@@ -212,31 +206,27 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="cases">
+<section class="tab-panel" id="cases">
         <div class="panel-header">
           <div>
             <h2>测试用例</h2>
             <p>AI生成完的测试用例导入这里执行</p>
           </div>
-          <div class="actions compact">
-            <label class="import-button">
-              <input type="file" id="caseImportInput" accept=".csv">
-              <span>上传CSV</span>
-            </label>
+          <label class="import-button primary-import">
+            <input type="file" id="caseImportInput" accept=".csv">
+            <span>上传CSV</span>
+          </label>
+        </div>
+
+        <section class="panel">
+          <div class="actions compact section-toolbar">
             <select id="caseBatchFilter">
-              <option value="">全部批次</option>
+              <option value="">全部版本</option>
             </select>
             <select id="caseTaskFilter">
               <option value="">全部任务</option>
             </select>
-            <input type="search" id="caseSearch" placeholder="搜索标题、模块、类型">
-            <select id="caseModuleFilter">
-              <option value="">全部模块</option>
-            </select>
           </div>
-        </div>
-
-        <section class="panel">
           <div id="caseList" class="list-stack"></div>
         </section>
       </section>
@@ -266,19 +256,16 @@
             <h2>BUG管理</h2>
             <p>集中记录当前范围内的BUG，默认先看摘要，需要时再展开详情。</p>
           </div>
-          <button id="addBug" class="ghost-button">新增BUG</button>
+          <button id="addBug" class="primary-button">新增BUG</button>
         </div>
 
         <section class="panel">
           <div class="actions compact section-toolbar">
             <select id="bugBatchFilter">
-              <option value="">全部批次</option>
+              <option value="">全部版本</option>
             </select>
             <select id="bugTaskFilter">
               <option value="">全部任务</option>
-            </select>
-            <select id="bugModuleFilter">
-              <option value="">全部模块</option>
             </select>
           </div>
           <div id="bugList" class="list-stack"></div>

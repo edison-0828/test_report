@@ -77,6 +77,17 @@ button:hover:not(:disabled) {
   box-shadow: 0 10px 20px rgba(15, 23, 34, 0.06);
 }
 
+.primary-button {
+  background: linear-gradient(180deg, #2f6df6 0%, #2457d6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(36, 87, 214, 0.24);
+}
+
+.primary-button:hover:not(:disabled) {
+  box-shadow: 0 14px 28px rgba(36, 87, 214, 0.28);
+}
+
 .tiny-button {
   padding: 8px 12px;
   font-size: 13px;
@@ -159,6 +170,41 @@ button:hover:not(:disabled) {
 .summary-card h2 {
   margin: 0 0 14px;
   font-size: 16px;
+}
+
+.sidebar-back-top {
+  margin-top: auto;
+  align-self: stretch;
+  min-height: 92px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.sidebar-back-top:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+}
+
+.sidebar-back-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.sidebar-back-text {
+  font-size: 13px;
+  color: #d6e2f5;
+  line-height: 1.4;
 }
 
 .quick-stats,
@@ -422,6 +468,12 @@ textarea {
   transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
+.import-button.primary-import {
+  border-color: transparent;
+  background: linear-gradient(180deg, #2f6df6 0%, #2457d6 100%);
+  box-shadow: 0 10px 24px rgba(36, 87, 214, 0.24);
+}
+
 .import-button:hover {
   transform: translateY(-1px);
   border-color: #b6c6dd;
@@ -521,6 +573,10 @@ textarea {
   border: 1px solid #dde6f2;
   border-radius: 16px;
   background: linear-gradient(180deg, #fbfcff 0%, #f5f8fd 100%);
+}
+
+.simple-version-flow {
+  grid-template-columns: 1fr;
 }
 
 .step-field {
@@ -1349,6 +1405,12 @@ textarea:focus {
   background: #fff;
   color: var(--text);
   font-weight: 600;
+}
+
+.import-button.primary-import span {
+  border-color: transparent;
+  background: transparent;
+  color: #fff;
 }
 
 .bug-row-card .inline-title,
