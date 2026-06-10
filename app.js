@@ -62,6 +62,7 @@ const els = {
   sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
   saveApiKey: document.getElementById("saveApiKey"),
+  checkApiKey: document.getElementById("checkApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
   modelSelect: document.getElementById("modelSelect"),
   apiStatus: document.getElementById("apiStatus"),
@@ -97,9 +98,10 @@ const els = {
 };
 
 const settings = {
-  apiKey: state.settings?.apiKey || "",
+  apiKey: "",
   model: state.settings?.model || "gpt-5.4-mini",
-  apiReady: false
+  apiReady: false,
+  envKeyAvailable: false
 };
 
 let uploadedFileContent = "";
@@ -107,7 +109,7 @@ let editingBatchId = "";
 let editingTaskId = "";
 let persistSharedTimer = 0;
 
-els.apiKey.value = settings.apiKey;
+els.apiKey.value = "";
 els.modelSelect.value = settings.model;
 autoResizeTextarea();
 
@@ -156,6 +158,7 @@ function bindEvents() {
   els.exportReport.addEventListener("click", exportReport);
   els.seedDemo?.addEventListener("click", seedDemoData);
   els.saveApiKey.addEventListener("click", saveApiSettings);
+  els.checkApiKey?.addEventListener("click", checkAiKey);
   els.clearApiKey.addEventListener("click", clearApiSettings);
   els.modelSelect.addEventListener("change", saveApiSettings);
   els.sidebarBackToTop?.addEventListener("click", scrollSidebarToTop);
@@ -348,21 +351,20 @@ function renderSourceMode() {
 }
 
 function saveApiSettings() {
-  settings.apiKey = els.apiKey.value.trim();
   settings.model = els.modelSelect.value;
-  state.settings = { apiKey: settings.apiKey, model: settings.model };
+  state.settings = { model: settings.model };
   persist();
-  setGenerationStatus(settings.apiKey ? "本地设置已保存，可以直接发起 AI 生成。" : "模型设置已保存。", "ok");
+  setGenerationStatus("模型设置已保存。页面输入的 Key 只临时使用，刷新后会清空；长期使用请配置服务端 OPENAI_API_KEY。", "ok");
   checkApiStatus();
 }
 
 function clearApiSettings() {
   settings.apiKey = "";
   els.apiKey.value = "";
-  state.settings = { apiKey: "", model: els.modelSelect.value };
+  state.settings = { model: els.modelSelect.value };
   persist();
   checkApiStatus();
-  setGenerationStatus("已清空本地保存的 API Key。", "warn");
+  setGenerationStatus("已清空当前页面输入的 API Key。本地存储不会保留真实 Key。", "warn");
 }
 
 async function checkApiStatus() {
@@ -374,17 +376,61 @@ async function checkApiStatus() {
 
     const data = await response.json();
     settings.apiReady = true;
+    settings.envKeyAvailable = Boolean(data.envKeyAvailable);
 
     if (data.defaultModel && !state.settings?.model) {
       els.modelSelect.value = data.defaultModel;
       settings.model = data.defaultModel;
     }
 
-    const hasAnyKey = data.envKeyAvailable || Boolean(settings.apiKey);
-    setApiStatus(hasAnyKey ? "AI 服务可用" : "需要填写 API Key", hasAnyKey ? "ok" : "warn");
+    const hasAnyKey = data.envKeyAvailable || Boolean(els.apiKey.value.trim());
+    setApiStatus(hasAnyKey ? "待检测 Key" : "需要填写 API Key", hasAnyKey ? "neutral" : "warn");
   } catch (_error) {
     settings.apiReady = false;
     setApiStatus("本地服务未启动", "error");
+  }
+}
+
+async function checkAiKey() {
+  const apiKey = els.apiKey.value.trim();
+  const model = els.modelSelect.value;
+  const hasServerKey = settings.envKeyAvailable;
+
+  if (!apiKey && !hasServerKey) {
+    setApiStatus("需要填写 API Key", "warn");
+    setGenerationStatus("请先填写 OpenAI API Key，再检测是否可用。", "warn");
+    return;
+  }
+
+  els.checkApiKey.disabled = true;
+  setApiStatus("正在检测 Key", "neutral");
+  setGenerationStatus("正在调用 AI 服务检测当前 Key...", "warn");
+
+  try {
+    const response = await fetch("/api/check-ai-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey, model })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "AI Key 检测失败。");
+    }
+
+    settings.apiKey = apiKey;
+    settings.model = model;
+    settings.apiReady = true;
+    state.settings = { model };
+    persist();
+    setApiStatus(apiKey ? "Key 可正常调用 AI" : "环境 Key 可调用 AI", "ok");
+    setGenerationStatus(`检测通过：${apiKey ? "当前页面 Key" : "服务端环境 Key"} 可以调用 ${data.model || model}。${apiKey ? "页面刷新后需重新输入 Key。" : "页面刷新后仍可使用。"}`, "ok");
+  } catch (error) {
+    settings.apiReady = false;
+    setApiStatus("Key 检测失败", "error");
+    setGenerationStatus(error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
+  } finally {
+    els.checkApiKey.disabled = false;
   }
 }
 
@@ -1368,50 +1414,50 @@ function renderOnboarding() {
   const steps = [
     {
       key: "bot",
-      title: "先配置机器人",
-      desc: "先保存本地 API Key 和模型，后面生成用例时可以直接调用。",
+      title: "配置 AI",
+      desc: "填写 Key、选择模型，并检测调用是否正常。",
       done: flow.hasBotConfig,
       current: flow.nextAction === "configure-bot"
     },
     {
       key: "meta",
-      title: "先保存版本",
-      desc: "先填版本号、选择业务、指定版本负责人。",
+      title: "创建版本",
+      desc: "填写本次测试对应的版本号和负责人。",
       done: flow.hasMeta,
       current: flow.nextAction === "create-meta"
     },
     {
       key: "task",
-      title: "再建测试任务",
-      desc: "每个需求或回归点单独建任务，后面报告更清楚。",
+      title: "创建任务",
+      desc: "说明这次要测什么，便于后续汇总报告。",
       done: flow.hasTask,
       current: flow.nextAction === "create-task"
     },
     {
       key: "source",
-      title: "上传文档或填网址",
-      desc: "本地文件直接上传，网址就贴链接，再写测试范围。",
+      title: "上传需求/API文档",
+      desc: "上传本地文件或填写文档网址，并补充测试范围。",
       done: flow.hasSource || flow.hasCases,
       current: flow.nextAction === "prepare-source"
     },
     {
       key: "cases",
-      title: "生成或导入用例",
-      desc: "可以直接 AI 生成，也可以先下模板手填再导入。",
+      title: "生成用例",
+      desc: "使用 AI 生成测试用例，再进入用例列表执行。",
       done: flow.hasCases,
       current: flow.nextAction === "generate-cases"
     },
     {
       key: "execution",
-      title: "执行并记录 BUG",
-      desc: "改执行状态，补执行备注，需要时新增 BUG。",
+      title: "执行与 BUG",
+      desc: "更新执行结果，发现问题后记录 BUG。",
       done: flow.hasExecutionOrBug,
       current: flow.nextAction === "execute-cases"
     },
     {
       key: "report",
-      title: "导出测试报告",
-      desc: "确认范围后，直接导出当前批次 / 模块报告。",
+      title: "导出报告",
+      desc: "按版本查看汇总结果，并导出测试报告。",
       done: flow.hasExecutionOrBug,
       current: flow.nextAction === "export-report"
     }
@@ -1431,7 +1477,7 @@ function renderOnboarding() {
 }
 
 function getWorkflowState() {
-  const hasBotConfig = Boolean(settings.apiKey || settings.apiReady);
+  const hasBotConfig = Boolean(els.apiKey.value.trim() || settings.envKeyAvailable || settings.apiReady);
   const hasMeta = Boolean(state.activeBatchId && state.activeModuleId);
   const hasTask = Boolean(state.activeTaskId && state.tasks.some((item) => item.id === state.activeTaskId));
   const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || els.sourceText?.value.trim() || state.documents.length);
@@ -1759,9 +1805,9 @@ function renderVersionManager() {
             </div>
             <div class="version-task-list">
               ${relatedTasks.length ? relatedTasks.map((task) => {
-                const isTaskActive = task.id === state.activeTaskId;
-                const taskReadonly = isCompleted;
-                return `
+      const isTaskActive = task.id === state.activeTaskId;
+      const taskReadonly = isCompleted;
+      return `
                   <article class="version-task-card">
                     <div class="version-task-top">
                       <div>
@@ -1789,7 +1835,7 @@ function renderVersionManager() {
                     </div>
                   </article>
                 `;
-              }).join("") : `
+    }).join("") : `
                 <div class="empty-state empty-state-rich compact-empty-state">
                   <strong>这个版本还没有任务</strong>
                   <p>先回到文档与生成页，为当前版本新增测试任务。</p>
@@ -3676,10 +3722,24 @@ function seedDemoData() {
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...defaultState(), ...JSON.parse(raw) } : defaultState();
+    const parsed = raw ? JSON.parse(raw) : {};
+    const loadedState = normalizeLoadedState({ ...defaultState(), ...parsed });
+    if (parsed.settings?.apiKey) {
+      const cleanedState = Object.fromEntries(LOCAL_STATE_KEYS.map((key) => [key, structuredCloneSafe(loadedState[key])]));
+      cleanedState.settings = { model: loadedState.settings.model };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanedState));
+    }
+    return loadedState;
   } catch (_error) {
     return defaultState();
   }
+}
+
+function normalizeLoadedState(loadedState) {
+  loadedState.settings = {
+    model: loadedState.settings?.model || "gpt-5.4-mini"
+  };
+  return loadedState;
 }
 
 function defaultState() {
@@ -3702,7 +3762,6 @@ function defaultState() {
     reportConclusions: {},
     lastGeneration: null,
     settings: {
-      apiKey: "",
       model: "gpt-5.4-mini"
     },
     uiMode: "guide"
@@ -3711,6 +3770,9 @@ function defaultState() {
 
 function persist() {
   const localState = Object.fromEntries(LOCAL_STATE_KEYS.map((key) => [key, structuredCloneSafe(state[key])]));
+  if (localState.settings) {
+    localState.settings = { model: localState.settings.model || "gpt-5.4-mini" };
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(localState));
   scheduleSharedPersist();
 }

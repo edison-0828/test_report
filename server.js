@@ -4,6 +4,8 @@ const path = require("node:path");
 const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 
+loadEnvFile(path.join(__dirname, ".env"));
+
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
@@ -21,6 +23,43 @@ const MIME_TYPES = {
   ".txt": "text/plain; charset=utf-8",
   ".ico": "image/x-icon"
 };
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) {
+      continue;
+    }
+
+    process.env[key] = stripEnvQuotes(rawValue);
+  }
+}
+
+function stripEnvQuotes(value) {
+  if (
+    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -47,6 +86,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/generate-cases") {
       const body = await readJsonBody(req);
       return await handleGenerateCases(body, res);
+    }
+
+    if (req.method === "POST" && req.url === "/api/check-ai-key") {
+      const body = await readJsonBody(req);
+      return await handleCheckAiKey(body, res);
     }
 
     if (req.method === "POST" && req.url === "/api/team-members") {
@@ -180,6 +224,59 @@ async function handleGenerateCases(body, res) {
   }
 
   return sendJson(res, 200, parsed);
+}
+
+async function handleCheckAiKey(body, res) {
+  const apiKey = String(body.apiKey || process.env.OPENAI_API_KEY || "").trim();
+  const model = String(body.model || DEFAULT_MODEL).trim();
+
+  if (!apiKey) {
+    return sendJson(res, 400, { error: "还没有可用的 OpenAI API Key。" });
+  }
+
+  const payload = {
+    model,
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "Reply with OK."
+          }
+        ]
+      }
+    ],
+    max_output_tokens: 16
+  };
+
+  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const rawText = await response.text();
+  let data;
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch (_error) {
+    return sendJson(res, 502, { error: "AI 服务返回了无法解析的内容。" });
+  }
+
+  if (!response.ok) {
+    const message = data?.error?.message || "AI Key 检测失败。";
+    return sendJson(res, response.status, { error: message });
+  }
+
+  return sendJson(res, 200, {
+    ok: true,
+    model,
+    responseId: data.id || ""
+  });
 }
 
 function handleExportReportDocx(body, res) {

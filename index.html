@@ -13,7 +13,7 @@
     <aside class="sidebar">
       <div class="brand">
         <h1>测试管理平台</h1>
-        <p>文档转用例、执行记录、BUG统计、报告汇总。</p>
+        <p>按版本创建任务，生成用例，记录执行，导出报告。</p>
       </div>
 
       <nav class="nav">
@@ -35,15 +35,15 @@
         <div class="panel-header">
           <div>
             <h2>任务创建与用例生成</h2>
-            <p>支持需求内容、本地文件、API链接等输入方式，统一生成可执行测试用例。</p>
+            <p>从上到下完成创建流程，再到用例、BUG、报告模块跟进执行结果。</p>
           </div>
         </div>
 
         <section class="panel onboarding-panel">
           <div class="section-head">
             <div>
-              <h3>新手上路</h3>
-              <p class="section-note">按下面流程依次完成即可。</p>
+              <h3>操作流程</h3>
+              <p class="section-note">当前步骤会自动高亮，按提示补齐信息即可继续。</p>
             </div>
           </div>
           <div id="onboardingSteps" class="onboarding-steps"></div>
@@ -53,8 +53,8 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>AI配置</h3>
-                <p class="section-note">保存本地 Key 和模型后，就可以直接生成用例。</p>
+                <h3>1. AI 配置</h3>
+                <p class="section-note">填写 Key、选择模型，并检测是否能正常调用 AI。</p>
               </div>
               <span id="apiStatus" class="status-pill neutral">正在检查服务</span>
             </div>
@@ -62,7 +62,7 @@
             <div class="form-row">
               <label>
                 OpenAI API Key
-                <input type="password" id="apiKey" placeholder="仅保存在本地浏览器，不会写入代码文件">
+                <input type="password" id="apiKey" placeholder="仅当前页面临时使用；推荐用服务端 OPENAI_API_KEY">
               </label>
               <label>
                 模型
@@ -72,9 +72,15 @@
                 </select>
               </label>
             </div>
+            <p class="security-note">
+              页面输入的 Key 只在当前页面临时使用，刷新后会清空。长期使用请复制
+              <code>.env.example</code> 为 <code>.env</code>，并在里面配置 <code>OPENAI_API_KEY</code>；
+              <code>.env</code> 不会提交到 GitHub。
+            </p>
 
             <div class="inline-actions">
-              <button id="saveApiKey" class="ghost-button">保存本地设置</button>
+              <button id="saveApiKey" class="ghost-button">保存模型设置</button>
+              <button id="checkApiKey" class="ghost-button">检测Key</button>
               <button id="clearApiKey" class="ghost-button">清空Key</button>
             </div>
           </section>
@@ -82,7 +88,7 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>新建版本</h3>
+                <h3>2. 新建版本</h3>
               </div>
             </div>
 
@@ -121,7 +127,7 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>新建任务</h3>
+                <h3>3. 新建任务</h3>
               </div>
             </div>
 
@@ -155,7 +161,7 @@
           </section>
 
           <section class="panel">
-            <h3>用例生成</h3>
+            <h3>4. 导入文档并生成用例</h3>
 
             <div class="form-row">
               <label>
@@ -212,7 +218,7 @@
         <div class="panel-header">
           <div>
             <h2>测试用例</h2>
-            <p>AI生成完的测试用例导入这里执行</p>
+            <p>查看生成结果，展开用例详情，记录执行状态和备注。</p>
           </div>
           <label class="import-button primary-import">
             <input type="file" id="caseImportInput" accept=".csv">
@@ -237,7 +243,7 @@
         <div class="panel-header">
           <div>
             <h2>版本管理</h2>
-            <p>按版本集中管理当前测试范围，同版本下的不同任务会归在同一张版本卡里。</p>
+            <p>按版本查看测试任务、负责人、范围和操作入口。</p>
           </div>
         </div>
 
@@ -256,7 +262,7 @@
         <div class="panel-header">
           <div>
             <h2>BUG管理</h2>
-            <p>集中记录当前范围内的BUG，默认先看摘要，需要时再展开详情。</p>
+            <p>记录缺陷、严重程度、处理状态和回归备注。</p>
           </div>
           <button id="addBug" class="primary-button">新增BUG</button>
         </div>
@@ -278,7 +284,7 @@
         <div class="panel-header">
           <div>
             <h2>测试报告</h2>
-            <p>按版本归档查看测试结果，先看版本卡片，再展开当前版本的完整报告。</p>
+            <p>按版本汇总执行进度、风险、重点问题和发布建议。</p>
           </div>
           <button id="exportReport">导出DOCX</button>
         </div>

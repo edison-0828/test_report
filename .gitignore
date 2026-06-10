@@ -1,3 +1,5 @@
 server.out.log
 server.err.log
 app-state.json
+.env
+.env.local
