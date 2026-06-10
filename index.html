@@ -320,63 +320,68 @@
 
   <template id="caseTemplate">
     <article class="list-card">
-      <div class="card-top">
-        <div>
-          <h3 class="case-title-text"></h3>
-          <div class="card-meta">
-            <span class="case-module badge"></span>
-            <span class="case-version badge subtle"></span>
-            <span class="case-batch badge subtle"></span>
-            <span class="case-task badge subtle"></span>
-            <span class="case-type badge subtle"></span>
-            <span class="case-priority badge subtle"></span>
+      <div class="case-card-shell">
+        <div class="card-top case-card-top">
+          <div class="case-card-head">
+            <span class="case-card-kicker">测试用例</span>
+            <h3 class="case-title-text"></h3>
+            <div class="card-meta case-card-meta">
+              <span class="case-version badge subtle"></span>
+              <span class="case-task badge subtle"></span>
+              <span class="case-status badge subtle"></span>
+              <span class="case-priority badge subtle"></span>
+            </div>
+          </div>
+          <div class="card-actions case-card-actions">
+            <button class="ghost-button tiny-button toggle-case-detail">展开详情</button>
+            <button class="ghost-button tiny-button delete-case">删除</button>
           </div>
         </div>
-        <div class="card-actions">
-          <button class="ghost-button tiny-button toggle-case-detail">展开详情</button>
-          <button class="danger-link delete-case">删除</button>
-        </div>
-      </div>
 
-      <div class="case-summary-grid">
-        <div class="summary-block">
-          <span class="summary-label">前置条件</span>
-          <p class="case-preconditions-preview"></p>
-        </div>
-        <div class="summary-block">
-          <span class="summary-label">步骤摘要</span>
-          <p class="case-steps-preview"></p>
-        </div>
-      </div>
-
-      <div class="case-detail hidden-field">
-        <div class="detail-block">
-          <span class="summary-label">前置条件</span>
-          <pre class="case-preconditions-full detail-text"></pre>
-        </div>
-        <div class="detail-block">
-          <span class="summary-label">测试步骤</span>
-          <pre class="case-steps-full detail-text"></pre>
-        </div>
-        <div class="detail-block">
-          <span class="summary-label">预期结果</span>
-          <pre class="case-expected-full detail-text"></pre>
-        </div>
-        <div class="case-execution-row">
-          <div class="case-execution-status">
-            <span class="case-execution-badge badge subtle"></span>
-            <select class="case-execution-select">
-              <option value="未执行">未执行</option>
-              <option value="通过">通过</option>
-              <option value="失败">失败</option>
-              <option value="阻塞">阻塞</option>
-            </select>
-            <button type="button" class="ghost-button tiny-button case-to-bug hidden-field">转为BUG</button>
+        <div class="case-summary-grid">
+          <div class="summary-block">
+            <span class="summary-label">前置条件</span>
+            <p class="case-preconditions-preview"></p>
           </div>
-          <label class="case-execution-note-wrap">
-            <span class="summary-label">执行备注</span>
-            <textarea class="case-execution-note" rows="2"></textarea>
-          </label>
+          <div class="summary-block">
+            <span class="summary-label">步骤摘要</span>
+            <p class="case-steps-preview"></p>
+          </div>
+        </div>
+
+        <div class="case-detail hidden-field">
+          <div class="case-detail-grid">
+            <div class="detail-block">
+              <span class="summary-label">前置条件</span>
+              <pre class="case-preconditions-full detail-text"></pre>
+            </div>
+            <div class="detail-block">
+              <span class="summary-label">测试步骤</span>
+              <pre class="case-steps-full detail-text"></pre>
+            </div>
+            <div class="detail-block case-expected-block">
+              <span class="summary-label">预期结果</span>
+              <pre class="case-expected-full detail-text"></pre>
+            </div>
+          </div>
+
+          <div class="case-execution-row">
+            <div class="case-execution-status">
+              <span class="case-execution-kicker">执行状态</span>
+              <span class="case-execution-badge badge subtle"></span>
+              <select class="case-execution-select">
+                <option value="未执行">未执行</option>
+                <option value="通过">通过</option>
+                <option value="失败">失败</option>
+                <option value="阻塞">阻塞</option>
+              </select>
+              <button type="button" class="ghost-button tiny-button case-to-bug hidden-field">转为BUG</button>
+            </div>
+            <label class="case-execution-note-wrap">
+              <span class="summary-label">执行备注</span>
+              <textarea class="case-execution-note" rows="2"></textarea>
+            </label>
+          </div>
         </div>
       </div>
     </article>
@@ -415,74 +420,77 @@
 
   <template id="bugTemplate">
     <article class="list-card bug-row-card">
-      <div class="bug-row-main">
-        <div class="bug-row-title">
-          <input class="bug-title inline-title" type="text">
-          <div class="card-meta bug-row-meta">
-            <span class="bug-severity-badge badge subtle"></span>
-            <span class="bug-status-badge badge subtle"></span>
-            <span class="bug-source-badge badge subtle hidden-field"></span>
+      <div class="bug-card-shell">
+        <div class="bug-row-main">
+          <div class="bug-row-title">
+            <span class="bug-card-kicker">BUG</span>
+            <input class="bug-title inline-title" type="text">
+            <div class="card-meta bug-row-meta">
+              <span class="bug-status-badge badge subtle"></span>
+              <span class="bug-severity-badge badge subtle"></span>
+              <span class="bug-source-badge badge subtle hidden-field"></span>
+            </div>
+          </div>
+          <div class="bug-row-actions">
+            <button type="button" class="ghost-button tiny-button toggle-bug-detail">展开详情</button>
+            <button type="button" class="ghost-button tiny-button mark-bug-regression hidden-field">标记待回归</button>
+            <button class="ghost-button tiny-button delete-bug">删除</button>
           </div>
         </div>
-        <div class="bug-row-actions">
-          <button type="button" class="ghost-button tiny-button toggle-bug-detail">展开详情</button>
-          <button type="button" class="ghost-button tiny-button mark-bug-regression hidden-field">标记待回归</button>
-          <button class="danger-link delete-bug">删除</button>
-        </div>
-      </div>
 
-      <div class="bug-detail hidden-field">
-        <div class="form-row bug-row-grid">
-          <label>
-            关联用例
-            <select class="bug-case"></select>
-          </label>
-          <label>
-            批次
-            <select class="bug-batch"></select>
-          </label>
-          <label>
-            模块
-            <select class="bug-module"></select>
-          </label>
-        </div>
+        <div class="bug-detail hidden-field">
+          <div class="form-row bug-row-grid">
+            <label>
+              关联用例
+              <select class="bug-case"></select>
+            </label>
+            <label>
+              批次
+              <select class="bug-batch"></select>
+            </label>
+            <label>
+              模块
+              <select class="bug-module"></select>
+            </label>
+          </div>
 
-        <div class="form-row bug-row-grid">
-          <label>
-            严重级别
-            <select class="bug-severity">
-              <option value="严重">严重</option>
-              <option value="中">中</option>
-              <option value="低">低</option>
-            </select>
-          </label>
-          <label>
-            状态
-            <select class="bug-status">
-              <option value="新建">新建</option>
-              <option value="已提交">已提交</option>
-              <option value="已修复">已修复</option>
-              <option value="待回归">待回归</option>
-              <option value="已验证">已验证</option>
-              <option value="已关闭">已关闭</option>
-            </select>
-          </label>
-        </div>
+          <div class="form-row bug-row-grid">
+            <label>
+              严重级别
+              <select class="bug-severity">
+                <option value="严重">严重</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
+              </select>
+            </label>
+            <label>
+              状态
+              <select class="bug-status">
+                <option value="新建">新建</option>
+                <option value="已提交">已提交</option>
+                <option value="已修复">已修复</option>
+                <option value="待回归">待回归</option>
+                <option value="已验证">已验证</option>
+                <option value="已关闭">已关闭</option>
+              </select>
+            </label>
+          </div>
 
-        <div class="form-row bug-row-grid">
-          <label>
-            负责人
-            <input class="bug-owner" type="text" placeholder="开发或跟进人">
-          </label>
-          <label>
-            Lark链接 / 单号
-            <input class="bug-link" type="text" placeholder="可选">
-          </label>
-        </div>
+          <div class="form-row bug-row-grid">
+            <label>
+              负责人
+              <input class="bug-owner" type="text" placeholder="开发或跟进人">
+            </label>
+            <label>
+              Lark链接 / 单号
+              <input class="bug-link" type="text" placeholder="可选">
+            </label>
+          </div>
 
-        <div class="bug-row-note">
-          <span class="summary-label">备注</span>
-          <textarea class="bug-note" rows="2"></textarea>
+          <div class="bug-row-note">
+            <span class="summary-label">备注</span>
+            <textarea class="bug-note" rows="2"></textarea>
+          </div>
         </div>
       </div>
     </article>

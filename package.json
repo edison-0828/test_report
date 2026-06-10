@@ -4,5 +4,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.60.0"
   }
 }

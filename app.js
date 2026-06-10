@@ -142,9 +142,15 @@ function bindEvents() {
   els.createBatchBtn.addEventListener("click", createBatch);
   els.createTaskBtn.addEventListener("click", createTask);
   els.caseImportInput.addEventListener("change", handleCaseImport);
-  els.caseBatchFilter.addEventListener("change", renderCases);
+  els.caseBatchFilter.addEventListener("change", () => {
+    renderCaseFilters();
+    renderCases();
+  });
   els.caseTaskFilter.addEventListener("change", renderCases);
-  els.bugBatchFilter.addEventListener("change", renderBugs);
+  els.bugBatchFilter.addEventListener("change", () => {
+    renderCaseFilters();
+    renderBugs();
+  });
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
@@ -524,16 +530,31 @@ function ensureSeedMetadata() {
   if (state.activeBatchId === undefined) {
     state.activeBatchId = "";
   }
+  if (state.activeBatchId === null) {
+    state.activeBatchId = "";
+  }
   if (state.activeModuleId === undefined) {
+    state.activeModuleId = "";
+  }
+  if (state.activeModuleId === null) {
     state.activeModuleId = "";
   }
   if (state.generationBatchId === undefined) {
     state.generationBatchId = "";
   }
+  if (state.generationBatchId === null) {
+    state.generationBatchId = "";
+  }
   if (state.activeTaskId === undefined) {
     state.activeTaskId = "";
   }
+  if (state.activeTaskId === null) {
+    state.activeTaskId = "";
+  }
   if (state.activeReportBatchId === undefined) {
+    state.activeReportBatchId = "";
+  }
+  if (state.activeReportBatchId === null) {
     state.activeReportBatchId = "";
   }
   if (!state.uiMode) {
@@ -914,12 +935,12 @@ function handleCaseImport(event) {
         ...item,
         id: `case-import-${Date.now()}-${index}`,
         taskId: item.taskId || state.activeTaskId || "",
-        taskName: item.taskName || getTaskNameById(state.activeTaskId),
-        batchId: item.batchId || state.activeBatchId || "",
-        batchVersion: item.batchVersion || getBatchVersionById(item.batchId) || getBatchVersionById(state.activeBatchId),
-        batchName: item.batchName || getBatchLabelById(state.activeBatchId),
-        moduleId: item.moduleId || state.activeModuleId || "",
-        module: item.module || getModuleNameById(state.activeModuleId) || "未分类",
+        taskName: item.taskName || getTaskNameById(item.taskId) || getTaskNameById(state.activeTaskId),
+        batchId: item.batchId || getTaskById(item.taskId)?.batchId || state.activeBatchId || "",
+        batchVersion: item.batchVersion || getBatchVersionById(item.batchId || getTaskById(item.taskId)?.batchId) || getBatchVersionById(state.activeBatchId),
+        batchName: item.batchName || getBatchLabelById(item.batchId || getTaskById(item.taskId)?.batchId) || getBatchLabelById(state.activeBatchId),
+        moduleId: item.moduleId || getTaskById(item.taskId)?.moduleId || state.activeModuleId || "",
+        module: item.module || getModuleNameById(item.moduleId || getTaskById(item.taskId)?.moduleId || state.activeModuleId) || "未分类",
         executionStatus: item.executionStatus || "未执行",
         executionNote: item.executionNote || ""
       }));
@@ -1686,76 +1707,95 @@ function renderVersionManager() {
     const isActive = batch.id === state.activeBatchId;
     const isSuspended = batch.status === "已挂起";
     const isCompleted = batch.status === "已完成";
+    const ownerText = getOwnerDisplay(batch.owners || batch.owner) || "未分配";
     const node = document.createElement("article");
     node.className = "list-card version-card";
     node.innerHTML = `
-      <div class="card-top">
-        <div>
-          <h3 class="case-title-text">${escapeHtml(batch.version || "未命名版本")}</h3>
-          <div class="card-meta">
-            <span class="badge subtle ${isCompleted ? "tone-green" : isSuspended ? "tone-gray" : "tone-orange"}">${escapeHtml(batch.status || "进行中")}</span>
-            <span class="badge subtle">${relatedTasks.length} 个任务</span>
-            ${isActive ? `<span class="badge tone-orange">当前版本</span>` : ""}
+      <div class="version-card-shell">
+        <div class="version-card-header">
+          <div class="version-card-title-block">
+            <div class="version-card-kicker">版本</div>
+            <h3 class="case-title-text">${escapeHtml(batch.version || "未命名版本")}</h3>
+            <div class="card-meta version-card-badges">
+              <span class="badge subtle ${isCompleted ? "tone-green" : isSuspended ? "tone-gray" : "tone-orange"}">${escapeHtml(batch.status || "进行中")}</span>
+              <span class="badge subtle">${relatedTasks.length} 个任务</span>
+              ${isActive ? `<span class="badge tone-orange">当前版本</span>` : ""}
+            </div>
+          </div>
+          <div class="version-card-summary">
+            <div class="version-summary-chip">
+              <span>负责人</span>
+              <strong>${escapeHtml(ownerText)}</strong>
+            </div>
+            <div class="version-summary-chip">
+              <span>可操作状态</span>
+              <strong>${escapeHtml(isCompleted ? "只读查看" : isSuspended ? "已挂起" : "可继续编辑")}</strong>
+            </div>
           </div>
         </div>
-        <div class="card-actions">
-          <button class="ghost-button tiny-button toggle-version-detail">展开详情</button>
-          ${!isActive && !isSuspended ? `<button class="ghost-button tiny-button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
-          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : `<span class="summary-label version-lock-text">已完成版本仅支持查看</span>`}
-          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>` : ""}
-          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复" : "挂起"}</button>` : ""}
-          ${isCompleted ? `<span class="summary-label version-lock-text">已完成版本不可删除</span>` : `<button class="danger-link" data-version-action="delete" data-version-id="${batch.id}">删除</button>`}
-        </div>
-      </div>
-      <div class="version-card-detail hidden-field">
-        <div class="version-card-body">
-          <div class="summary-block">
-            <span class="summary-label">负责人</span>
-            <p>${escapeHtml(getOwnerDisplay(batch.owners || batch.owner) || "未分配")}</p>
+
+        <div class="version-card-toolbar">
+          <div class="card-actions version-card-actions">
+            <button class="ghost-button tiny-button toggle-version-detail">展开详情</button>
+            ${!isActive && !isSuspended ? `<button class="ghost-button tiny-button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
+            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : `<span class="summary-label version-lock-text">已完成版本仅支持查看</span>`}
+            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>` : ""}
+            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复" : "挂起"}</button>` : ""}
+            ${isCompleted ? `<span class="summary-label version-lock-text">已完成版本不可删除</span>` : `<button class="danger-link" data-version-action="delete" data-version-id="${batch.id}">删除</button>`}
           </div>
         </div>
-        <div class="version-task-section">
-          <div class="version-task-head">
-            <strong>测试任务列表</strong>
-            <span class="summary-label">同版本任务统一收在这里管理</span>
+
+        <div class="version-card-detail hidden-field">
+          <div class="version-card-body">
+            <div class="summary-block version-owner-panel">
+              <span class="summary-label">版本负责人</span>
+              <p>${escapeHtml(ownerText)}</p>
+            </div>
           </div>
-          <div class="version-task-list">
-            ${relatedTasks.length ? relatedTasks.map((task) => {
-              const isTaskActive = task.id === state.activeTaskId;
-              const taskReadonly = isCompleted;
-              return `
-                <article class="version-task-card">
-                  <div class="version-task-top">
-                    <div>
-                      <strong>${escapeHtml(task.name || "未命名任务")}</strong>
-                      <div class="card-meta">
-                        ${isTaskActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
+          <div class="version-task-section">
+            <div class="version-task-head">
+              <strong>测试任务列表</strong>
+              <span class="summary-label">同版本任务统一收在这里管理</span>
+            </div>
+            <div class="version-task-list">
+              ${relatedTasks.length ? relatedTasks.map((task) => {
+                const isTaskActive = task.id === state.activeTaskId;
+                const taskReadonly = isCompleted;
+                return `
+                  <article class="version-task-card">
+                    <div class="version-task-top">
+                      <div>
+                        <span class="version-task-kicker">测试任务</span>
+                        <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+                        <div class="card-meta">
+                          ${isTaskActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
+                        </div>
+                      </div>
+                      <div class="card-actions version-task-actions">
+                        ${!isTaskActive ? `<button class="ghost-button tiny-button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
+                        ${!taskReadonly ? `<button class="ghost-button tiny-button" data-task-action="edit" data-task-id="${task.id}">编辑</button>` : `<span class="summary-label version-lock-text">任务仅支持查看</span>`}
+                        ${!taskReadonly ? `<button class="danger-link" data-task-action="delete" data-task-id="${task.id}">删除</button>` : ""}
                       </div>
                     </div>
-                    <div class="card-actions">
-                      ${!isTaskActive ? `<button class="ghost-button tiny-button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
-                      ${!taskReadonly ? `<button class="ghost-button tiny-button" data-task-action="edit" data-task-id="${task.id}">编辑</button>` : `<span class="summary-label version-lock-text">任务仅支持查看</span>`}
-                      ${!taskReadonly ? `<button class="danger-link" data-task-action="delete" data-task-id="${task.id}">删除</button>` : ""}
+                    <div class="version-task-grid">
+                      <div class="summary-block">
+                        <span class="summary-label">测试内容</span>
+                        <p>${escapeHtml(task.scope || "未填写")}</p>
+                      </div>
+                      <div class="summary-block">
+                        <span class="summary-label">负责人</span>
+                        <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div class="version-task-grid">
-                    <div class="summary-block">
-                      <span class="summary-label">测试内容</span>
-                      <p>${escapeHtml(task.scope || "未填写")}</p>
-                    </div>
-                    <div class="summary-block">
-                      <span class="summary-label">负责人</span>
-                      <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
-                    </div>
-                  </div>
-                </article>
-              `;
-            }).join("") : `
-              <div class="empty-state empty-state-rich compact-empty-state">
-                <strong>这个版本还没有任务</strong>
-                <p>先回到文档与生成页，为当前版本新增测试任务。</p>
-              </div>
-            `}
+                  </article>
+                `;
+              }).join("") : `
+                <div class="empty-state empty-state-rich compact-empty-state">
+                  <strong>这个版本还没有任务</strong>
+                  <p>先回到文档与生成页，为当前版本新增测试任务。</p>
+                </div>
+              `}
+            </div>
           </div>
         </div>
       </div>
@@ -2221,6 +2261,25 @@ function getCaseTasks() {
   return [...new Set(state.cases.map((item) => item.taskName).filter(Boolean))];
 }
 
+function getTasksByBatchForFilters(batchId, source = "all") {
+  const taskPool = state.tasks.map((item) => ({
+    id: item.id || item.name,
+    name: item.name,
+    batchId: item.batchId
+  }));
+  const fallbackPool = source === "bugs"
+    ? state.bugs.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId }))
+    : state.cases.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId }));
+  const baseTasks = [...taskPool, ...fallbackPool];
+
+  return [...new Map(
+    baseTasks
+      .filter((item) => item.name)
+      .filter((item) => !batchId || item.batchId === batchId)
+      .map((item) => [item.name, item])
+  ).values()];
+}
+
 function getFilteredCasesForView() {
   const batchFilter = els.caseBatchFilter.value;
   const taskFilter = els.caseTaskFilter.value;
@@ -2297,12 +2356,15 @@ function renderCaseFilters() {
   fillSelectFromItems(els.caseBatchFilter, state.batches, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
   fillSelectFromItems(els.bugBatchFilter, state.batches, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
 
-  const tasks = getCaseTasks();
-  const caseTaskValue = tasks.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
-  const bugTaskValue = tasks.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
+  const caseTasks = getTasksByBatchForFilters(els.caseBatchFilter.value, "cases");
+  const bugTasks = getTasksByBatchForFilters(els.bugBatchFilter.value, "bugs");
+  const caseTaskNames = caseTasks.map((item) => item.name);
+  const bugTaskNames = bugTasks.map((item) => item.name);
+  const caseTaskValue = caseTaskNames.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
+  const bugTaskValue = bugTaskNames.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
 
-  els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
-  els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
+  els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${caseTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
+  els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${bugTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
 
   els.caseTaskFilter.value = caseTaskValue;
   els.bugTaskFilter.value = bugTaskValue;
@@ -2397,20 +2459,18 @@ function renderCases() {
   filtered.forEach((item) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
     node.querySelector(".case-title-text").textContent = item.title;
-    node.querySelector(".case-module").textContent = item.module;
     node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
-    node.querySelector(".case-batch").textContent = item.batchName || "未分批次";
     node.querySelector(".case-task").textContent = item.taskName || "未分任务";
 
-    const typeBadge = node.querySelector(".case-type");
+    const statusBadge = node.querySelector(".case-status");
     const priorityBadge = node.querySelector(".case-priority");
     const executionBadge = node.querySelector(".case-execution-badge");
     const executionSelect = node.querySelector(".case-execution-select");
     const executionNote = node.querySelector(".case-execution-note");
     const caseToBug = node.querySelector(".case-to-bug");
-    typeBadge.textContent = item.type;
+    statusBadge.textContent = item.executionStatus || "未执行";
     priorityBadge.textContent = item.priority;
-    applyBadgeTone(typeBadge, getCaseTypeTone(item.type));
+    applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus || "未执行"));
     applyBadgeTone(priorityBadge, getPriorityTone(item.priority));
     executionSelect.value = item.executionStatus || "未执行";
     syncExecutionStatusBadge(executionBadge, item.executionStatus || "未执行");
@@ -2425,6 +2485,8 @@ function renderCases() {
 
     executionSelect.addEventListener("change", (event) => {
       item.executionStatus = event.target.value;
+      statusBadge.textContent = item.executionStatus;
+      applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
       syncExecutionStatusBadge(executionBadge, item.executionStatus);
       caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
       persist();
@@ -2492,6 +2554,7 @@ function createBugRecord(sourceCase) {
     taskId: firstCase?.taskId || activeTask?.id || "",
     taskName: firstCase?.taskName || activeTask?.name || "",
     batchId: firstCase?.batchId || activeBatch?.id || "",
+    batchVersion: firstCase?.batchVersion || activeBatch?.version || "",
     batchName: firstCase?.batchName || (activeBatch ? formatBatchLabel(activeBatch) : ""),
     moduleId: firstCase?.moduleId || activeModule?.id || "",
     moduleName: firstCase?.module || activeModule?.name || "",
@@ -2623,6 +2686,10 @@ function updateBugFromNode(node, bugId) {
       node.querySelector(".bug-batch").value = item.batchId;
       node.querySelector(".bug-module").value = item.moduleId;
     }
+  }
+
+  if (!item.taskName && item.taskId) {
+    item.taskName = getTaskNameById(item.taskId);
   }
 
   syncBugBadges(node, item.severity, item.status);
