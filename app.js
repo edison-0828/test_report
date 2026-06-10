@@ -154,7 +154,7 @@ function bindEvents() {
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
-  els.seedDemo.addEventListener("click", seedDemoData);
+  els.seedDemo?.addEventListener("click", seedDemoData);
   els.saveApiKey.addEventListener("click", saveApiSettings);
   els.clearApiKey.addEventListener("click", clearApiSettings);
   els.modelSelect.addEventListener("change", saveApiSettings);
@@ -261,7 +261,7 @@ function initOwnerUi() {
     const ownerField = document.createElement("label");
     ownerField.className = "step-field";
     ownerField.innerHTML = `
-      <span class="step-label">3. 选择版本负责人</span>
+      <span class="step-label">版本负责人</span>
       <select id="batchOwnerSelect">
         <option value="">未选择</option>
       </select>

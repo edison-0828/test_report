@@ -112,10 +112,10 @@ button:hover:not(:disabled) {
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 18%),
     #121b28;
   color: #eef4ff;
-  padding: 30px 24px;
+  padding: 28px 22px 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -124,39 +124,44 @@ button:hover:not(:disabled) {
 .panel h3,
 .panel h4 {
   margin: 0;
+  font-weight: 700;
 }
 
 .brand p {
   color: #b8c6dc;
   margin: 10px 0 0;
-  line-height: 1.5;
+  line-height: 1.6;
+  max-width: 220px;
 }
 
 .nav {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .nav-link {
-  min-height: 44px;
-  background: rgba(255, 255, 255, 0.05);
+  min-height: 46px;
+  background: rgba(255, 255, 255, 0.04);
   color: inherit;
-  border-color: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.04);
   text-align: left;
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: none;
+  font-weight: 600;
 }
 
 .nav-link:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
 
 .nav-link.active {
   background: #eef4ff;
   color: #17212d;
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 8px 18px rgba(15, 23, 34, 0.12);
 }
 
 .summary-card {
@@ -176,7 +181,7 @@ button:hover:not(:disabled) {
 .sidebar-back-top {
   margin-top: auto;
   align-self: stretch;
-  min-height: 92px;
+  min-height: 84px;
   padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -338,6 +343,16 @@ button:hover:not(:disabled) {
 .panel h3 {
   margin-bottom: 14px;
   color: var(--heading);
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.panel h4 {
+  color: var(--heading);
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
 }
 
 .onboarding-panel {
@@ -582,6 +597,10 @@ textarea {
 }
 
 .simple-version-flow {
+  grid-template-columns: 1fr;
+}
+
+.task-flow {
   grid-template-columns: 1fr;
 }
 
@@ -1090,16 +1109,17 @@ textarea {
   border: 0;
   padding: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--heading);
   background: transparent;
 }
 
 .case-title-text {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.5;
   color: var(--heading);
+  font-weight: 700;
 }
 
 .case-card-shell {
@@ -1363,6 +1383,14 @@ textarea {
   align-items: end;
 }
 
+#upload .panel-header h2 {
+  max-width: 640px;
+}
+
+#upload .panel h3 {
+  font-size: 18px;
+}
+
 #upload .upload-grid > .panel,
 #versions .panel {
   position: relative;
@@ -1428,6 +1456,14 @@ textarea {
 #upload .section-head,
 #versions .section-head {
   margin-bottom: 16px;
+}
+
+#upload .panel {
+  box-shadow: 0 14px 28px rgba(15, 23, 34, 0.05);
+}
+
+#upload .section-note {
+  max-width: 560px;
 }
 
 #versions .list-card.version-card {

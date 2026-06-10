@@ -17,7 +17,7 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-link active" data-tab="upload">文档与生成</button>
+        <button class="nav-link active" data-tab="upload">用例生成</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
         <button class="nav-link" data-tab="cases">测试用例</button>
         <button class="nav-link" data-tab="bugs">BUG管理</button>
@@ -34,10 +34,9 @@
       <section class="tab-panel active" id="upload">
         <div class="panel-header">
           <div>
-            <h2>文档上传与用例生成</h2>
+            <h2>任务创建与用例生成</h2>
             <p>支持需求内容、本地文件、API链接等输入方式，统一生成可执行测试用例。</p>
           </div>
-          <button id="seedDemo" class="ghost-button"></button>
         </div>
 
         <section class="panel onboarding-panel">
@@ -133,17 +132,20 @@
                   <option value="">请选择版本</option>
                 </select>
               </label>
-              <label>
-                任务名称
-                <input type="text" id="taskNameInput" placeholder="例如：登录回归 / 退款修复验证">
-              </label>
             </div>
 
-            <label>
-              这一任务要测什么
-              <textarea id="taskScopeInput" class="md-textarea" rows="6"
-                placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
-            </label>
+            <div class="version-flow task-flow">
+              <label class="step-field">
+                <span class="step-label">任务名称</span>
+                <input type="text" id="taskNameInput" placeholder="例如：登录回归 / 退款修复验证">
+              </label>
+
+              <label class="step-field step-field-wide">
+                <span class="step-label">这一任务要测什么</span>
+                <textarea id="taskScopeInput" class="md-textarea" rows="6"
+                  placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
+              </label>
+            </div>
 
             <div class="inline-actions">
               <button id="createTaskBtn" class="ghost-button">保存当前任务</button>
@@ -206,7 +208,7 @@
         </div>
       </section>
 
-<section class="tab-panel" id="cases">
+      <section class="tab-panel" id="cases">
         <div class="panel-header">
           <div>
             <h2>测试用例</h2>
