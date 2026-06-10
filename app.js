@@ -41,9 +41,7 @@ const els = {
   generateCasesLocal: document.getElementById("generateCasesLocal"),
   saveDocument: document.getElementById("saveDocument"),
   generationStatus: document.getElementById("generationStatus"),
-  onboardingSummary: document.getElementById("onboardingSummary"),
   onboardingSteps: document.getElementById("onboardingSteps"),
-  nextActionBtn: document.getElementById("nextActionBtn"),
   activeBatchSelect: document.getElementById("activeBatchSelect"),
   activeModuleSelect: document.getElementById("activeModuleSelect"),
   batchVersionInput: document.getElementById("batchVersionInput"),
@@ -60,6 +58,7 @@ const els = {
   taskManagerList: document.getElementById("taskManagerList"),
   versionsPanel: document.getElementById("versions"),
   quickStats: document.getElementById("quickStats"),
+  sidebarContext: document.getElementById("sidebarContext"),
   apiKey: document.getElementById("apiKey"),
   saveApiKey: document.getElementById("saveApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
@@ -74,6 +73,7 @@ const els = {
   executionBatchFilter: document.getElementById("executionBatchFilter"),
   executionTaskFilter: document.getElementById("executionTaskFilter"),
   executionModuleFilter: document.getElementById("executionModuleFilter"),
+  executionBulkPass: document.getElementById("executionBulkPass"),
   executionList: document.getElementById("executionList"),
   bugBatchFilter: document.getElementById("bugBatchFilter"),
   bugTaskFilter: document.getElementById("bugTaskFilter"),
@@ -114,6 +114,7 @@ autoResizeTextarea();
 
 ensureSeedMetadata();
 hydrateReportChrome();
+hydrateWorkflowChrome();
 simplifyUploadFlow();
 initTextSourceUi();
 initOwnerUi();
@@ -146,9 +147,6 @@ function bindEvents() {
   els.caseBatchFilter.addEventListener("change", renderCases);
   els.caseTaskFilter.addEventListener("change", renderCases);
   els.caseModuleFilter.addEventListener("change", renderCases);
-  els.executionBatchFilter.addEventListener("change", renderExecution);
-  els.executionTaskFilter.addEventListener("change", renderExecution);
-  els.executionModuleFilter.addEventListener("change", renderExecution);
   els.bugBatchFilter.addEventListener("change", renderBugs);
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.bugModuleFilter.addEventListener("change", renderBugs);
@@ -163,7 +161,6 @@ function bindEvents() {
   els.saveApiKey.addEventListener("click", saveApiSettings);
   els.clearApiKey.addEventListener("click", clearApiSettings);
   els.modelSelect.addEventListener("change", saveApiSettings);
-  els.nextActionBtn?.addEventListener("click", handleRecommendedAction);
   document.addEventListener("click", handleGlobalActionClick);
 }
 
@@ -176,26 +173,32 @@ function hydrateReportChrome() {
   const headerTitle = reportPanel.querySelector(".panel-header h2");
   const headerDesc = reportPanel.querySelector(".panel-header p");
   const exportBtn = reportPanel.querySelector("#exportReport");
-  const headings = reportPanel.querySelectorAll("h3");
 
   if (headerTitle) headerTitle.textContent = "测试报告";
   if (headerDesc) headerDesc.textContent = "基于当前批次 / 任务 / 模块范围，自动汇总用例执行与 BUG 状态。";
-  if (exportBtn) exportBtn.textContent = "导出PDF";
-
-  const headingTexts = ["报告摘要", "风险与结论", "执行状态分布", "BUG 状态分布", "BUG 严重级别", "重点关注"];
-  headings.forEach((node, index) => {
-    if (headingTexts[index]) {
-      node.textContent = headingTexts[index];
-    }
-  });
+  if (exportBtn) exportBtn.textContent = "导出DOCX";
 
   if (els.reportConclusion) {
     els.reportConclusion.placeholder = "补充测试范围、风险项、上线建议";
   }
 }
 
+function hydrateWorkflowChrome() {
+  const bugNav = [...els.navLinks].find((item) => item.dataset.tab === "bugs");
+  if (bugNav) {
+    bugNav.textContent = "BUG管理";
+  }
+
+  const bugPanel = document.getElementById("bugs");
+  if (bugPanel) {
+    const headerTitle = bugPanel.querySelector(".panel-header h2");
+    const headerDesc = bugPanel.querySelector(".panel-header p");
+    if (headerTitle) headerTitle.textContent = "BUG管理";
+    if (headerDesc) headerDesc.textContent = "独立管理 BUG 台账，按版本、任务、模块跟踪状态、负责人和回归进展。";
+  }
+}
+
 function simplifyUploadFlow() {
-  els.nextActionBtn?.remove();
   els.versionScopeInput?.closest("label")?.remove();
   els.documentType?.closest("label")?.remove();
   els.generateCasesLocal?.remove();
@@ -602,6 +605,7 @@ function createBatch() {
   const moduleId = els.activeModuleSelect.value;
   const moduleItem = getModuleById(moduleId);
   const owner = els.batchOwnerSelect?.value.trim() || "";
+  const duplicateBatch = state.batches.find((item) => item.version === version && item.id !== editingBatchId);
 
   if (!moduleItem) {
     setGenerationStatus("请先选择当前业务。", "warn");
@@ -610,6 +614,11 @@ function createBatch() {
 
   if (!version) {
     setGenerationStatus("请先填写版本号。", "warn");
+    return;
+  }
+
+  if (duplicateBatch) {
+    setGenerationStatus(`版本号 ${version} 已存在，不能重复。`, "warn");
     return;
   }
 
@@ -658,6 +667,11 @@ function createTask() {
   }
   if (!name) {
     setGenerationStatus("请先填写任务名称。", "warn");
+    return;
+  }
+
+  if (editingTaskId && batch?.status === "已完成") {
+    setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，已有任务不能再编辑。`, "warn");
     return;
   }
 
@@ -1314,7 +1328,6 @@ function renderAll() {
   renderQuickStats();
   renderCaseFilters();
   renderCases();
-  renderExecution();
   renderBugs();
   renderReport();
 }
@@ -1322,6 +1335,13 @@ function renderAll() {
 function renderOnboarding() {
   const flow = getWorkflowState();
   const steps = [
+    {
+      key: "bot",
+      title: "先配置机器人",
+      desc: "先保存本地 API Key 和模型，后面生成用例时可以直接调用。",
+      done: flow.hasBotConfig,
+      current: flow.nextAction === "configure-bot"
+    },
     {
       key: "meta",
       title: "先保存版本",
@@ -1366,41 +1386,6 @@ function renderOnboarding() {
     }
   ];
 
-  els.onboardingSummary.innerHTML = `
-    <div class="onboarding-focus">
-      <div class="onboarding-tip onboarding-tip-primary">
-        <span class="summary-label">当前建议</span>
-        <strong>${escapeHtml(flow.tipTitle)}</strong>
-        <p>${escapeHtml(flow.tipBody)}</p>
-        <div class="inline-actions">
-          <button type="button" class="ghost-button" data-action="${escapeHtml(flow.nextAction)}">${escapeHtml(flow.actionLabel)}</button>
-          <button type="button" class="ghost-button" data-action="download-case-template">下载CSV模板</button>
-        </div>
-      </div>
-      <div class="onboarding-tip">
-        <span class="summary-label">填写示例</span>
-        <div class="example-grid">
-          <div class="example-card">
-            <strong>版本号</strong>
-            <p>V2026.06.10</p>
-          </div>
-          <div class="example-card">
-            <strong>任务名称</strong>
-            <p>登录回归 / 退款修复验证</p>
-          </div>
-          <div class="example-card example-card-wide">
-            <strong>测试范围</strong>
-            <p>- 登录主流程\n- 验证码错误提示\n- 锁定逻辑</p>
-          </div>
-          <div class="example-card example-card-wide">
-            <strong>CSV状态列</strong>
-            <p>执行状态可填：通过 / 失败 / 阻塞。留空时系统会按未执行处理。</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
   els.onboardingSteps.innerHTML = steps.map((step, index) => `
     <article class="step-card ${step.current ? "current" : ""}">
       <div class="step-index">${index + 1}</div>
@@ -1409,18 +1394,13 @@ function renderOnboarding() {
           <strong>${escapeHtml(step.title)}</strong>
         </div>
         <p>${escapeHtml(step.desc)}</p>
-        <button type="button" class="ghost-button tiny-button" data-action="${escapeHtml(getStepAction(step.key))}">${escapeHtml(getStepButtonLabel(step.key))}</button>
       </div>
     </article>
   `).join("");
-
-  if (els.nextActionBtn) {
-    els.nextActionBtn.textContent = flow.actionLabel;
-    els.nextActionBtn.dataset.action = flow.nextAction;
-  }
 }
 
 function getWorkflowState() {
+  const hasBotConfig = Boolean(settings.apiKey || settings.apiReady);
   const hasMeta = Boolean(state.activeBatchId && state.activeModuleId);
   const hasTask = Boolean(state.activeTaskId && state.tasks.some((item) => item.id === state.activeTaskId));
   const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || els.sourceText?.value.trim() || state.documents.length);
@@ -1430,8 +1410,25 @@ function getWorkflowState() {
   const hasExecutionOrBug = hasExecution || hasBug;
   const hasReportData = Boolean(hasCases);
 
+  if (!hasBotConfig) {
+    return {
+      hasBotConfig,
+      hasMeta,
+      hasTask,
+      hasSource,
+      hasCases,
+      hasExecutionOrBug,
+      hasReportData,
+      nextAction: "configure-bot",
+      actionLabel: "先配置机器人",
+      tipTitle: "先配置机器人",
+      tipBody: "先保存本地 API Key 和模型，后面的 AI 生成才可以直接使用。"
+    };
+  }
+
   if (!hasMeta) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1447,6 +1444,7 @@ function getWorkflowState() {
 
   if (!hasTask) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1462,6 +1460,7 @@ function getWorkflowState() {
 
   if (hasCases && !hasExecutionOrBug) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1477,6 +1476,7 @@ function getWorkflowState() {
 
   if (hasCases) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1492,6 +1492,7 @@ function getWorkflowState() {
 
   if (!hasSource) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1507,6 +1508,7 @@ function getWorkflowState() {
 
   if (!hasCases) {
     return {
+      hasBotConfig,
       hasMeta,
       hasTask,
       hasSource,
@@ -1521,6 +1523,7 @@ function getWorkflowState() {
   }
 
   return {
+    hasBotConfig,
     hasMeta,
     hasTask,
     hasSource,
@@ -1535,31 +1538,33 @@ function getWorkflowState() {
 }
 
 function getStepAction(stepKey) {
+  if (stepKey === "bot") return "configure-bot";
   if (stepKey === "meta") return "create-meta";
   if (stepKey === "task") return "create-task";
   if (stepKey === "source") return "prepare-source";
   if (stepKey === "cases") return "generate-cases";
-  if (stepKey === "execution") return "execute-cases";
+  if (stepKey === "execution") return "manage-bugs";
   return "export-report";
 }
 
 function getStepButtonLabel(stepKey) {
+  if (stepKey === "bot") return "去配置";
   if (stepKey === "meta") return "去创建版本";
   if (stepKey === "task") return "去创建任务";
   if (stepKey === "source") return "去准备内容";
   if (stepKey === "cases") return "去生成用例";
-  if (stepKey === "execution") return "去执行";
+  if (stepKey === "execution") return "去看BUG";
   return "去导出";
-}
-
-function handleRecommendedAction() {
-  if (els.nextActionBtn) {
-    handleShortcutAction(els.nextActionBtn.dataset.action);
-  }
 }
 
 function handleShortcutAction(action) {
   if (!action) {
+    return;
+  }
+
+  if (action === "configure-bot") {
+    switchTab("upload");
+    els.apiKey.focus();
     return;
   }
 
@@ -1591,7 +1596,12 @@ function handleShortcutAction(action) {
   }
 
   if (action === "execute-cases") {
-    switchTab("execution");
+    switchTab("cases");
+    return;
+  }
+
+  if (action === "manage-bugs") {
+    switchTab("bugs");
     return;
   }
 
@@ -1675,56 +1685,10 @@ function renderMetaControls() {
 }
 
 function renderTaskManager() {
-  if (!state.tasks.length) {
-    els.taskManagerList.innerHTML = `
-      <div class="empty-state empty-state-rich">
-        <strong>还没有测试任务</strong>
-        <p>先给某个版本建任务，比如“登录回归”“退款修复验证”。</p>
-      </div>
-    `;
+  if (!els.taskManagerList) {
     return;
   }
-
   els.taskManagerList.innerHTML = "";
-  state.tasks.forEach((task) => {
-    const isActive = task.id === state.activeTaskId;
-    const batch = getBatchById(task.batchId);
-    const node = document.createElement("article");
-    node.className = "list-card version-card";
-    node.innerHTML = `
-      <div class="card-top">
-        <div>
-          <h3 class="case-title-text">${escapeHtml(task.name || "未命名任务")}</h3>
-          <div class="card-meta">
-            <span class="badge">${escapeHtml(task.batchVersion || batch?.version || "未关联版本")}</span>
-            <span class="badge subtle">${escapeHtml(task.moduleName || batch?.moduleName || "未分类业务")}</span>
-            ${isActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
-          </div>
-        </div>
-        <div class="card-actions">
-          ${!isActive ? `<button class="ghost-button tiny-button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
-          <button class="ghost-button tiny-button" data-task-action="edit" data-task-id="${task.id}">编辑</button>
-          <button class="danger-link" data-task-action="delete" data-task-id="${task.id}">删除</button>
-        </div>
-      </div>
-      <div class="version-card-body">
-        <div class="summary-block">
-          <span class="summary-label">所属版本</span>
-          <p>${escapeHtml(formatTaskBatchLabel(batch || { version: task.batchVersion, moduleName: task.moduleName, name: task.moduleName }))}</p>
-        </div>
-        <div class="summary-block">
-          <span class="summary-label">测试内容</span>
-          <p>${escapeHtml(task.scope || "未填写")}</p>
-        </div>
-        <div class="summary-block">
-          <span class="summary-label">负责人</span>
-          <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
-        </div>
-      </div>
-    `;
-    bindTaskCard(node, task.id);
-    els.taskManagerList.appendChild(node);
-  });
 }
 
 function renderVersionManager() {
@@ -1740,9 +1704,11 @@ function renderVersionManager() {
 
   els.versionManagerList.innerHTML = "";
   state.batches.forEach((batch) => {
+    const relatedTasks = state.tasks.filter((task) => task.batchId === batch.id);
     const moduleName = batch.moduleName || getModuleNameById(batch.moduleId) || batch.name || "未分类";
     const isActive = batch.id === state.activeBatchId;
     const isSuspended = batch.status === "已挂起";
+    const isCompleted = batch.status === "已完成";
     const node = document.createElement("article");
     node.className = "list-card version-card";
     node.innerHTML = `
@@ -1751,43 +1717,105 @@ function renderVersionManager() {
           <h3 class="case-title-text">${escapeHtml(batch.version || "未命名版本")}</h3>
           <div class="card-meta">
             <span class="badge">${escapeHtml(moduleName)}</span>
-            <span class="badge subtle ${isSuspended ? "tone-gray" : "tone-green"}">${escapeHtml(batch.status || "进行中")}</span>
+            <span class="badge subtle ${isCompleted ? "tone-green" : isSuspended ? "tone-gray" : "tone-orange"}">${escapeHtml(batch.status || "进行中")}</span>
+            <span class="badge subtle">${relatedTasks.length} 个任务</span>
             ${isActive ? `<span class="badge tone-orange">当前版本</span>` : ""}
           </div>
         </div>
         <div class="card-actions">
+          <button class="ghost-button tiny-button toggle-version-detail">展开详情</button>
           ${!isActive && !isSuspended ? `<button class="ghost-button tiny-button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
-          <button class="ghost-button tiny-button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>
-          <button class="ghost-button tiny-button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复" : "挂起"}</button>
-          <button class="danger-link" data-version-action="delete" data-version-id="${batch.id}">删除</button>
+          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : `<span class="summary-label version-lock-text">已完成版本仅支持查看</span>`}
+          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>` : ""}
+          ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复" : "挂起"}</button>` : ""}
+          ${isCompleted ? `<span class="summary-label version-lock-text">已完成版本不可删除</span>` : `<button class="danger-link" data-version-action="delete" data-version-id="${batch.id}">删除</button>`}
         </div>
       </div>
-      <div class="version-card-body">
-        <div class="summary-block">
-          <span class="summary-label">业务</span>
-          <p>${escapeHtml(moduleName)}</p>
+      <div class="version-card-detail hidden-field">
+        <div class="version-card-body">
+          <div class="summary-block">
+            <span class="summary-label">业务</span>
+            <p>${escapeHtml(moduleName)}</p>
+          </div>
+          <div class="summary-block">
+            <span class="summary-label">负责人</span>
+            <p>${escapeHtml(getOwnerDisplay(batch.owners || batch.owner) || "未分配")}</p>
+          </div>
         </div>
-        <div class="summary-block">
-          <span class="summary-label">负责人</span>
-          <p>${escapeHtml(getOwnerDisplay(batch.owners || batch.owner) || "未分配")}</p>
+        <div class="version-task-section">
+          <div class="version-task-head">
+            <strong>测试任务列表</strong>
+            <span class="summary-label">同版本任务统一收在这里管理</span>
+          </div>
+          <div class="version-task-list">
+            ${relatedTasks.length ? relatedTasks.map((task) => {
+              const isTaskActive = task.id === state.activeTaskId;
+              const taskReadonly = isCompleted;
+              return `
+                <article class="version-task-card">
+                  <div class="version-task-top">
+                    <div>
+                      <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+                      <div class="card-meta">
+                        <span class="badge subtle">${escapeHtml(task.moduleName || moduleName)}</span>
+                        ${isTaskActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
+                      </div>
+                    </div>
+                    <div class="card-actions">
+                      ${!isTaskActive ? `<button class="ghost-button tiny-button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
+                      ${!taskReadonly ? `<button class="ghost-button tiny-button" data-task-action="edit" data-task-id="${task.id}">编辑</button>` : `<span class="summary-label version-lock-text">任务仅支持查看</span>`}
+                      ${!taskReadonly ? `<button class="danger-link" data-task-action="delete" data-task-id="${task.id}">删除</button>` : ""}
+                    </div>
+                  </div>
+                  <div class="version-task-grid">
+                    <div class="summary-block">
+                      <span class="summary-label">测试内容</span>
+                      <p>${escapeHtml(task.scope || "未填写")}</p>
+                    </div>
+                    <div class="summary-block">
+                      <span class="summary-label">负责人</span>
+                      <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
+                    </div>
+                  </div>
+                </article>
+              `;
+            }).join("") : `
+              <div class="empty-state empty-state-rich compact-empty-state">
+                <strong>这个版本还没有任务</strong>
+                <p>先回到文档与生成页，为当前版本新增测试任务。</p>
+              </div>
+            `}
+          </div>
         </div>
       </div>
     `;
-    bindVersionCard(node, batch.id);
+    bindVersionCard(node, batch.id, relatedTasks.map((task) => task.id));
     els.versionManagerList.appendChild(node);
   });
 }
 
-function bindVersionCard(node, batchId) {
+function bindVersionCard(node, batchId, taskIds = []) {
+  const detail = node.querySelector(".version-card-detail");
+  const toggle = node.querySelector(".toggle-version-detail");
+  if (detail && toggle) {
+    toggle.addEventListener("click", () => {
+      const isHidden = detail.classList.contains("hidden-field");
+      detail.classList.toggle("hidden-field", !isHidden);
+      toggle.textContent = isHidden ? "收起详情" : "展开详情";
+    });
+  }
+
   node.querySelectorAll("[data-version-action]").forEach((button) => {
     button.addEventListener("click", () => {
       handleVersionAction(button.dataset.versionAction, batchId);
     });
   });
+
+  taskIds.forEach((taskId) => bindTaskCard(node, taskId));
 }
 
 function bindTaskCard(node, taskId) {
-  node.querySelectorAll("[data-task-action]").forEach((button) => {
+  node.querySelectorAll(`[data-task-id="${taskId}"][data-task-action]`).forEach((button) => {
     button.addEventListener("click", () => {
       handleTaskAction(button.dataset.taskAction, taskId);
     });
@@ -1797,6 +1825,11 @@ function bindTaskCard(node, taskId) {
 function handleVersionAction(action, batchId) {
   const batch = getBatchById(batchId);
   if (!batch) {
+    return;
+  }
+
+  if (batch.status === "已完成" && ["edit", "suspend", "resume", "delete"].includes(action)) {
+    setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，只支持查看。`, "warn");
     return;
   }
 
@@ -1844,7 +1877,21 @@ function handleVersionAction(action, batchId) {
     return;
   }
 
+  if (action === "complete") {
+    state.batches = state.batches.map((item) => (
+      item.id === batch.id ? { ...item, status: "已完成" } : item
+    ));
+    persist();
+    renderAll();
+    setGenerationStatus(`已完成版本：${formatBatchLabel(batch)}。完成后将不允许删除。`, "ok");
+    return;
+  }
+
   if (action === "delete") {
+    if (batch.status === "已完成") {
+      setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，不能删除。`, "warn");
+      return;
+    }
     const taskIdsToDelete = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
     state.batches = state.batches.filter((item) => item.id !== batch.id);
     state.tasks = state.tasks.filter((item) => item.batchId !== batch.id);
@@ -1875,6 +1922,12 @@ function handleVersionAction(action, batchId) {
 function handleTaskAction(action, taskId) {
   const task = getTaskById(taskId);
   if (!task) {
+    return;
+  }
+  const batch = getBatchById(task.batchId);
+
+  if (batch?.status === "已完成" && ["edit", "delete"].includes(action)) {
+    setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，已有任务只支持查看。`, "warn");
     return;
   }
 
@@ -2201,18 +2254,6 @@ function getFilteredCasesForView() {
   });
 }
 
-function getFilteredExecutionCases() {
-  const batchFilter = els.executionBatchFilter.value;
-  const taskFilter = els.executionTaskFilter.value;
-  const moduleFilter = els.executionModuleFilter.value;
-
-  return state.cases.filter((item) => {
-    return (!batchFilter || item.batchId === batchFilter)
-      && (!taskFilter || item.taskName === taskFilter)
-      && (!moduleFilter || item.module === moduleFilter);
-  });
-}
-
 function getFilteredBugs() {
   const batchFilter = els.bugBatchFilter.value;
   const taskFilter = els.bugTaskFilter.value;
@@ -2227,9 +2268,9 @@ function getFilteredBugs() {
 }
 
 function getReportScope() {
-  const activeBatch = getBatchById(state.activeBatchId);
   const activeTask = getTaskById(state.activeTaskId);
-  const activeModule = getModuleById(state.activeModuleId);
+  const activeBatch = getBatchById(state.activeBatchId || activeTask?.batchId);
+  const activeModule = getModuleById(state.activeModuleId || activeTask?.moduleId || activeBatch?.moduleId);
 
   const cases = state.cases.filter((item) => {
     return (!activeBatch || item.batchId === activeBatch.id)
@@ -2257,34 +2298,30 @@ function getReportScope() {
 
 function renderCaseFilters() {
   fillSelectFromItems(els.caseBatchFilter, state.batches, "全部批次", els.caseBatchFilter.value, formatBatchLabel);
-  fillSelectFromItems(els.executionBatchFilter, state.batches, "全部批次", els.executionBatchFilter.value, formatBatchLabel);
   fillSelectFromItems(els.bugBatchFilter, state.batches, "全部批次", els.bugBatchFilter.value, formatBatchLabel);
   fillSelectFromItems(els.bugModuleFilter, state.modules, "全部模块", els.bugModuleFilter.value, (item) => item.name);
 
   const modules = getCaseModules();
   const tasks = getCaseTasks();
   const caseModuleValue = modules.includes(els.caseModuleFilter.value) ? els.caseModuleFilter.value : "";
-  const executionModuleValue = modules.includes(els.executionModuleFilter.value) ? els.executionModuleFilter.value : "";
   const caseTaskValue = tasks.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
-  const executionTaskValue = tasks.includes(els.executionTaskFilter.value) ? els.executionTaskFilter.value : "";
   const bugTaskValue = tasks.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
 
   els.caseModuleFilter.innerHTML = `<option value="">全部模块</option>${modules.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
-  els.executionModuleFilter.innerHTML = `<option value="">全部模块</option>${modules.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
-  els.executionTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${tasks.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
 
   els.caseModuleFilter.value = caseModuleValue;
-  els.executionModuleFilter.value = executionModuleValue;
   els.caseTaskFilter.value = caseTaskValue;
-  els.executionTaskFilter.value = executionTaskValue;
   els.bugTaskFilter.value = bugTaskValue;
 }
 
 function renderQuickStats() {
   const executedCount = state.cases.filter((item) => item.executionStatus !== "未执行").length;
   const bugOpenCount = state.bugs.filter((bug) => !["已验证", "已关闭"].includes(bug.status)).length;
+  const activeTask = getTaskById(state.activeTaskId);
+  const activeBatch = getBatchById(state.activeBatchId || activeTask?.batchId);
+  const activeModule = getModuleById(state.activeModuleId || activeTask?.moduleId || activeBatch?.moduleId);
   const stats = [
     ["文档数", state.documents.length],
     ["用例数", state.cases.length],
@@ -2298,6 +2335,21 @@ function renderQuickStats() {
       <strong>${value}</strong>
     </div>
   `).join("");
+
+  if (els.sidebarContext) {
+    const contextItems = [
+      ["当前版本", activeBatch?.version || "未设置"],
+      ["当前任务", activeTask?.name || "未设置"],
+      ["当前业务", activeModule?.name || activeTask?.moduleName || activeBatch?.moduleName || "未设置"]
+    ];
+
+    els.sidebarContext.innerHTML = contextItems.map(([label, value]) => `
+      <div class="sidebar-context-item">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+    `).join("");
+  }
 }
 
 function renderCases() {
@@ -2327,16 +2379,43 @@ function renderCases() {
 
     const typeBadge = node.querySelector(".case-type");
     const priorityBadge = node.querySelector(".case-priority");
+    const executionBadge = node.querySelector(".case-execution-badge");
+    const executionSelect = node.querySelector(".case-execution-select");
+    const executionNote = node.querySelector(".case-execution-note");
+    const caseToBug = node.querySelector(".case-to-bug");
     typeBadge.textContent = item.type;
     priorityBadge.textContent = item.priority;
     applyBadgeTone(typeBadge, getCaseTypeTone(item.type));
     applyBadgeTone(priorityBadge, getPriorityTone(item.priority));
+    executionSelect.value = item.executionStatus || "未执行";
+    syncExecutionStatusBadge(executionBadge, item.executionStatus || "未执行");
+    executionNote.value = item.executionNote || "";
+    caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
 
     node.querySelector(".case-preconditions-preview").textContent = truncateText(item.preconditions, 90);
     node.querySelector(".case-steps-preview").textContent = truncateText(item.steps, 110);
     node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
+
+    executionSelect.addEventListener("change", (event) => {
+      item.executionStatus = event.target.value;
+      syncExecutionStatusBadge(executionBadge, item.executionStatus);
+      caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
+      persist();
+      renderQuickStats();
+      renderReport();
+    });
+
+    executionNote.addEventListener("input", (event) => {
+      item.executionNote = event.target.value.trim();
+      persist();
+    });
+
+    caseToBug.addEventListener("click", () => {
+      createBugRecord(item);
+      switchTab("bugs");
+    });
 
     bindCaseCard(node, item.id);
     els.caseList.appendChild(node);
@@ -2368,65 +2447,22 @@ function truncateText(text, limit) {
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
-function renderExecution() {
-  const filteredCases = getFilteredExecutionCases();
-  if (!filteredCases.length) {
-    els.executionList.innerHTML = `
-      <div class="empty-state empty-state-rich">
-        <strong>当前范围里还没有可执行用例</strong>
-        <p>先去生成或导入用例，再回来改执行状态。</p>
-        <div class="empty-actions">
-          <button class="ghost-button" data-action="generate-cases">去准备用例</button>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  els.executionList.innerHTML = "";
-  filteredCases.forEach((item) => {
-    const node = els.executionTemplate.content.firstElementChild.cloneNode(true);
-    node.querySelector(".execution-title").textContent = item.title;
-    node.querySelector(".execution-module").textContent = item.module;
-    node.querySelector(".execution-version").textContent = item.batchVersion || "未带版本";
-    node.querySelector(".execution-batch").textContent = item.batchName || "未分批次";
-    node.querySelector(".execution-task").textContent = item.taskName || "未分任务";
-
-    const priorityBadge = node.querySelector(".execution-priority");
-    const statusBadge = node.querySelector(".execution-status-badge");
-    priorityBadge.textContent = item.priority;
-    applyBadgeTone(priorityBadge, getPriorityTone(item.priority));
-
-    node.querySelector(".execution-status").value = item.executionStatus || "未执行";
-    syncExecutionStatusBadge(statusBadge, item.executionStatus || "未执行");
-    node.querySelector(".execution-note").value = item.executionNote || "";
-
-    node.querySelector(".execution-status").addEventListener("change", (event) => {
-      item.executionStatus = event.target.value;
-      syncExecutionStatusBadge(statusBadge, item.executionStatus);
-      persist();
-      renderQuickStats();
-      renderReport();
-    });
-
-    node.querySelector(".execution-note").addEventListener("input", (event) => {
-      item.executionNote = event.target.value.trim();
-      persist();
-    });
-
-    els.executionList.appendChild(node);
-  });
-}
-
-function createBugRecord() {
-  const firstCase = getFilteredExecutionCases()[0] || state.cases[0];
+function createBugRecord(sourceCase) {
+  const firstCase = sourceCase || getFilteredExecutionCases()[0] || state.cases[0];
   const activeBatch = getBatchById(state.activeBatchId);
   const activeTask = getTaskById(state.activeTaskId);
   const activeModule = getModuleById(state.activeModuleId);
+  const linkedBug = firstCase ? state.bugs.find((item) => item.caseId === firstCase.id && !["已修复", "已验证", "已关闭"].includes(item.status)) : null;
+
+  if (linkedBug) {
+    switchTab("bugs");
+    setGenerationStatus("这个失败用例已经有关联的未关闭 BUG 了。", "warn");
+    return;
+  }
 
   state.bugs.unshift({
     id: `bug-${Date.now()}`,
-    title: "新BUG",
+    title: firstCase ? `${firstCase.title} - 缺陷记录` : "新BUG",
     caseId: firstCase ? firstCase.id : "",
     taskId: firstCase?.taskId || activeTask?.id || "",
     taskName: firstCase?.taskName || activeTask?.name || "",
@@ -2438,12 +2474,25 @@ function createBugRecord() {
     status: "新建",
     owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || splitOwnerValues(activeBatch?.owners || activeBatch?.owner)[0] || "",
     link: "",
-    note: ""
+    note: buildBugNoteFromCase(firstCase)
   });
 
   persist();
   renderAll();
-  switchTab("execution");
+  switchTab("bugs");
+  setGenerationStatus(firstCase ? "已从失败用例生成 BUG 记录。" : "已新增 BUG 记录。", "ok");
+}
+
+function buildBugNoteFromCase(caseItem) {
+  if (!caseItem) {
+    return "";
+  }
+  return [
+    `关联用例：${caseItem.title || "未命名用例"}`,
+    `执行状态：${caseItem.executionStatus || "未执行"}`,
+    caseItem.executionNote ? `执行备注：${caseItem.executionNote}` : "",
+    caseItem.expected ? `预期结果：${caseItem.expected}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 function renderBugs() {
@@ -2466,6 +2515,8 @@ function renderBugs() {
   els.bugList.innerHTML = "";
   filteredBugs.forEach((bug) => {
     const node = els.bugTemplate.content.firstElementChild.cloneNode(true);
+    const detail = node.querySelector(".bug-detail");
+    const detailToggle = node.querySelector(".toggle-bug-detail");
     node.querySelector(".bug-title").value = bug.title;
     fillCaseOptions(node.querySelector(".bug-case"), bug.caseId);
     fillSelectFromItems(node.querySelector(".bug-batch"), state.batches, "未选择", bug.batchId, formatBatchLabel);
@@ -2473,13 +2524,29 @@ function renderBugs() {
     node.querySelector(".bug-severity").value = bug.severity;
     node.querySelector(".bug-status").value = bug.status;
     syncBugBadges(node, bug.severity, bug.status);
+    syncBugSourceBadge(node, bug);
     fillOwnerSelect(node.querySelector(".bug-owner"), bug.owner, "未选择");
     node.querySelector(".bug-link").value = bug.link;
     node.querySelector(".bug-note").value = bug.note;
+    const regressionButton = node.querySelector(".mark-bug-regression");
+    regressionButton.classList.toggle("hidden-field", bug.status !== "已修复");
+
+    detailToggle.addEventListener("click", () => {
+      const isHidden = detail.classList.contains("hidden-field");
+      detail.classList.toggle("hidden-field", !isHidden);
+      detailToggle.textContent = isHidden ? "收起详情" : "展开详情";
+    });
 
     node.querySelectorAll("input, textarea, select").forEach((control) => {
       control.addEventListener("input", () => updateBugFromNode(node, bug.id));
       control.addEventListener("change", () => updateBugFromNode(node, bug.id));
+    });
+
+    regressionButton.addEventListener("click", () => {
+      bug.status = "待回归";
+      persist();
+      renderAll();
+      setGenerationStatus("BUG 已标记为待回归。", "ok");
     });
 
     node.querySelector(".delete-bug").addEventListener("click", () => {
@@ -2534,6 +2601,8 @@ function updateBugFromNode(node, bugId) {
   }
 
   syncBugBadges(node, item.severity, item.status);
+  syncBugSourceBadge(node, item);
+  node.querySelector(".mark-bug-regression").classList.toggle("hidden-field", item.status !== "已修复");
   persist();
   renderQuickStats();
   renderReport();
@@ -2551,6 +2620,20 @@ function syncBugBadges(node, severity, status) {
   statusBadge.textContent = status;
   applyBadgeTone(severityBadge, getBugSeverityTone(severity));
   applyBadgeTone(statusBadge, getBugStatusTone(status));
+}
+
+function syncBugSourceBadge(node, bug) {
+  const badge = node.querySelector(".bug-source-badge");
+  if (!badge) {
+    return;
+  }
+  const linkedCase = state.cases.find((item) => item.id === bug.caseId);
+  const fromFailedCase = linkedCase?.executionStatus === "失败";
+  badge.classList.toggle("hidden-field", !fromFailedCase);
+  if (fromFailedCase) {
+    badge.textContent = "来源于失败用例";
+    applyBadgeTone(badge, "tone-red");
+  }
 }
 
 function applyBadgeTone(node, tone) {
@@ -2587,6 +2670,7 @@ function getBugSeverityTone(severity) {
 function getBugStatusTone(status) {
   if (status === "新建") return "tone-red";
   if (status === "已提交") return "tone-orange";
+  if (status === "待回归") return "tone-orange";
   if (["已修复", "已验证"].includes(status)) return "tone-green";
   return "tone-gray";
 }
@@ -2599,7 +2683,7 @@ function renderReport() {
 
   els.reportHero.innerHTML = `
     <div class="report-title-wrap">
-      <span class="summary-label">测试范围</span>
+      <span class="summary-label">测试报告</span>
       <h3>${escapeHtml(report.heroTitle)}</h3>
       <p>${escapeHtml(report.scopeLabel)}</p>
       <div class="card-meta report-owner-tags">
@@ -2624,9 +2708,19 @@ function renderReport() {
   `;
 
   els.reportHealthCard.innerHTML = `
-    <span class="summary-label">发布建议</span>
-    <div class="health-pill ${report.releaseDecision.tone}">${escapeHtml(report.releaseDecision.label)}</div>
-    <p>${escapeHtml(report.releaseDecision.desc)}</p>
+    <span class="summary-label">测试范围摘要</span>
+    <div class="summary-grid">
+      ${report.scopeSummaryItems.map(([label, value]) => `
+        <div class="stat-item">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+    <div class="summary-note">
+      <strong>${escapeHtml(report.releaseDecision.label)}</strong>
+      <p>${escapeHtml(report.releaseDecision.desc)}</p>
+    </div>
   `;
 
   els.reportMetrics.innerHTML = report.metricCards.map(([label, value, tone]) => `
@@ -2637,10 +2731,10 @@ function renderReport() {
     </article>
   `).join("");
 
-  els.reportSummary.innerHTML = report.summaryItems.map(([label, value]) => `
+  els.reportSummary.innerHTML = report.documentInfoItems.map(([label, value]) => `
     <div class="stat-item">
       <span>${label}</span>
-      <strong>${value}</strong>
+      <strong>${escapeHtml(value)}</strong>
     </div>
   `).join("");
 
@@ -2660,6 +2754,7 @@ function renderReport() {
             <span class="badge tone-red">失败用例</span>
             <strong>${escapeHtml(item.title)}</strong>
             <p>${escapeHtml([item.taskName || "未分任务", item.batchVersion || "", item.module || ""].filter(Boolean).join(" / "))}</p>
+            <p>${escapeHtml(`关联BUG数：${report.unresolvedBugs.filter((bug) => bug.caseId === item.id).length}`)}</p>
           </article>
         `).join("") || `
           <div class="empty-state empty-state-rich">
@@ -2680,6 +2775,7 @@ function renderReport() {
             <div class="card-meta">
               <span class="badge ${getBugStatusTone(item.status)}">${escapeHtml(item.status)}</span>
               <span class="badge ${getBugSeverityTone(item.severity)}">${escapeHtml(item.severity || "未标记")}</span>
+              ${scopeHasFailedCaseBug(item) ? `<span class="badge tone-red">来源于失败用例</span>` : ""}
             </div>
             <strong>${escapeHtml(item.title)}</strong>
             <p>${escapeHtml(item.taskName || "未分任务")}</p>
@@ -2703,20 +2799,36 @@ function renderReport() {
 function buildReportViewModel() {
   const scope = getReportScope();
   const total = scope.cases.length;
+  const resolvedBatchVersion = scope.batch?.version || scope.task?.batchVersion || scope.cases[0]?.batchVersion || "未选择";
+  const resolvedBusinessName = scope.module?.name || scope.task?.moduleName || scope.batch?.moduleName || scope.cases[0]?.module || "未选择";
   const statusCounts = countBy(scope.cases, "executionStatus", ["未执行", "通过", "失败", "阻塞"]);
   const bugStatusCounts = countBy(scope.bugs, "status", ["新建", "已提交", "已修复", "已验证", "已关闭"]);
+  bugStatusCounts["待回归"] = scope.bugs.filter((item) => item.status === "待回归").length;
   const bugSeverityCounts = countBy(scope.bugs, "severity", ["严重", "中", "低"]);
   const failedCases = scope.cases.filter((item) => item.executionStatus === "失败");
   const unresolvedBugs = scope.bugs.filter((item) => !["已修复", "已验证", "已关闭"].includes(item.status));
+  const failedCaseBugCount = scope.bugs.filter((item) => {
+    if (!item.caseId) {
+      return false;
+    }
+    const linkedCase = scope.cases.find((caseItem) => caseItem.id === item.caseId);
+    return linkedCase?.executionStatus === "失败";
+  }).length;
   const passed = statusCounts["通过"] || 0;
   const executed = total - (statusCounts["未执行"] || 0);
   const executionRate = total ? `${Math.round((executed / total) * 100)}%` : "0%";
   const passRate = executed ? `${Math.round((passed / executed) * 100)}%` : "0%";
   const openBugs = scope.bugs.filter((bug) => !["已验证", "已关闭"].includes(bug.status)).length;
   const testOwners = getReportOwners(scope);
+  const releaseDecision = getReleaseDecision({
+    failed: statusCounts["失败"] || 0,
+    blocked: statusCounts["阻塞"] || 0,
+    openBugs,
+    severeBugCount: bugSeverityCounts["严重"] || 0
+  });
   const scopeLabel = [
-    scope.module ? `业务：${scope.module.name}` : "",
-    scope.batch ? `版本：${scope.batch.version || ""}` : "",
+    resolvedBusinessName ? `业务：${resolvedBusinessName}` : "",
+    resolvedBatchVersion && resolvedBatchVersion !== "未选择" ? `版本：${resolvedBatchVersion}` : "",
     scope.task ? `任务：${scope.task.name || ""}` : "",
     getOwnerDisplay(scope.task?.owners || scope.task?.owner)
       ? `任务负责人：${getOwnerDisplay(scope.task?.owners || scope.task?.owner)}`
@@ -2737,9 +2849,24 @@ function buildReportViewModel() {
     testOwners,
     scopeLabel,
     heroTitle: scope.task?.name || scope.batch?.version || "当前测试报告",
-    batchVersion: scope.batch?.version || "未选择",
+    batchVersion: resolvedBatchVersion,
     taskName: scope.task?.name || "未选择",
     generatedAt: new Date().toLocaleString("zh-CN"),
+    documentInfoItems: [
+      ["报告名称", "测试报告"],
+      ["版本号", resolvedBatchVersion],
+      ["测试任务", scope.task?.name || "未选择"],
+      ["测试负责人", testOwners.join("、") || "未分配"],
+      ["生成时间", new Date().toLocaleString("zh-CN")],
+      ["报告范围", scopeLabel],
+      ["当前结论", releaseDecision.label]
+    ],
+    scopeSummaryItems: [
+      ["测试业务", resolvedBusinessName],
+      ["来源类型", inferReportSourceType(scope)],
+      ["测试内容", scope.task?.scope || scope.batch?.scope || "未填写"],
+      ["测试对象", scope.task?.name || resolvedBatchVersion || "当前全部范围"]
+    ],
     summaryItems: [
       ["当前范围", scopeLabel],
       ["测试负责人", testOwners.join("、") || "未分配"],
@@ -2753,14 +2880,10 @@ function buildReportViewModel() {
       ["未执行用例数", statusCounts["未执行"] || 0],
       ["通过率", passRate],
       ["BUG 总数", scope.bugs.length],
-      ["待跟进 BUG", openBugs]
+      ["待跟进 BUG", openBugs],
+      ["失败用例对应BUG数", failedCaseBugCount]
     ],
-    releaseDecision: getReleaseDecision({
-      failed: statusCounts["失败"] || 0,
-      blocked: statusCounts["阻塞"] || 0,
-      openBugs,
-      severeBugCount: bugSeverityCounts["严重"] || 0
-    }),
+    releaseDecision,
     metricCards: [
       ["用例总数", total, "tone-gray"],
       ["执行用例", executed, "tone-green"],
@@ -2768,6 +2891,7 @@ function buildReportViewModel() {
       ["失败用例", statusCounts["失败"] || 0, "tone-red"],
       ["阻塞用例", statusCounts["阻塞"] || 0, "tone-orange"],
       ["BUG总数", scope.bugs.length, "tone-red"],
+      ["失败用例BUG", failedCaseBugCount, "tone-orange"],
       ["执行率", executionRate, "tone-gray"],
       ["通过率", passRate, "tone-green"]
     ],
@@ -2781,6 +2905,7 @@ function buildReportViewModel() {
       ["新建", bugStatusCounts["新建"] || 0, getBugStatusTone("新建")],
       ["已提交", bugStatusCounts["已提交"] || 0, getBugStatusTone("已提交")],
       ["已修复", bugStatusCounts["已修复"] || 0, getBugStatusTone("已修复")],
+      ["待回归", bugStatusCounts["待回归"] || 0, getBugStatusTone("待回归")],
       ["已验证", bugStatusCounts["已验证"] || 0, getBugStatusTone("已验证")],
       ["已关闭", bugStatusCounts["已关闭"] || 0, getBugStatusTone("已关闭")]
     ],
@@ -2789,11 +2914,69 @@ function buildReportViewModel() {
       ["中", bugSeverityCounts["中"] || 0, getBugSeverityTone("中")],
       ["低", bugSeverityCounts["低"] || 0, getBugSeverityTone("低")]
     ],
+    conclusionAdviceItems: buildConclusionAdviceItems({
+      releaseDecision,
+      failedCount: statusCounts["失败"] || 0,
+      blockedCount: statusCounts["阻塞"] || 0,
+      openBugs,
+      severeBugCount: bugSeverityCounts["严重"] || 0,
+      unexecutedCount: statusCounts["未执行"] || 0
+    }),
+    blockedSummary: buildBlockedSummary(scope.cases),
+    failedCaseBugCount,
     failedCases,
     unresolvedBugs,
     topFailedCases: failedCases.slice(0, 5),
     topOpenBugs: unresolvedBugs.slice(0, 5)
   };
+}
+
+function buildBlockedSummary(cases) {
+  const blockedCases = cases.filter((item) => item.executionStatus === "阻塞");
+  if (!blockedCases.length) {
+    return "当前没有阻塞用例。";
+  }
+  return blockedCases
+    .slice(0, 5)
+    .map((item, index) => `${index + 1}. ${item.title}${item.executionNote ? `：${item.executionNote}` : ""}`)
+    .join("\n");
+}
+
+function scopeHasFailedCaseBug(bug) {
+  if (!bug?.caseId) {
+    return false;
+  }
+  const linkedCase = state.cases.find((item) => item.id === bug.caseId);
+  return linkedCase?.executionStatus === "失败";
+}
+
+function buildConclusionAdviceItems(data) {
+  const advice = [
+    ["当前判断", data.releaseDecision.label],
+    ["建议动作", data.releaseDecision.label === "可发布" ? "可以进入发布确认，保留最终抽查记录。" : "建议修复问题后补充回归，再更新本报告。"]
+  ];
+
+  if (data.failedCount > 0) {
+    advice.push(["失败用例", `当前存在 ${data.failedCount} 条失败用例，建议优先确认主流程影响范围。`]);
+  }
+  if (data.blockedCount > 0) {
+    advice.push(["阻塞项", `当前存在 ${data.blockedCount} 条阻塞用例，需要补齐环境、数据或依赖条件。`]);
+  }
+  if (data.openBugs > 0) {
+    advice.push(["待跟进BUG", `当前仍有 ${data.openBugs} 个待跟进 BUG，建议明确修复人与回归时间。`]);
+  }
+  if (data.severeBugCount > 0) {
+    advice.push(["严重问题", `存在 ${data.severeBugCount} 个严重 BUG，建议作为上线前必清项。`]);
+  }
+  if (data.unexecutedCount > 0) {
+    advice.push(["未执行用例", `仍有 ${data.unexecutedCount} 条用例未执行，建议补齐后再做最终结论。`]);
+  }
+
+  if (advice.length === 2) {
+    advice.push(["补充说明", "当前范围内执行结果比较稳定，可以保留这份报告作为版本验收记录。"]);
+  }
+
+  return advice;
 }
 
 function getReleaseDecision(data) {
@@ -2804,6 +2987,29 @@ function getReleaseDecision(data) {
     return { label: "需关注", desc: "当前还有阻塞项或待跟进 BUG，上线前建议继续确认。", tone: "tone-orange" };
   }
   return { label: "可发布", desc: "当前执行结果稳定，未发现明显发布阻塞。", tone: "tone-green" };
+}
+
+function inferReportSourceType(scope) {
+  const sourceTypes = [...new Set(
+    state.documents
+      .filter((item) => {
+        const sameTask = !scope.task || item.taskId === scope.task.id;
+        return sameTask;
+      })
+      .map((item) => item.type)
+      .filter(Boolean)
+  )];
+
+  if (!sourceTypes.length) {
+    if (state.lastGeneration?.type === "api") {
+      return "API内容";
+    }
+    if (state.lastGeneration?.type === "requirement") {
+      return "需求内容";
+    }
+    return "需求内容 / API内容";
+  }
+  return sourceTypes.map((item) => (item === "api" ? "API内容" : "需求内容")).join(" / ");
 }
 
 function renderReportBars(container, items) {
@@ -2824,15 +3030,65 @@ function renderReportBars(container, items) {
   `).join("");
 }
 
-function exportReport() {
+async function exportReport() {
   const report = buildReportViewModel();
-  const html = buildReportHtml(report);
   const fileBaseName = [
     "report",
-    report.scope.batch?.version || "no-version",
-    report.scope.task?.name || "summary"
+    report.scope.batch?.version || report.batchVersion || "no-version",
+    report.scope.task?.name || report.taskName || "summary"
   ].map(sanitizeFileName).join("-");
-  printReportPdf(`${fileBaseName}.pdf`, html);
+  const exportChecks = buildReportExportChecks(report);
+
+  if (exportChecks.length) {
+    const confirmed = window.confirm([
+      "导出前提醒：",
+      ...exportChecks.map((item, index) => `${index + 1}. ${item}`),
+      "",
+      "确认继续导出吗？"
+    ].join("\n"));
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  try {
+    const response = await fetch("/api/export-report-docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        report,
+        reportConclusion: state.reportConclusion || "",
+        fileBaseName
+      })
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "导出失败");
+    }
+
+    const blob = await response.blob();
+    downloadBlob(`${fileBaseName}.docx`, blob);
+  } catch (error) {
+    alert(`报告导出失败：${error.message}`);
+  }
+}
+
+function buildReportExportChecks(report) {
+  const warnings = [];
+  if ((report.statusCounts["未执行"] || 0) > 0) {
+    warnings.push(`当前还有 ${report.statusCounts["未执行"]} 条用例未执行。`);
+  }
+  if ((report.statusCounts["失败"] || 0) > 0) {
+    warnings.push(`当前还有 ${report.statusCounts["失败"]} 条失败用例。`);
+  }
+  if (report.openBugs > 0) {
+    warnings.push(`当前还有 ${report.openBugs} 个未关闭 BUG。`);
+  }
+  if (!(state.reportConclusion || "").trim()) {
+    warnings.push("风险与结论还没有填写补充说明。");
+  }
+  return warnings;
 }
 
 function buildReportHtml(report) {
@@ -2840,10 +3096,50 @@ function buildReportHtml(report) {
   const ownerTags = report.testOwners.length
     ? report.testOwners.map((owner) => `<span class="badge tone-green">${escapeHtml(owner)}</span>`).join("")
     : `<span class="badge tone-gray">未分配</span>`;
-  const renderSummaryTable = report.summaryItems.map(([label, value]) => `
+  const renderDocumentInfoTable = report.documentInfoItems.map(([label, value]) => `
     <tr>
       <th>${escapeHtml(label)}</th>
       <td>${escapeHtml(value)}</td>
+    </tr>
+  `).join("");
+
+  const renderScopeSummaryTable = report.scopeSummaryItems.map(([label, value]) => `
+    <tr>
+      <th>${escapeHtml(label)}</th>
+      <td>${escapeHtml(value)}</td>
+    </tr>
+  `).join("");
+
+  const renderExecutionTable = [
+    ["测试用例总数", report.total],
+    ["执行用例数", report.executed],
+    ["成功用例数", report.passed],
+    ["失败用例数", report.statusCounts["失败"] || 0],
+    ["阻塞用例数", report.statusCounts["阻塞"] || 0],
+    ["未执行用例数", report.statusCounts["未执行"] || 0],
+    ["通过率", report.passRate]
+  ].map(([label, value]) => `
+    <tr>
+      <th>${escapeHtml(label)}</th>
+      <td>${escapeHtml(String(value))}</td>
+    </tr>
+  `).join("");
+
+  const renderDefectTable = [
+    ["BUG总数", report.scope.bugs.length],
+    ["待跟进BUG", report.openBugs],
+    ["新建", report.bugStatusCounts["新建"] || 0],
+    ["已提交", report.bugStatusCounts["已提交"] || 0],
+    ["已修复", report.bugStatusCounts["已修复"] || 0],
+    ["已验证", report.bugStatusCounts["已验证"] || 0],
+    ["已关闭", report.bugStatusCounts["已关闭"] || 0],
+    ["严重", report.bugSeverityCounts["严重"] || 0],
+    ["中", report.bugSeverityCounts["中"] || 0],
+    ["低", report.bugSeverityCounts["低"] || 0]
+  ].map(([label, value]) => `
+    <tr>
+      <th>${escapeHtml(label)}</th>
+      <td>${escapeHtml(String(value))}</td>
     </tr>
   `).join("");
 
@@ -2861,6 +3157,13 @@ function buildReportHtml(report) {
       <td class="multiline-cell">${escapeHtml(conclusion)}</td>
     </tr>
   `;
+
+  const renderConclusionAdviceTable = report.conclusionAdviceItems.map(([label, value]) => `
+    <tr>
+      <th>${escapeHtml(label)}</th>
+      <td class="multiline-cell">${escapeHtml(value)}</td>
+    </tr>
+  `).join("");
 
   const renderFailedCases = report.failedCases.length
     ? report.failedCases.map((item, index) => `
@@ -2982,17 +3285,49 @@ function buildReportHtml(report) {
 
     <section class="grid-2">
       <section class="panel">
-        <h3>报告摘要</h3>
+        <h3>文档信息</h3>
         <table class="summary-table">
-          <tbody>${renderSummaryTable}</tbody>
+          <tbody>${renderDocumentInfoTable}</tbody>
         </table>
       </section>
       <section class="panel">
-        <h3>风险与结论</h3>
+        <h3>测试范围摘要</h3>
         <table class="summary-table">
-          <tbody>${renderRiskTable}</tbody>
+          <tbody>${renderScopeSummaryTable}</tbody>
         </table>
       </section>
+    </section>
+
+    <section class="grid-2">
+      <section class="panel">
+        <h3>用例执行统计</h3>
+        <table class="summary-table">
+          <tbody>${renderExecutionTable}</tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h3>缺陷统计</h3>
+        <table class="summary-table">
+          <tbody>${renderDefectTable}</tbody>
+        </table>
+      </section>
+    </section>
+
+    <section class="panel">
+      <h3>风险与结论</h3>
+      <table class="summary-table">
+        <tbody>${renderRiskTable}</tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>测试结论与建议</h3>
+        <span class="badge ${report.releaseDecision.tone}">${escapeHtml(report.releaseDecision.label)}</span>
+      </div>
+      <table class="summary-table">
+        <tbody>${renderConclusionAdviceTable}</tbody>
+      </table>
     </section>
 
     <section class="panel">
@@ -3085,6 +3420,10 @@ function printReportPdf(fileName, html) {
 
 function downloadFile(fileName, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
+  downloadBlob(fileName, blob);
+}
+
+function downloadBlob(fileName, blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

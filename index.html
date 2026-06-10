@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>测试流程工具</title>
+  <title>测试管理平台</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -12,21 +12,22 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <h1>测试流程工具</h1>
-        <p>文档转用例、执行记录、BUG统计、报告汇总</p>
+        <h1>测试管理平台</h1>
+        <p>文档转用例、执行记录、BUG统计、报告汇总。</p>
       </div>
 
       <nav class="nav">
         <button class="nav-link active" data-tab="upload">文档与生成</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
         <button class="nav-link" data-tab="cases">测试用例</button>
-        <button class="nav-link" data-tab="execution">执行与BUG</button>
+        <button class="nav-link" data-tab="bugs">BUG管理</button>
         <button class="nav-link" data-tab="report">测试报告</button>
       </nav>
 
       <section class="summary-card">
         <h2>当前概览</h2>
         <div id="quickStats" class="quick-stats"></div>
+        <div id="sidebarContext" class="sidebar-context"></div>
       </section>
     </aside>
 
@@ -35,7 +36,7 @@
         <div class="panel-header">
           <div>
             <h2>文档上传与用例生成</h2>
-            <p>支持 OpenAPI / Swagger JSON、YAML 风格接口文档、Markdown、TXT。</p>
+            <p>支持需求内容、本地文件、API链接等输入方式，统一生成可执行测试用例。</p>
           </div>
           <button id="seedDemo" class="ghost-button"></button>
         </div>
@@ -43,13 +44,10 @@
         <section class="panel onboarding-panel">
           <div class="section-head">
             <div>
-              <h3>新手上手</h3>
-              <p class="section-note">第一次使用时，按下面顺序走就行，不用记流程。</p>
+              <h3>新手上路</h3>
+              <p class="section-note">按下面流程依次完成即可。</p>
             </div>
-            <button id="nextActionBtn" class="ghost-button">开始第 1 步</button>
           </div>
-
-          <div id="onboardingSummary" class="onboarding-summary"></div>
           <div id="onboardingSteps" class="onboarding-steps"></div>
         </section>
 
@@ -57,8 +55,8 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>生成设置</h3>
-                <p class="section-note">优先用 AI 生成，用不了时也可以切换成规则生成。</p>
+                <h3>AI配置</h3>
+                <p class="section-note">保存本地 Key 和模型后，就可以直接生成用例。</p>
               </div>
               <span id="apiStatus" class="status-pill neutral">正在检查服务</span>
             </div>
@@ -66,7 +64,7 @@
             <div class="form-row">
               <label>
                 OpenAI API Key
-                <input type="password" id="apiKey" placeholder="本地临时使用，不会写入代码文件">
+                <input type="password" id="apiKey" placeholder="仅保存在本地浏览器，不会写入代码文件">
               </label>
               <label>
                 模型
@@ -86,8 +84,7 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>版本与业务</h3>
-                <p class="section-note"></p>
+                <h3>新建版本</h3>
               </div>
             </div>
 
@@ -116,8 +113,8 @@
               <label class="step-field step-field-wide">
                 <span class="step-label">3. 这一版要测试什么</span>
                 <textarea id="versionScopeInput" class="md-textarea" rows="8"
-                  placeholder="支持直接写 Markdown，例如：&#10;# 回归范围&#10;- 登录&#10;- 下单&#10;- 退款&#10;&#10;## 风险点&#10;- 渠道超时&#10;- 金额边界"></textarea>
-                <span class="field-tip">可直接粘贴 Markdown 格式内容，输入区会自动按内容高度调整。</span>
+                  placeholder="支持直接输入Markdown，例如：&#10;# 回归范围&#10;- 登录&#10;- 下单&#10;- 退款&#10;&#10;## 风险点&#10;- 渠道超时&#10;- 金额边界"></textarea>
+                <span class="field-tip">可以直接粘贴Markdown格式内容，输入区会按内容高度自动调整。</span>
               </label>
             </div>
 
@@ -131,8 +128,7 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h3>测试任务</h3>
-                <p class="section-note"></p>
+                <h3>新建任务</h3>
               </div>
             </div>
 
@@ -145,14 +141,14 @@
               </label>
               <label>
                 任务名称
-                <input type="text" id="taskNameInput" placeholder="例如：登录改版回归">
+                <input type="text" id="taskNameInput" placeholder="例如：登录回归 / 退款修复验证">
               </label>
             </div>
 
             <label>
               这一任务要测什么
               <textarea id="taskScopeInput" class="md-textarea" rows="6"
-                placeholder="支持直接写 Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
+                placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
             </label>
 
             <div class="inline-actions">
@@ -184,7 +180,7 @@
 
             <label class="upload-box">
               <input type="file" id="documentInput" accept=".json,.yaml,.yml,.txt,.md,.markdown">
-              <span>拖入或选择需求 / API 文档</span>
+              <span>拖入或选择需求 / API 文件</span>
             </label>
 
             <label id="sourceUrlWrap" class="hidden-field">
@@ -220,7 +216,7 @@
         <div class="panel-header">
           <div>
             <h2>测试用例</h2>
-            <p>支持查看刚生成的用例，也支持上传 CSV 重新浏览。</p>
+            <p>AI生成完的测试用例导入这里执行</p>
           </div>
           <div class="actions compact">
             <label class="import-button">
@@ -249,81 +245,53 @@
         <div class="panel-header">
           <div>
             <h2>版本管理</h2>
-            <p>集中管理已保存版本，支持设为当前、编辑、挂起、删除。</p>
+            <p>按版本集中管理当前测试范围，同版本下的不同任务会归在同一张版本卡里。</p>
           </div>
         </div>
 
         <section class="panel">
           <div class="section-head">
             <div>
-              <h3>版本列表</h3>
-              <p class="section-note">挂起后的版本会保留记录，但不会作为默认当前版本。</p>
+              <h3>版本卡片</h3>
+              <p class="section-note">点击展开详情后，可查看该版本下的测试任务、负责人和操作入口。</p>
             </div>
           </div>
           <div id="versionManagerList" class="list-stack"></div>
         </section>
-
-        <section class="panel">
-          <div class="section-head">
-            <div>
-              <h3>测试任务列表</h3>
-              <p class="section-note">按版本拆开管理每一次需求测试，避免同一版本内容混在一起。</p>
-            </div>
-          </div>
-          <div id="taskManagerList" class="list-stack"></div>
-        </section>
       </section>
 
-      <section class="tab-panel" id="execution">
+      <section class="tab-panel" id="bugs">
         <div class="panel-header">
           <div>
-            <h2>执行与BUG记录</h2>
-            <p>记录本轮执行结果，同时保留轻量 BUG 台账，方便出报告。</p>
+            <h2>BUG管理</h2>
+            <p>集中记录当前范围内的BUG，默认先看摘要，需要时再展开详情。</p>
           </div>
           <button id="addBug" class="ghost-button">新增BUG</button>
         </div>
 
-        <div class="panel-grid">
-          <section class="panel">
-            <h3>执行记录</h3>
-            <div class="actions compact section-toolbar">
-              <select id="executionBatchFilter">
-                <option value="">全部批次</option>
-              </select>
-              <select id="executionTaskFilter">
-                <option value="">全部任务</option>
-              </select>
-              <select id="executionModuleFilter">
-                <option value="">全部模块</option>
-              </select>
-            </div>
-            <div id="executionList" class="list-stack"></div>
-          </section>
-
-          <section class="panel">
-            <h3>BUG 列表</h3>
-            <div class="actions compact section-toolbar">
-              <select id="bugBatchFilter">
-                <option value="">全部批次</option>
-              </select>
-              <select id="bugTaskFilter">
-                <option value="">全部任务</option>
-              </select>
-              <select id="bugModuleFilter">
-                <option value="">全部模块</option>
-              </select>
-            </div>
-            <div id="bugList" class="list-stack"></div>
-          </section>
-        </div>
+        <section class="panel">
+          <div class="actions compact section-toolbar">
+            <select id="bugBatchFilter">
+              <option value="">全部批次</option>
+            </select>
+            <select id="bugTaskFilter">
+              <option value="">全部任务</option>
+            </select>
+            <select id="bugModuleFilter">
+              <option value="">全部模块</option>
+            </select>
+          </div>
+          <div id="bugList" class="list-stack"></div>
+        </section>
       </section>
+
       <section class="tab-panel" id="report">
         <div class="panel-header">
           <div>
-            <h2>????</h2>
-            <p>?????? / ?? / ?????????????? BUG ???</p>
+            <h2>测试报告</h2>
+            <p>按当前版本与任务范围，自动汇总用例执行结果、缺陷状态和测试结论。</p>
           </div>
-          <button id="exportReport">??????</button>
+          <button id="exportReport">导出DOCX</button>
         </div>
 
         <section class="report-hero">
@@ -335,37 +303,41 @@
 
         <div class="panel-grid report-grid">
           <section class="panel">
-            <h3>????</h3>
+            <h3>报告摘要</h3>
             <div id="reportSummary" class="summary-grid"></div>
           </section>
           <section class="panel">
-            <h3>?????</h3>
-            <textarea id="reportConclusion" rows="14" placeholder="???????????????"></textarea>
+            <h3>风险与结论</h3>
+            <textarea id="reportConclusion" rows="14" placeholder="补充本次测试风险、验证结论、上线建议"></textarea>
           </section>
         </div>
 
         <div class="panel-grid report-visual-grid">
           <section class="panel">
-            <h3>??????</h3>
+            <h3>用例执行统计</h3>
             <div id="reportExecutionBars" class="bar-list"></div>
           </section>
           <section class="panel">
-            <h3>BUG ????</h3>
-            <div id="reportBugStatusBars" class="bar-list"></div>
+            <h3>缺陷统计</h3>
+            <div class="report-dual-bars">
+              <section class="mini-stat-panel">
+                <span class="summary-label">状态分布</span>
+                <div id="reportBugStatusBars" class="bar-list"></div>
+              </section>
+              <section class="mini-stat-panel">
+                <span class="summary-label">严重级别</span>
+                <div id="reportBugSeverityBars" class="bar-list"></div>
+              </section>
+            </div>
           </section>
         </div>
 
-        <div class="panel-grid report-visual-grid">
+        <div class="panel-grid report-visual-grid report-focus-grid">
           <section class="panel">
-            <h3>BUG ????</h3>
-            <div id="reportBugSeverityBars" class="bar-list"></div>
-          </section>
-          <section class="panel">
-            <h3>????</h3>
+            <h3>重点关注</h3>
             <div id="reportHighlights" class="list-stack compact-stack"></div>
           </section>
         </div>
-
       </section>
     </main>
   </div>
@@ -414,16 +386,32 @@
           <span class="summary-label">预期结果</span>
           <pre class="case-expected-full detail-text"></pre>
         </div>
+        <div class="case-execution-row">
+          <div class="case-execution-status">
+            <span class="case-execution-badge badge subtle"></span>
+            <select class="case-execution-select">
+              <option value="未执行">未执行</option>
+              <option value="通过">通过</option>
+              <option value="失败">失败</option>
+              <option value="阻塞">阻塞</option>
+            </select>
+            <button type="button" class="ghost-button tiny-button case-to-bug hidden-field">转为BUG</button>
+          </div>
+          <label class="case-execution-note-wrap">
+            <span class="summary-label">执行备注</span>
+            <textarea class="case-execution-note" rows="2"></textarea>
+          </label>
+        </div>
       </div>
     </article>
   </template>
 
   <template id="executionTemplate">
-    <article class="list-card">
-      <div class="card-top">
-        <div>
+    <article class="list-card execution-row-card">
+      <div class="execution-row-main">
+        <div class="execution-row-title">
           <h4 class="execution-title"></h4>
-          <div class="card-meta">
+          <div class="card-meta execution-row-meta">
             <span class="execution-module badge"></span>
             <span class="execution-version badge subtle"></span>
             <span class="execution-batch badge subtle"></span>
@@ -439,80 +427,88 @@
             <option value="失败">失败</option>
             <option value="阻塞">阻塞</option>
           </select>
+          <button type="button" class="ghost-button tiny-button link-case-bug hidden-field">转为BUG</button>
         </div>
       </div>
-
-      <label>
-        执行备注
-        <textarea class="execution-note" rows="3"></textarea>
-      </label>
+      <div class="execution-row-note">
+        <span class="summary-label">执行备注</span>
+        <textarea class="execution-note" rows="2"></textarea>
+      </div>
     </article>
   </template>
 
   <template id="bugTemplate">
-    <article class="list-card">
-      <div class="card-top">
-        <div>
+    <article class="list-card bug-row-card">
+      <div class="bug-row-main">
+        <div class="bug-row-title">
           <input class="bug-title inline-title" type="text">
-          <div class="card-meta">
+          <div class="card-meta bug-row-meta">
             <span class="bug-severity-badge badge subtle"></span>
             <span class="bug-status-badge badge subtle"></span>
+            <span class="bug-source-badge badge subtle hidden-field"></span>
           </div>
         </div>
-        <button class="danger-link delete-bug">删除</button>
+        <div class="bug-row-actions">
+          <button type="button" class="ghost-button tiny-button toggle-bug-detail">展开详情</button>
+          <button type="button" class="ghost-button tiny-button mark-bug-regression hidden-field">标记待回归</button>
+          <button class="danger-link delete-bug">删除</button>
+        </div>
       </div>
 
-      <div class="form-row triple">
-        <label>
-          关联用例
-          <select class="bug-case"></select>
-        </label>
-        <label>
-          批次
-          <select class="bug-batch"></select>
-        </label>
-        <label>
-          模块
-          <select class="bug-module"></select>
-        </label>
-      </div>
+      <div class="bug-detail hidden-field">
+        <div class="form-row bug-row-grid">
+          <label>
+            关联用例
+            <select class="bug-case"></select>
+          </label>
+          <label>
+            批次
+            <select class="bug-batch"></select>
+          </label>
+          <label>
+            模块
+            <select class="bug-module"></select>
+          </label>
+        </div>
 
-      <div class="form-row triple">
-        <label>
-          严重级别
-          <select class="bug-severity">
-            <option value="严重">严重</option>
-            <option value="中">中</option>
-            <option value="低">低</option>
-          </select>
-        </label>
-        <label>
-          状态
-          <select class="bug-status">
-            <option value="新建">新建</option>
-            <option value="已提交">已提交</option>
-            <option value="已修复">已修复</option>
-            <option value="已验证">已验证</option>
-            <option value="已关闭">已关闭</option>
-          </select>
-        </label>
-      </div>
+        <div class="form-row bug-row-grid">
+          <label>
+            严重级别
+            <select class="bug-severity">
+              <option value="严重">严重</option>
+              <option value="中">中</option>
+              <option value="低">低</option>
+            </select>
+          </label>
+          <label>
+            状态
+            <select class="bug-status">
+              <option value="新建">新建</option>
+              <option value="已提交">已提交</option>
+              <option value="已修复">已修复</option>
+              <option value="待回归">待回归</option>
+              <option value="已验证">已验证</option>
+              <option value="已关闭">已关闭</option>
+            </select>
+          </label>
+        </div>
 
-      <div class="form-row">
-        <label>
-          责任人
-          <input class="bug-owner" type="text" placeholder="开发或跟进人">
-        </label>
-        <label>
-          Lark链接 / 单号
-          <input class="bug-link" type="text" placeholder="可选">
-        </label>
-      </div>
+        <div class="form-row bug-row-grid">
+          <label>
+            负责人
+            <input class="bug-owner" type="text" placeholder="开发或跟进人">
+          </label>
+          <label>
+            Lark链接 / 单号
+            <input class="bug-link" type="text" placeholder="可选">
+          </label>
+        </div>
 
-      <label>
-        备注
-        <textarea class="bug-note" rows="3"></textarea>
-      </label>
+        <div class="bug-row-note">
+          <span class="summary-label">备注</span>
+          <textarea class="bug-note" rows="2"></textarea>
+        </div>
+      </div>
     </article>
   </template>
 

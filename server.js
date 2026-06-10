@@ -1,12 +1,15 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
 const TEAM_MEMBERS_FILE = path.join(ROOT, "team-members.json");
 const APP_STATE_FILE = path.join(ROOT, "app-state.json");
+const PYTHON_BIN = process.env.CODEX_PYTHON || path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe");
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
 
@@ -58,6 +61,11 @@ const server = http.createServer(async (req, res) => {
       const nextState = sanitizeSharedState(body.state);
       fs.writeFileSync(APP_STATE_FILE, JSON.stringify({ state: nextState }, null, 2), "utf-8");
       return sendJson(res, 200, { ok: true, state: nextState });
+    }
+
+    if (req.method === "POST" && req.url === "/api/export-report-docx") {
+      const body = await readJsonBody(req);
+      return handleExportReportDocx(body, res);
     }
 
     if (req.method === "GET") {
@@ -172,6 +180,62 @@ async function handleGenerateCases(body, res) {
   }
 
   return sendJson(res, 200, parsed);
+}
+
+function handleExportReportDocx(body, res) {
+  const report = body && typeof body.report === "object" ? body.report : null;
+  const conclusion = typeof body?.reportConclusion === "string" ? body.reportConclusion : "";
+  const fileBaseName = String(body?.fileBaseName || "test-report").trim() || "test-report";
+
+  if (!report) {
+    return sendJson(res, 400, { error: "缺少报告数据。" });
+  }
+
+  const scriptPath = path.join(ROOT, "tmp", "export_report_docx.py");
+  if (!fs.existsSync(scriptPath)) {
+    return sendJson(res, 500, { error: "报告导出脚本不存在。" });
+  }
+
+  const exportDir = path.join(ROOT, "tmp", "exports");
+  fs.mkdirSync(exportDir, { recursive: true });
+  const payloadPath = path.join(exportDir, `${Date.now()}-${sanitizeFileName(fileBaseName)}.json`);
+  const outputPath = path.join(exportDir, `${sanitizeFileName(fileBaseName)}.docx`);
+
+  fs.writeFileSync(payloadPath, JSON.stringify({ report, reportConclusion: conclusion, outputPath }, null, 2), "utf-8");
+
+  const result = spawnSync(PYTHON_BIN, [scriptPath, payloadPath], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    windowsHide: true
+  });
+
+  try {
+    fs.unlinkSync(payloadPath);
+  } catch (_error) {
+    // ignore
+  }
+
+  if (result.error) {
+    return sendJson(res, 500, { error: `导出失败：${result.error.message}` });
+  }
+
+  if (result.status !== 0) {
+    return sendJson(res, 500, { error: `导出失败：${(result.stderr || result.stdout || "").trim() || "生成脚本执行异常"}` });
+  }
+
+  if (!fs.existsSync(outputPath)) {
+    return sendJson(res, 500, { error: "导出失败：未生成文档文件。" });
+  }
+
+  const fileBuffer = fs.readFileSync(outputPath);
+  const fileName = path.basename(outputPath);
+
+  res.writeHead(200, {
+    "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "Content-Disposition": `attachment; filename="${encodeAsciiFileName(fileName)}"`,
+    "Cache-Control": "no-store"
+  });
+  res.end(fileBuffer);
 }
 
 function buildUserPrompt(documentName, documentType, content, sourceType, sourceValue, focusHint) {
@@ -647,6 +711,14 @@ function sanitizeSharedState(input) {
     reportConclusion: typeof state.reportConclusion === "string" ? state.reportConclusion : "",
     lastGeneration: state.lastGeneration && typeof state.lastGeneration === "object" ? state.lastGeneration : null
   };
+}
+
+function sanitizeFileName(value) {
+  return String(value || "").replace(/[\\/:*?"<>|]/g, "-");
+}
+
+function encodeAsciiFileName(value) {
+  return String(value || "report.docx").replace(/[^\x20-\x7E]/g, "_");
 }
 
 function sendJson(res, statusCode, payload) {

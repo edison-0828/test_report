@@ -1,0 +1,89 @@
+{
+  "report": {
+    "heroTitle": "??VA??????",
+    "batchVersion": "V3.0.35.2",
+    "taskName": "??VA??????",
+    "generatedAt": "2026/6/10 14:35:00",
+    "scopeLabel": "???VA?? / ???V3.0.35.2 / ?????VA??????",
+    "testOwners": [
+      "Edison - ??"
+    ],
+    "total": 15,
+    "executed": 15,
+    "passed": 14,
+    "passRate": "93%",
+    "openBugs": 2,
+    "scopeSummaryItems": [
+      [
+        "????",
+        "VA??"
+      ],
+      [
+        "????",
+        "????"
+      ]
+    ],
+    "statusCounts": {
+      "??": 0,
+      "???": 0
+    },
+    "bugStatusCounts": {
+      "??": 1,
+      "???": 0
+    },
+    "bugSeverityCounts": {
+      "??": 1,
+      "?": 0
+    },
+    "releaseDecision": {
+      "label": "???",
+      "desc": "????????? BUG??????????"
+    },
+    "conclusionAdviceItems": [
+      [
+        "????",
+        "???"
+      ],
+      [
+        "????",
+        "???????????????????"
+      ]
+    ],
+    "failedCases": [
+      {
+        "title": "????A",
+        "taskName": "??VA??????",
+        "batchVersion": "V3.0.35.2",
+        "module": "VA??"
+      }
+    ],
+    "unresolvedBugs": [
+      {
+        "title": "BUG A",
+        "status": "??",
+        "severity": "??",
+        "taskName": "??VA??????",
+        "owner": "Edison - ??",
+        "link": "https://example.com/1",
+        "note": "?????"
+      },
+      {
+        "title": "BUG B",
+        "status": "???",
+        "severity": "?",
+        "taskName": "??VA??????",
+        "owner": "Edison - ??",
+        "link": "https://example.com/2",
+        "note": "??????"
+      }
+    ],
+    "scope": {
+      "bugs": [
+        1,
+        2
+      ]
+    }
+  },
+  "reportConclusion": "????????????",
+  "outputPath": "D:\\TestReport\\tmp\\exports\\report-color-check.docx"
+}
