@@ -31,6 +31,8 @@ const els = {
   sourceType: document.getElementById("sourceType"),
   sourceUrl: document.getElementById("sourceUrl"),
   sourceUrlWrap: document.getElementById("sourceUrlWrap"),
+  sourceText: document.getElementById("sourceText"),
+  sourceTextWrap: document.getElementById("sourceTextWrap"),
   focusHint: document.getElementById("focusHint"),
   focusHintWrap: document.getElementById("focusHintWrap"),
   documentName: document.getElementById("documentName"),
@@ -113,6 +115,7 @@ autoResizeTextarea();
 ensureSeedMetadata();
 hydrateReportChrome();
 simplifyUploadFlow();
+initTextSourceUi();
 initOwnerUi();
 bindEvents();
 renderAll();
@@ -130,6 +133,7 @@ function bindEvents() {
   els.sourceType.addEventListener("change", renderSourceMode);
   els.versionScopeInput?.addEventListener("input", autoResizeTextarea);
   els.taskScopeInput.addEventListener("input", autoResizeTextarea);
+  els.sourceText?.addEventListener("input", autoResizeTextarea);
   els.generateCases.addEventListener("click", () => handleGenerateCases("ai"));
   els.generateCasesLocal?.addEventListener("click", () => handleGenerateCases("local"));
   els.saveDocument?.addEventListener("click", saveCurrentDocument);
@@ -193,6 +197,7 @@ function hydrateReportChrome() {
 function simplifyUploadFlow() {
   els.nextActionBtn?.remove();
   els.versionScopeInput?.closest("label")?.remove();
+  els.documentType?.closest("label")?.remove();
   els.generateCasesLocal?.remove();
   els.saveDocument?.remove();
 
@@ -204,6 +209,37 @@ function simplifyUploadFlow() {
     templateButton.dataset.action = "download-case-template";
     templateButton.textContent = "下载CSV模板";
     actionWrap.appendChild(templateButton);
+  }
+}
+
+function initTextSourceUi() {
+  if (document.getElementById("sourceTextWrap")) {
+    return;
+  }
+
+  const sourceUrlWrap = document.getElementById("sourceUrlWrap");
+  if (!sourceUrlWrap?.parentElement) {
+    return;
+  }
+
+  const textWrap = document.createElement("label");
+  textWrap.id = "sourceTextWrap";
+  textWrap.className = "hidden-field";
+  textWrap.innerHTML = `
+    需求正文
+    <textarea id="sourceText" class="md-textarea" rows="8" placeholder="直接粘贴需求、流程说明、测试范围或接口说明，AI 会基于这里的正文生成测试用例。"></textarea>
+  `;
+  sourceUrlWrap.insertAdjacentElement("afterend", textWrap);
+
+  els.sourceTextWrap = textWrap;
+  els.sourceText = textWrap.querySelector("#sourceText");
+
+  const sourceType = els.sourceType;
+  if (sourceType && !sourceType.querySelector('option[value="text"]')) {
+    const option = document.createElement("option");
+    option.value = "text";
+    option.textContent = "直接粘贴文本";
+    sourceType.appendChild(option);
   }
 }
 
@@ -280,26 +316,24 @@ function handleFileUpload(event) {
   reader.onload = () => {
     els.documentName.value = file.name.replace(/\.[^.]+$/, "");
     uploadedFileContent = String(reader.result || "");
-    els.documentType.value = inferDocumentType(file.name, uploadedFileContent);
     setGenerationStatus(`已读取文件：${file.name}。`, "ok");
   };
   reader.readAsText(file, "utf-8");
 }
 
-function inferDocumentType(fileName, content) {
-  const text = `${fileName}\n${content}`.toLowerCase();
-  return text.includes("openapi") || text.includes("swagger") || /\/[a-z0-9_-]+\s*:/.test(text)
-    ? "api"
-    : "requirement";
+function getDocumentTypeBySource(sourceType) {
+  return sourceType === "url" ? "api" : "requirement";
 }
 
 function renderSourceMode() {
   const sourceType = els.sourceType.value;
   const isFile = sourceType === "file";
   const isUrl = sourceType === "url";
+  const isText = sourceType === "text";
 
   els.documentInput.parentElement.classList.toggle("hidden-field", !isFile);
   els.sourceUrlWrap.classList.toggle("hidden-field", !isUrl);
+  els.sourceTextWrap?.classList.toggle("hidden-field", !isText);
   els.focusHintWrap.classList.remove("hidden-field");
 }
 
@@ -440,7 +474,12 @@ function setGenerationStatus(text, tone = "neutral") {
 function saveCurrentDocument() {
   const name = els.documentName.value.trim();
   const sourceType = els.sourceType.value;
-  const content = sourceType === "url" ? els.sourceUrl.value.trim() : uploadedFileContent.trim();
+  const documentType = getDocumentTypeBySource(sourceType);
+  const content = sourceType === "url"
+    ? els.sourceUrl.value.trim()
+    : sourceType === "text"
+      ? els.sourceText?.value.trim() || ""
+      : uploadedFileContent.trim();
 
   if (!name || !content) {
     alert("先填写内容名称和来源。");
@@ -451,7 +490,7 @@ function saveCurrentDocument() {
     id: `doc-${Date.now()}`,
     name,
     sourceType,
-    type: els.documentType.value,
+    type: documentType,
     content,
     createdAt: new Date().toISOString()
   });
@@ -661,7 +700,7 @@ function createTask() {
 }
 
 function autoResizeTextarea() {
-  [els.versionScopeInput, els.taskScopeInput].filter(Boolean).forEach((textarea) => {
+  [els.versionScopeInput, els.taskScopeInput, els.sourceText].filter(Boolean).forEach((textarea) => {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.max(textarea.scrollHeight, 180)}px`;
   });
@@ -671,9 +710,10 @@ async function handleGenerateCases(mode) {
   const name = els.documentName.value.trim() || `未命名文档${state.documents.length + 1}`;
   const sourceType = els.sourceType.value;
   const sourceUrl = els.sourceUrl.value.trim();
+  const sourceText = els.sourceText?.value.trim() || "";
   const focusHint = els.focusHint.value.trim();
-  const content = sourceType === "url" ? sourceUrl : uploadedFileContent.trim();
-  const type = els.documentType.value;
+  const content = sourceType === "url" ? sourceUrl : sourceType === "text" ? sourceText : uploadedFileContent.trim();
+  const type = getDocumentTypeBySource(sourceType);
   const activeTask = getTaskById(state.activeTaskId);
   const activeBatch = getBatchById(activeTask?.batchId || state.activeBatchId);
 
@@ -688,7 +728,7 @@ async function handleGenerateCases(mode) {
   }
 
   if (!content) {
-    alert(sourceType === "url" ? "请先填写网址链接。" : "请先上传本地文件。");
+    alert(sourceType === "url" ? "请先填写网址链接。" : sourceType === "text" ? "请先粘贴需求正文。" : "请先上传本地文件。");
     return;
   }
 
@@ -1383,7 +1423,7 @@ function renderOnboarding() {
 function getWorkflowState() {
   const hasMeta = Boolean(state.activeBatchId && state.activeModuleId);
   const hasTask = Boolean(state.activeTaskId && state.tasks.some((item) => item.id === state.activeTaskId));
-  const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || state.documents.length);
+  const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || els.sourceText?.value.trim() || state.documents.length);
   const hasCases = Boolean(state.cases.length);
   const hasExecution = state.cases.some((item) => item.executionStatus && item.executionStatus !== "未执行");
   const hasBug = Boolean(state.bugs.length);
@@ -2706,10 +2746,11 @@ function buildReportViewModel() {
       ["测试用例总数", total],
       ["版本负责人", getOwnerDisplay(scope.batch?.owners || scope.batch?.owner) || "未分配"],
       ["任务负责人", getOwnerDisplay(scope.task?.owners || scope.task?.owner) || "未分配"],
-      ["已执行", executed],
-      ["通过数", passed],
-      ["失败数", statusCounts["失败"] || 0],
-      ["阻塞数", statusCounts["阻塞"] || 0],
+      ["执行用例数", executed],
+      ["成功用例数", passed],
+      ["失败用例数", statusCounts["失败"] || 0],
+      ["阻塞用例数", statusCounts["阻塞"] || 0],
+      ["未执行用例数", statusCounts["未执行"] || 0],
       ["通过率", passRate],
       ["BUG 总数", scope.bugs.length],
       ["待跟进 BUG", openBugs]
@@ -2722,10 +2763,10 @@ function buildReportViewModel() {
     }),
     metricCards: [
       ["用例总数", total, "tone-gray"],
-      ["已执行", executed, "tone-green"],
-      ["通过数", passed, "tone-green"],
-      ["失败数", statusCounts["失败"] || 0, "tone-red"],
-      ["阻塞数", statusCounts["阻塞"] || 0, "tone-orange"],
+      ["执行用例", executed, "tone-green"],
+      ["成功用例", passed, "tone-green"],
+      ["失败用例", statusCounts["失败"] || 0, "tone-red"],
+      ["阻塞用例", statusCounts["阻塞"] || 0, "tone-orange"],
       ["BUG总数", scope.bugs.length, "tone-red"],
       ["执行率", executionRate, "tone-gray"],
       ["通过率", passRate, "tone-green"]
