@@ -91,6 +91,10 @@ const els = {
   reportVersionCards: document.getElementById("reportVersionCards"),
   reportDetailHeader: document.getElementById("reportDetailHeader"),
   exportReport: document.getElementById("exportReport"),
+  checkLark: document.getElementById("checkLark"),
+  syncLark: document.getElementById("syncLark"),
+  larkStatus: document.getElementById("larkStatus"),
+  larkFeedback: document.getElementById("larkFeedback"),
   seedDemo: document.getElementById("seedDemo"),
   caseTemplate: document.getElementById("caseTemplate"),
   executionTemplate: document.getElementById("executionTemplate"),
@@ -156,6 +160,8 @@ function bindEvents() {
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
+  els.checkLark?.addEventListener("click", checkLarkStatus);
+  els.syncLark?.addEventListener("click", syncLarkData);
   els.seedDemo?.addEventListener("click", seedDemoData);
   els.saveApiKey.addEventListener("click", saveApiSettings);
   els.checkApiKey?.addEventListener("click", checkAiKey);
@@ -437,6 +443,87 @@ async function checkAiKey() {
 function setApiStatus(text, tone) {
   els.apiStatus.textContent = text;
   els.apiStatus.className = `status-pill ${tone}`;
+}
+
+function setLarkStatus(text, tone) {
+  if (!els.larkStatus) {
+    return;
+  }
+  els.larkStatus.textContent = text;
+  els.larkStatus.className = `status-pill ${tone}`;
+}
+
+function setLarkFeedback(text, tone = "neutral") {
+  if (!els.larkFeedback) {
+    return;
+  }
+  els.larkFeedback.textContent = text;
+  els.larkFeedback.className = `inline-feedback ${tone}`;
+}
+
+async function checkLarkStatus() {
+  if (!els.checkLark) {
+    return;
+  }
+
+  els.checkLark.disabled = true;
+  setLarkStatus("正在检测", "neutral");
+  setLarkFeedback("正在读取 .env 配置并检测 Lark Base 权限...", "warn");
+
+  try {
+    const response = await fetch("/api/lark/status");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Lark 连接检测失败。");
+    }
+
+    const tableText = Object.entries(data.tables || {})
+      .filter(([, table]) => table.configured)
+      .map(([name, table]) => `${name}:${table.ok ? "可访问" : "不可访问"}`)
+      .join("，");
+
+    setLarkStatus("Lark 已连接", "ok");
+    setLarkFeedback(tableText ? `检测通过。${tableText}` : "检测通过，但还没有配置任何同步表。", "ok");
+  } catch (error) {
+    setLarkStatus("Lark 未连接", "error");
+    setLarkFeedback(error.message || "Lark 连接检测失败，请检查 .env 和 Base 协作者权限。", "error");
+  } finally {
+    els.checkLark.disabled = false;
+  }
+}
+
+async function syncLarkData() {
+  if (!els.syncLark) {
+    return;
+  }
+
+  els.syncLark.disabled = true;
+  setLarkStatus("正在同步", "neutral");
+  setLarkFeedback("正在同步版本、任务、用例和 BUG 到 Lark Base...", "warn");
+
+  try {
+    const response = await fetch("/api/lark/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: buildSharedStatePayload() })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "同步到 Lark 失败。");
+    }
+
+    const summary = Object.entries(data.synced || {})
+      .map(([name, count]) => `${name} ${count} 条`)
+      .join("，");
+
+    setLarkStatus("同步完成", "ok");
+    setLarkFeedback(summary ? `同步完成：${summary}。` : "同步完成，没有可写入的数据。", "ok");
+  } catch (error) {
+    setLarkStatus("同步失败", "error");
+    setLarkFeedback(error.message || "同步到 Lark 失败，请检查 .env、字段名和表格权限。", "error");
+  } finally {
+    els.syncLark.disabled = false;
+  }
 }
 
 async function loadTeamMembersConfig() {
@@ -2494,7 +2581,7 @@ function renderCases() {
         <strong>这里还没有测试用例</strong>
         <p>先去生成用例，或者直接上传现成 CSV。</p>
         <div class="empty-actions">
-          <button class="ghost-button" data-action="generate-cases">去生成用例</button>
+          <button class="primary-button" data-action="generate-cases">去生成用例</button>
         </div>
       </div>
     `;
@@ -2636,7 +2723,7 @@ function renderBugs() {
       <div class="empty-state empty-state-rich">
         <strong>当前范围里还没有 BUG 记录</strong>
         <p>执行时发现问题，再点“新增BUG”补进来就行。</p>
-        ${state.cases.length ? `<div class="empty-actions"><button class="ghost-button" id="emptyAddBugBtn">新增BUG</button></div>` : ""}
+        ${state.cases.length ? `<div class="empty-actions"><button class="primary-button" id="emptyAddBugBtn">新增BUG</button></div>` : ""}
       </div>
     `;
     const emptyAddBugBtn = document.getElementById("emptyAddBugBtn");

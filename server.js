@@ -14,6 +14,7 @@ const APP_STATE_FILE = path.join(ROOT, "app-state.json");
 const PYTHON_BIN = process.env.CODEX_PYTHON || path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe");
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+const LARK_API_BASE_URL = process.env.LARK_API_BASE_URL || "https://open.larksuite.com";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -91,6 +92,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/check-ai-key") {
       const body = await readJsonBody(req);
       return await handleCheckAiKey(body, res);
+    }
+
+    if (req.method === "GET" && req.url === "/api/lark/status") {
+      return await handleLarkStatus(res);
+    }
+
+    if (req.method === "POST" && req.url === "/api/lark/sync") {
+      const body = await readJsonBody(req);
+      return await handleLarkSync(body, res);
     }
 
     if (req.method === "POST" && req.url === "/api/team-members") {
@@ -333,6 +343,270 @@ function handleExportReportDocx(body, res) {
     "Cache-Control": "no-store"
   });
   res.end(fileBuffer);
+}
+
+async function handleLarkStatus(res) {
+  const config = getLarkConfig();
+  if (config.missing.length) {
+    return sendJson(res, 400, {
+      ok: false,
+      error: `缺少 Lark 配置：${config.missing.join(", ")}。`
+    });
+  }
+
+  const token = await getLarkTenantAccessToken(config);
+  const tables = {};
+
+  for (const [key, table] of Object.entries(config.tables)) {
+    if (!table.id) {
+      tables[key] = { configured: false, ok: false, fields: [] };
+      continue;
+    }
+
+    try {
+      const fields = await getLarkTableFields(config, token, table.id);
+      tables[key] = {
+        configured: true,
+        ok: true,
+        fields: fields.map((item) => item.field_name || item.name || item.field_id).filter(Boolean)
+      };
+    } catch (error) {
+      tables[key] = {
+        configured: true,
+        ok: false,
+        error: error.message
+      };
+    }
+  }
+
+  return sendJson(res, 200, { ok: true, tables });
+}
+
+async function handleLarkSync(body, res) {
+  const config = getLarkConfig();
+  if (config.missing.length) {
+    return sendJson(res, 400, {
+      ok: false,
+      error: `缺少 Lark 配置：${config.missing.join(", ")}。`
+    });
+  }
+
+  const state = sanitizeSharedState(body?.state || {});
+  const token = await getLarkTenantAccessToken(config);
+  const records = buildLarkRecords(state);
+  const synced = {};
+
+  for (const [key, table] of Object.entries(config.tables)) {
+    const rows = records[key] || [];
+    if (!table.id || !rows.length) {
+      synced[key] = 0;
+      continue;
+    }
+
+    await createLarkRecords(config, token, table.id, rows);
+    synced[key] = rows.length;
+  }
+
+  return sendJson(res, 200, { ok: true, synced });
+}
+
+function getLarkConfig() {
+  const tables = {
+    versions: { id: process.env.LARK_VERSION_TABLE_ID || "" },
+    tasks: { id: process.env.LARK_TASK_TABLE_ID || "" },
+    cases: { id: process.env.LARK_CASE_TABLE_ID || "" },
+    bugs: { id: process.env.LARK_BUG_TABLE_ID || "" }
+  };
+  const config = {
+    apiBaseUrl: LARK_API_BASE_URL.replace(/\/$/, ""),
+    appId: process.env.LARK_APP_ID || "",
+    appSecret: process.env.LARK_APP_SECRET || "",
+    baseAppToken: process.env.LARK_BASE_APP_TOKEN || "",
+    tables,
+    missing: []
+  };
+
+  [
+    ["LARK_APP_ID", config.appId],
+    ["LARK_APP_SECRET", config.appSecret],
+    ["LARK_BASE_APP_TOKEN", config.baseAppToken]
+  ].forEach(([key, value]) => {
+    if (!value) config.missing.push(key);
+  });
+
+  if (!Object.values(tables).some((table) => table.id)) {
+    config.missing.push("至少一个 Lark table id");
+  }
+
+  return config;
+}
+
+async function getLarkTenantAccessToken(config) {
+  const data = await requestLarkJson(config, "/open-apis/auth/v3/tenant_access_token/internal", {
+    method: "POST",
+    body: {
+      app_id: config.appId,
+      app_secret: config.appSecret
+    }
+  });
+
+  if (!data?.tenant_access_token) {
+    throw new Error("Lark 没有返回 tenant_access_token。");
+  }
+  return data.tenant_access_token;
+}
+
+async function getLarkTableFields(config, token, tableId) {
+  const data = await requestLarkJson(config, `/open-apis/bitable/v1/apps/${encodeURIComponent(config.baseAppToken)}/tables/${encodeURIComponent(tableId)}/fields`, {
+    method: "GET",
+    token
+  });
+  return data?.data?.items || [];
+}
+
+async function createLarkRecords(config, token, tableId, rows) {
+  const chunks = chunkArray(rows, 500);
+  for (const chunk of chunks) {
+    await requestLarkJson(config, `/open-apis/bitable/v1/apps/${encodeURIComponent(config.baseAppToken)}/tables/${encodeURIComponent(tableId)}/records/batch_create`, {
+      method: "POST",
+      token,
+      body: {
+        records: chunk.map((fields) => ({ fields }))
+      }
+    });
+  }
+}
+
+async function requestLarkJson(config, endpoint, options) {
+  const response = await fetch(`${config.apiBaseUrl}${endpoint}`, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  const rawText = await response.text();
+  let data;
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch (_error) {
+    throw new Error("Lark 返回了无法解析的内容。");
+  }
+
+  if (!response.ok || data.code !== 0) {
+    const message = data?.msg || data?.message || `Lark API 调用失败：${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+function buildLarkRecords(state) {
+  const batches = state.batches || [];
+  const tasks = state.tasks || [];
+  const cases = state.cases || [];
+  const bugs = state.bugs || [];
+  const taskById = new Map(tasks.map((item) => [item.id, item]));
+  const batchById = new Map(batches.map((item) => [item.id, item]));
+  const caseById = new Map(cases.map((item) => [item.id, item]));
+  const now = new Date().toISOString();
+
+  return {
+    versions: batches.map((batch) => {
+      const batchTasks = tasks.filter((task) => task.batchId === batch.id);
+      const taskIds = new Set(batchTasks.map((task) => task.id));
+      const batchCases = cases.filter((item) => item.batchId === batch.id || taskIds.has(item.taskId));
+      const caseIds = new Set(batchCases.map((item) => item.id));
+      const batchBugs = bugs.filter((item) => item.batchId === batch.id || taskIds.has(item.taskId) || caseIds.has(item.caseId));
+      return stringifyFields({
+        "外部ID": batch.id,
+        "版本号": batch.version,
+        "状态": batch.status,
+        "负责人": formatOwners(batch.owners || batch.owner),
+        "任务数": batchTasks.length,
+        "用例数": batchCases.length,
+        "BUG数": batchBugs.length,
+        "更新时间": now
+      });
+    }),
+    tasks: tasks.map((task) => {
+      const batch = batchById.get(task.batchId);
+      return stringifyFields({
+        "外部ID": task.id,
+        "任务名称": task.name,
+        "所属版本": task.batchVersion || batch?.version,
+        "测试范围": task.scope,
+        "负责人": formatOwners(task.owners || task.owner),
+        "状态": task.status,
+        "更新时间": now
+      });
+    }),
+    cases: cases.map((item) => {
+      const task = taskById.get(item.taskId);
+      const batch = batchById.get(item.batchId || task?.batchId);
+      return stringifyFields({
+        "外部ID": item.id,
+        "用例标题": item.title,
+        "模块": item.module,
+        "类型": item.type,
+        "优先级": item.priority,
+        "前置条件": item.preconditions,
+        "测试步骤": item.steps,
+        "预期结果": item.expected,
+        "执行状态": item.executionStatus,
+        "执行备注": item.executionNote,
+        "所属版本": item.batchVersion || batch?.version,
+        "所属任务": item.taskName || task?.name,
+        "更新时间": now
+      });
+    }),
+    bugs: bugs.map((bug) => {
+      const linkedCase = caseById.get(bug.caseId);
+      const task = taskById.get(bug.taskId || linkedCase?.taskId);
+      const batch = batchById.get(bug.batchId || linkedCase?.batchId || task?.batchId);
+      return stringifyFields({
+        "外部ID": bug.id,
+        "BUG标题": bug.title,
+        "严重程度": bug.severity,
+        "状态": bug.status,
+        "负责人": bug.owner,
+        "关联用例": linkedCase?.title || bug.caseId,
+        "备注": bug.note,
+        "所属版本": bug.batchVersion || linkedCase?.batchVersion || batch?.version,
+        "所属任务": bug.taskName || linkedCase?.taskName || task?.name,
+        "Lark": bug.link,
+        "更新时间": now
+      });
+    })
+  };
+}
+
+function stringifyFields(fields) {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, stringifyLarkValue(value)]));
+}
+
+function stringifyLarkValue(value) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).join(", ");
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value);
+}
+
+function formatOwners(value) {
+  return Array.isArray(value) ? value.filter(Boolean).join(", ") : String(value || "");
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function buildUserPrompt(documentName, documentType, content, sourceType, sourceValue, focusHint) {
@@ -751,7 +1025,7 @@ function readJsonBody(req) {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1_000_000) {
+      if (raw.length > 5_000_000) {
         reject(new Error("Request body too large"));
         req.destroy();
       }

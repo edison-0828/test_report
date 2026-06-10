@@ -79,8 +79,8 @@
             </p>
 
             <div class="inline-actions">
+              <button id="checkApiKey" class="primary-button">检测Key</button>
               <button id="saveApiKey" class="ghost-button">保存模型设置</button>
-              <button id="checkApiKey" class="ghost-button">检测Key</button>
               <button id="clearApiKey" class="ghost-button">清空Key</button>
             </div>
           </section>
@@ -118,7 +118,7 @@
             </div>
 
             <div class="inline-actions">
-              <button id="createBatchBtn" class="ghost-button">保存当前版本</button>
+              <button id="createBatchBtn" class="primary-button">保存当前版本</button>
             </div>
 
             <div id="currentVersionSummary" class="version-summary"></div>
@@ -154,7 +154,7 @@
             </div>
 
             <div class="inline-actions">
-              <button id="createTaskBtn" class="ghost-button">保存当前任务</button>
+              <button id="createTaskBtn" class="primary-button">保存当前任务</button>
             </div>
 
             <div id="currentTaskSummary" class="version-summary"></div>
@@ -297,6 +297,21 @@
             </div>
           </div>
           <div id="reportVersionCards" class="report-version-cards"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Lark 联动</h3>
+              <p class="section-note">读取本地 .env 中的 Lark 配置，把版本、任务、用例和 BUG 同步到 Lark Base。</p>
+            </div>
+            <span id="larkStatus" class="status-pill neutral">未检测</span>
+          </div>
+          <div class="inline-actions">
+            <button id="checkLark" class="primary-button">检测 Lark</button>
+            <button id="syncLark" class="ghost-button">同步到 Lark</button>
+          </div>
+          <p id="larkFeedback" class="inline-feedback">请先在 .env 中配置 Lark 应用和 Base 表格信息。</p>
         </section>
 
         <div class="section-head report-detail-head">
