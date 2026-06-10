@@ -97,11 +97,13 @@ The AI configuration panel includes a `检测Key` button. Use it to confirm that
 the current key and model can successfully call the AI service before generating
 test cases.
 
-## Lark Integration
+## Optional Lark Integration
 
-The report page includes a Lark integration panel. It reads Lark credentials
-from `.env`, checks whether the configured Base tables are accessible, and can
-sync versions, tasks, test cases, and bugs to Lark Base.
+Lark integration is optional. The main workflow only requires AI configuration
+and local project data. If your team wants to manage results in Lark, the report
+page includes a Lark integration panel that reads Lark credentials from `.env`,
+checks whether the configured Base tables are accessible, and syncs versions,
+tasks, test cases, and bugs to Lark Base.
 
 Recommended setup:
 

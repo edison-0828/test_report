@@ -78,6 +78,7 @@ const els = {
   bugBatchFilter: document.getElementById("bugBatchFilter"),
   bugTaskFilter: document.getElementById("bugTaskFilter"),
   bugList: document.getElementById("bugList"),
+  bugStatus: document.getElementById("bugStatus"),
   addBug: document.getElementById("addBug"),
   reportHero: document.getElementById("reportHero"),
   reportHealthCard: document.getElementById("reportHealthCard"),
@@ -302,12 +303,22 @@ function initOwnerUi() {
 }
 
 function switchTab(tabId) {
+  const targetPanel = els.panels.find((panel) => panel.id === tabId);
+  if (!targetPanel || targetPanel.classList.contains("active")) {
+    return;
+  }
+
   els.navLinks.forEach((link) => {
     link.classList.toggle("active", link.dataset.tab === tabId);
   });
   els.panels.forEach((panel) => {
-    panel.classList.toggle("active", panel.id === tabId);
+    panel.classList.remove("entering");
+    panel.classList.toggle("active", panel === targetPanel);
   });
+  targetPanel.classList.add("entering");
+  window.setTimeout(() => {
+    targetPanel.classList.remove("entering");
+  }, 260);
   els.sidebarBackToTop?.classList.toggle("hidden-field", tabId !== "upload");
 }
 
@@ -620,6 +631,14 @@ function hasMeaningfulValue(value) {
 function setGenerationStatus(text, tone = "neutral") {
   els.generationStatus.textContent = text;
   els.generationStatus.className = `inline-feedback ${tone}`;
+}
+
+function setBugStatus(text, tone = "neutral") {
+  if (!els.bugStatus) {
+    return;
+  }
+  els.bugStatus.textContent = text;
+  els.bugStatus.className = `inline-feedback ${tone}`;
 }
 
 function saveCurrentDocument() {
@@ -2684,7 +2703,7 @@ function createBugRecord(sourceCase) {
 
   if (linkedBug) {
     switchTab("bugs");
-    setGenerationStatus("这个失败用例已经有关联的未关闭 BUG 了。", "warn");
+    setBugStatus("这个失败用例已经有关联的未关闭 BUG 了。", "warn");
     return;
   }
 
@@ -2709,7 +2728,7 @@ function createBugRecord(sourceCase) {
   persist();
   renderAll();
   switchTab("bugs");
-  setGenerationStatus(firstCase ? "已从失败用例生成 BUG 记录。" : "已新增 BUG 记录。", "ok");
+  setBugStatus(firstCase ? "已从失败用例生成 BUG 记录。" : "已新增 BUG 记录。", "ok");
 }
 
 function buildBugNoteFromCase(caseItem) {
@@ -2746,10 +2765,10 @@ function renderBugs() {
     const node = els.bugTemplate.content.firstElementChild.cloneNode(true);
     const detail = node.querySelector(".bug-detail");
     const detailToggle = node.querySelector(".toggle-bug-detail");
+    const saveButton = node.querySelector(".save-bug");
     node.querySelector(".bug-title").value = bug.title;
     fillCaseOptions(node.querySelector(".bug-case"), bug.caseId);
-    fillSelectFromItems(node.querySelector(".bug-batch"), state.batches, "未选择", bug.batchId, formatBatchLabel);
-    fillSelectFromItems(node.querySelector(".bug-module"), state.modules, "未选择", bug.moduleId, (item) => item.name);
+    syncBugLinkedInfo(node, bug);
     node.querySelector(".bug-severity").value = bug.severity;
     node.querySelector(".bug-status").value = bug.status;
     syncBugBadges(node, bug.severity, bug.status);
@@ -2767,25 +2786,58 @@ function renderBugs() {
     });
 
     node.querySelectorAll("input, textarea, select").forEach((control) => {
-      control.addEventListener("input", () => updateBugFromNode(node, bug.id));
-      control.addEventListener("change", () => updateBugFromNode(node, bug.id));
+      control.addEventListener("input", () => markBugCardDirty(node));
+      control.addEventListener("change", () => {
+        if (control.classList.contains("bug-case")) {
+          syncBugLinkedInfo(node, getBugDraftFromNode(node, bug));
+        }
+        markBugCardDirty(node);
+      });
+    });
+
+    saveButton.addEventListener("click", () => {
+      updateBugFromNode(node, bug.id);
+      markBugCardSaved(node);
+      detail.classList.add("hidden-field");
+      detailToggle.textContent = "展开详情";
+      setBugStatus("BUG 已保存。", "ok");
     });
 
     regressionButton.addEventListener("click", () => {
       bug.status = "待回归";
       persist();
       renderAll();
-      setGenerationStatus("BUG 已标记为待回归。", "ok");
+      setBugStatus("BUG 已标记为待回归。", "ok");
     });
 
     node.querySelector(".delete-bug").addEventListener("click", () => {
+      if (!confirm(`确认删除 BUG「${bug.title || "未命名BUG"}」吗？删除后无法撤销。`)) {
+        return;
+      }
       state.bugs = state.bugs.filter((item) => item.id !== bug.id);
       persist();
       renderAll();
+      setBugStatus("BUG 已删除。", "warn");
     });
 
     els.bugList.appendChild(node);
   });
+}
+
+function markBugCardDirty(node) {
+  node.classList.add("is-dirty");
+  const saveState = node.querySelector(".bug-save-state");
+  if (saveState) {
+    saveState.textContent = "未保存";
+  }
+}
+
+function markBugCardSaved(node) {
+  node.classList.remove("is-dirty");
+  const saveState = node.querySelector(".bug-save-state");
+  if (saveState) {
+    saveState.textContent = "已保存";
+  }
 }
 
 function fillCaseOptions(select, selectedId) {
@@ -2793,6 +2845,30 @@ function fillCaseOptions(select, selectedId) {
     .concat(state.cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`))
     .join("");
   select.value = selectedId || "";
+}
+
+function syncBugLinkedInfo(node, bug) {
+  const caseId = node.querySelector(".bug-case")?.value || bug.caseId;
+  const linkedCase = state.cases.find((caseItem) => caseItem.id === caseId);
+  const batch = linkedCase ? getBatchById(linkedCase.batchId) : getBatchById(bug.batchId);
+  const versionText = linkedCase?.batchVersion || batch?.version || bug.batchVersion || "未关联版本";
+  const taskText = linkedCase?.taskName || bug.taskName || "未关联任务";
+
+  const versionNode = node.querySelector(".bug-linked-version");
+  const metaNode = node.querySelector(".bug-linked-meta");
+  if (versionNode) {
+    versionNode.textContent = versionText;
+  }
+  if (metaNode) {
+    metaNode.textContent = `任务：${taskText}`;
+  }
+}
+
+function getBugDraftFromNode(node, fallbackBug) {
+  return {
+    ...fallbackBug,
+    caseId: node.querySelector(".bug-case")?.value || ""
+  };
 }
 
 function updateBugFromNode(node, bugId) {
@@ -2803,11 +2879,6 @@ function updateBugFromNode(node, bugId) {
 
   item.title = node.querySelector(".bug-title").value.trim() || "未命名BUG";
   item.caseId = node.querySelector(".bug-case").value;
-  item.batchId = node.querySelector(".bug-batch").value;
-  item.batchName = getBatchLabelById(item.batchId);
-  item.batchVersion = getBatchVersionById(item.batchId);
-  item.moduleId = node.querySelector(".bug-module").value;
-  item.moduleName = getModuleNameById(item.moduleId);
   item.severity = node.querySelector(".bug-severity").value;
   item.status = node.querySelector(".bug-status").value;
   item.owner = node.querySelector(".bug-owner").value.trim();
@@ -2824,8 +2895,6 @@ function updateBugFromNode(node, bugId) {
       item.batchVersion = linkedCase.batchVersion || item.batchVersion;
       item.moduleId = linkedCase.moduleId || item.moduleId;
       item.moduleName = linkedCase.module || item.moduleName;
-      node.querySelector(".bug-batch").value = item.batchId;
-      node.querySelector(".bug-module").value = item.moduleId;
     }
   }
 
@@ -2835,6 +2904,7 @@ function updateBugFromNode(node, bugId) {
 
   syncBugBadges(node, item.severity, item.status);
   syncBugSourceBadge(node, item);
+  syncBugLinkedInfo(node, item);
   node.querySelector(".mark-bug-regression").classList.toggle("hidden-field", item.status !== "已修复");
   persist();
   renderQuickStats();

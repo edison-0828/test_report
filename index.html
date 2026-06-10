@@ -147,7 +147,7 @@
               </label>
 
               <label class="step-field step-field-wide">
-                <span class="step-label">这一任务要测什么</span>
+                <span class="step-label">你要测什么</span>
                 <textarea id="taskScopeInput" class="md-textarea" rows="6"
                   placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
               </label>
@@ -276,6 +276,7 @@
               <option value="">全部任务</option>
             </select>
           </div>
+          <p id="bugStatus" class="inline-feedback">这里会显示 BUG 新增、保存、删除和回归状态。</p>
           <div id="bugList" class="list-stack"></div>
         </section>
       </section>
@@ -302,8 +303,8 @@
         <section class="panel">
           <div class="section-head">
             <div>
-              <h3>Lark 联动</h3>
-              <p class="section-note">读取本地 .env 中的 Lark 配置，把版本、任务、用例和 BUG 同步到 Lark Base。</p>
+              <h3>Lark 联动（可选）</h3>
+              <p class="section-note">团队需要协作时再配置；不配置也不影响 AI 生成、用例执行和报告导出。</p>
             </div>
             <span id="larkStatus" class="status-pill neutral">未检测</span>
           </div>
@@ -311,7 +312,7 @@
             <button id="checkLark" class="primary-button">检测 Lark</button>
             <button id="syncLark" class="ghost-button">同步到 Lark</button>
           </div>
-          <p id="larkFeedback" class="inline-feedback">请先在 .env 中配置 Lark 应用和 Base 表格信息。</p>
+          <p id="larkFeedback" class="inline-feedback">可选功能：配置 .env 后可把版本、任务、用例和 BUG 同步到 Lark Base。</p>
         </section>
 
         <div class="section-head report-detail-head">
@@ -447,6 +448,7 @@
         <div class="bug-row-main">
           <div class="bug-row-title">
             <span class="bug-card-kicker">BUG</span>
+            <span class="bug-title-label">BUG 名称</span>
             <input class="bug-title inline-title" type="text">
             <div class="card-meta bug-row-meta">
               <span class="bug-status-badge badge subtle"></span>
@@ -455,6 +457,8 @@
             </div>
           </div>
           <div class="bug-row-actions">
+            <span class="bug-save-state">已保存</span>
+            <button type="button" class="primary-button tiny-button save-bug">保存BUG</button>
             <button type="button" class="ghost-button tiny-button toggle-bug-detail">展开详情</button>
             <button type="button" class="ghost-button tiny-button mark-bug-regression hidden-field">标记待回归</button>
             <button class="ghost-button tiny-button delete-bug">删除</button>
@@ -467,14 +471,11 @@
               关联用例
               <select class="bug-case"></select>
             </label>
-            <label>
-              批次
-              <select class="bug-batch"></select>
-            </label>
-            <label>
-              模块
-              <select class="bug-module"></select>
-            </label>
+            <div class="bug-linked-info">
+              <span class="summary-label">自动关联</span>
+              <strong class="bug-linked-version">未关联版本</strong>
+              <p class="bug-linked-meta">选择用例后自动带出版本和任务。</p>
+            </div>
           </div>
 
           <div class="form-row bug-row-grid">
