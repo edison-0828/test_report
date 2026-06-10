@@ -112,6 +112,13 @@ Recommended setup:
 5. Create four Base tables and copy their table IDs into `.env`.
 6. Restart the local server and click `检测 Lark` in the report page.
 
+Sync behavior:
+
+- `外部ID` is the unique key used for de-duplication.
+- If a Lark record with the same `外部ID` already exists, the app updates it.
+- If no matching `外部ID` exists, the app creates a new record.
+- Do not rename or remove the `外部ID` field in the Base tables.
+
 Default Base table fields:
 
 `测试版本`
@@ -173,9 +180,8 @@ Lark
 更新时间
 ```
 
-The current integration is one-way: Test Report syncs data to Lark Base. If you
-click sync multiple times, Lark may receive duplicate records. Use a fresh Base
-or clear old synced rows before re-syncing the same dataset.
+The current integration is one-way: Test Report syncs data to Lark Base. It does
+not read edited Lark rows back into the local app.
 
 ## Basic Workflow
 

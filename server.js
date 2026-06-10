@@ -399,12 +399,11 @@ async function handleLarkSync(body, res) {
   for (const [key, table] of Object.entries(config.tables)) {
     const rows = records[key] || [];
     if (!table.id || !rows.length) {
-      synced[key] = 0;
+      synced[key] = { created: 0, updated: 0, total: 0 };
       continue;
     }
 
-    await createLarkRecords(config, token, table.id, rows);
-    synced[key] = rows.length;
+    synced[key] = await upsertLarkRecords(config, token, table.id, rows);
   }
 
   return sendJson(res, 200, { ok: true, synced });
@@ -464,6 +463,64 @@ async function getLarkTableFields(config, token, tableId) {
   return data?.data?.items || [];
 }
 
+async function upsertLarkRecords(config, token, tableId, rows) {
+  const existingByExternalId = await listLarkRecordsByExternalId(config, token, tableId);
+  const toCreate = [];
+  const toUpdate = [];
+
+  rows.forEach((fields) => {
+    const externalId = String(fields["外部ID"] || "").trim();
+    const existingRecordId = externalId ? existingByExternalId.get(externalId) : "";
+    if (existingRecordId) {
+      toUpdate.push({ record_id: existingRecordId, fields });
+    } else {
+      toCreate.push(fields);
+    }
+  });
+
+  if (toUpdate.length) {
+    await updateLarkRecords(config, token, tableId, toUpdate);
+  }
+  if (toCreate.length) {
+    await createLarkRecords(config, token, tableId, toCreate);
+  }
+
+  return {
+    created: toCreate.length,
+    updated: toUpdate.length,
+    total: rows.length
+  };
+}
+
+async function listLarkRecordsByExternalId(config, token, tableId) {
+  const recordsByExternalId = new Map();
+  let pageToken = "";
+
+  do {
+    const query = new URLSearchParams({ page_size: "500" });
+    if (pageToken) {
+      query.set("page_token", pageToken);
+    }
+
+    const data = await requestLarkJson(config, `/open-apis/bitable/v1/apps/${encodeURIComponent(config.baseAppToken)}/tables/${encodeURIComponent(tableId)}/records?${query.toString()}`, {
+      method: "GET",
+      token
+    });
+
+    const items = data?.data?.items || [];
+    items.forEach((item) => {
+      const externalId = normalizeLarkFieldValue(item?.fields?.["外部ID"]);
+      if (externalId && item.record_id) {
+        recordsByExternalId.set(externalId, item.record_id);
+      }
+    });
+
+    pageToken = data?.data?.page_token || "";
+  } while (pageToken);
+
+  return recordsByExternalId;
+}
+
 async function createLarkRecords(config, token, tableId, rows) {
   const chunks = chunkArray(rows, 500);
   for (const chunk of chunks) {
@@ -472,6 +529,19 @@ async function createLarkRecords(config, token, tableId, rows) {
       token,
       body: {
         records: chunk.map((fields) => ({ fields }))
+      }
+    });
+  }
+}
+
+async function updateLarkRecords(config, token, tableId, records) {
+  const chunks = chunkArray(records, 500);
+  for (const chunk of chunks) {
+    await requestLarkJson(config, `/open-apis/bitable/v1/apps/${encodeURIComponent(config.baseAppToken)}/tables/${encodeURIComponent(tableId)}/records/batch_update`, {
+      method: "POST",
+      token,
+      body: {
+        records: chunk
       }
     });
   }
@@ -595,6 +665,25 @@ function stringifyLarkValue(value) {
     return "";
   }
   return String(value);
+}
+
+function normalizeLarkFieldValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeLarkFieldValue(item)).filter(Boolean).join(", ");
+  }
+  if (value && typeof value === "object") {
+    if ("text" in value) {
+      return String(value.text || "").trim();
+    }
+    if ("name" in value) {
+      return String(value.name || "").trim();
+    }
+    if ("value" in value) {
+      return String(value.value || "").trim();
+    }
+    return "";
+  }
+  return String(value || "").trim();
 }
 
 function formatOwners(value) {

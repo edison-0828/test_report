@@ -513,7 +513,15 @@ async function syncLarkData() {
     }
 
     const summary = Object.entries(data.synced || {})
-      .map(([name, count]) => `${name} ${count} 条`)
+      .map(([name, result]) => {
+        if (typeof result === "number") {
+          return `${name} ${result} 条`;
+        }
+        const created = Number(result?.created || 0);
+        const updated = Number(result?.updated || 0);
+        const total = Number(result?.total || created + updated);
+        return `${name} ${total} 条（新增 ${created}，更新 ${updated}）`;
+      })
       .join("，");
 
     setLarkStatus("同步完成", "ok");
