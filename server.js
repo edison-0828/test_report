@@ -244,6 +244,53 @@ async function handleCheckAiKey(body, res) {
     return sendJson(res, 400, { error: "还没有可用的 OpenAI API Key。" });
   }
 
+  try {
+    const quickResult = await quickCheckAiKey(apiKey, model);
+    return sendJson(res, 200, {
+      ok: true,
+      model: quickResult.model || model,
+      mode: quickResult.mode
+    });
+  } catch (error) {
+    return sendJson(res, Number(error.statusCode || 502), {
+      error: error.message || "AI Key 检测失败。"
+    });
+  }
+}
+
+async function quickCheckAiKey(apiKey, model) {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`
+  };
+
+  const quickEndpoints = [
+    {
+      mode: "model-detail",
+      url: `${OPENAI_BASE_URL}/models/${encodeURIComponent(model)}`,
+      init: { method: "GET", headers }
+    },
+    {
+      mode: "model-list",
+      url: `${OPENAI_BASE_URL}/models`,
+      init: { method: "GET", headers }
+    }
+  ];
+
+  for (const attempt of quickEndpoints) {
+    const result = await fetchJsonWithTimeout(attempt.url, attempt.init, 6000);
+    if (result.ok) {
+      return {
+        ok: true,
+        model,
+        mode: attempt.mode
+      };
+    }
+
+    if (result.status === 401 || result.status === 403) {
+      throw buildAiCheckError(result.data?.error?.message || "API Key 无效或没有权限。", result.status);
+    }
+  }
+
   const payload = {
     model,
     input: [
@@ -252,41 +299,67 @@ async function handleCheckAiKey(body, res) {
         content: [
           {
             type: "input_text",
-            text: "Reply with OK."
+            text: "OK"
           }
         ]
       }
     ],
-    max_output_tokens: 16
+    max_output_tokens: 1
   };
 
-  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+  const responseResult = await fetchJsonWithTimeout(`${OPENAI_BASE_URL}/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify(payload)
-  });
+  }, 10000);
 
-  const rawText = await response.text();
-  let data;
-  try {
-    data = rawText ? JSON.parse(rawText) : {};
-  } catch (_error) {
-    return sendJson(res, 502, { error: "AI 服务返回了无法解析的内容。" });
+  if (!responseResult.ok) {
+    throw buildAiCheckError(responseResult.data?.error?.message || "AI Key 检测失败。", responseResult.status);
   }
 
-  if (!response.ok) {
-    const message = data?.error?.message || "AI Key 检测失败。";
-    return sendJson(res, response.status, { error: message });
-  }
-
-  return sendJson(res, 200, {
+  return {
     ok: true,
     model,
-    responseId: data.id || ""
-  });
+    mode: "responses-fallback"
+  };
+}
+
+async function fetchJsonWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const rawText = await response.text();
+    let data;
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (_error) {
+      data = {};
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      data
+    };
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw buildAiCheckError("AI Key 检测超时，请检查网络、代理或接口地址。", 504);
+    }
+    throw buildAiCheckError(error.message || "AI Key 检测失败。", 502);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildAiCheckError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 }
 
 function handleExportReportDocx(body, res) {

@@ -51,6 +51,98 @@ Then open:
 http://127.0.0.1:3000
 ```
 
+## Deploy To Internal Server
+
+Recommended server path:
+
+```text
+/opt/test-report
+```
+
+Recommended long-running mode:
+
+- Ubuntu server
+- `pm2` process manager
+- project Python virtual environment at `/opt/test-report/.venv`
+
+### First-time server preparation
+
+Install runtime dependencies on the server:
+
+```bash
+apt update
+apt install -y nodejs npm python3-pip python3-venv python3-full
+```
+
+Create the app directory and Python environment:
+
+```bash
+mkdir -p /opt/test-report
+cd /opt/test-report
+python3 -m venv .venv
+source .venv/bin/activate
+pip install python-docx
+```
+
+Create server-side `.env` and keep it only on the server:
+
+```env
+OPENAI_BASE_URL=https://9527code.com/v1
+OPENAI_MODEL=gpt-5.4-mini
+PORT=4173
+CODEX_PYTHON=/opt/test-report/.venv/bin/python
+```
+
+### One-command publish from your Windows machine
+
+This repo now includes:
+
+- `deploy.ps1`
+- `ecosystem.config.cjs`
+
+Usage:
+
+```powershell
+cd D:\TestReport
+powershell -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+
+What it does:
+
+1. Packages the project files.
+2. Uploads them to `192.168.1.210`.
+3. Keeps the server `.env` file in place.
+4. Runs `npm install`.
+5. Ensures `.venv` exists and installs `python-docx`.
+6. Starts or reloads the service with `pm2`.
+
+After deploy, open:
+
+```text
+http://192.168.1.210:4173
+```
+
+### Service management on the server
+
+Check status:
+
+```bash
+pm2 status
+```
+
+View logs:
+
+```bash
+pm2 logs test-report
+```
+
+Restart manually:
+
+```bash
+cd /opt/test-report
+pm2 restart test-report
+```
+
 ## AI Configuration
 
 You can provide an OpenAI API Key in either of these ways:

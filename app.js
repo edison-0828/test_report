@@ -61,11 +61,16 @@ const els = {
   sidebarContext: document.getElementById("sidebarContext"),
   sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
-  saveApiKey: document.getElementById("saveApiKey"),
+  toggleApiKey: document.getElementById("toggleApiKey"),
+  apiStatus: document.getElementById("apiStatus"),
   checkApiKey: document.getElementById("checkApiKey"),
+  saveApiKey: document.getElementById("saveApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
   modelSelect: document.getElementById("modelSelect"),
-  apiStatus: document.getElementById("apiStatus"),
+  apiFeedback: document.getElementById("apiFeedback"),
+  apiSavedState: document.getElementById("apiSavedState"),
+  apiEnabledState: document.getElementById("apiEnabledState"),
+  apiModelState: document.getElementById("apiModelState"),
   caseList: document.getElementById("caseList"),
   caseImportInput: document.getElementById("caseImportInput"),
   caseBatchFilter: document.getElementById("caseBatchFilter"),
@@ -103,10 +108,9 @@ const els = {
 };
 
 const settings = {
-  apiKey: "",
+  apiKey: state.settings?.apiKey || "",
   model: state.settings?.model || "gpt-5.4-mini",
-  apiReady: false,
-  envKeyAvailable: false
+  apiReady: false
 };
 
 let uploadedFileContent = "";
@@ -114,7 +118,7 @@ let editingBatchId = "";
 let editingTaskId = "";
 let persistSharedTimer = 0;
 
-els.apiKey.value = "";
+els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
 autoResizeTextarea();
 
@@ -129,6 +133,7 @@ renderAll();
 loadTeamMembersConfig();
 loadSharedState();
 checkApiStatus();
+renderApiStateBoard();
 renderSourceMode();
 
 function bindEvents() {
@@ -161,13 +166,15 @@ function bindEvents() {
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
+  els.checkApiKey?.addEventListener("click", () => checkAiKey());
+  els.saveApiKey?.addEventListener("click", saveApiSettings);
+  els.clearApiKey?.addEventListener("click", clearApiSettings);
+  els.modelSelect?.addEventListener("change", saveApiSettings);
+  els.apiKey?.addEventListener("input", handleApiDraftChange);
+  els.toggleApiKey?.addEventListener("click", toggleApiKeyVisibility);
   els.checkLark?.addEventListener("click", checkLarkStatus);
   els.syncLark?.addEventListener("click", syncLarkData);
   els.seedDemo?.addEventListener("click", seedDemoData);
-  els.saveApiKey.addEventListener("click", saveApiSettings);
-  els.checkApiKey?.addEventListener("click", checkAiKey);
-  els.clearApiKey.addEventListener("click", clearApiSettings);
-  els.modelSelect.addEventListener("change", saveApiSettings);
   els.sidebarBackToTop?.addEventListener("click", scrollSidebarToTop);
   document.addEventListener("click", handleGlobalActionClick);
 }
@@ -367,23 +374,6 @@ function renderSourceMode() {
   els.focusHintWrap.classList.remove("hidden-field");
 }
 
-function saveApiSettings() {
-  settings.model = els.modelSelect.value;
-  state.settings = { model: settings.model };
-  persist();
-  setGenerationStatus("模型设置已保存。页面输入的 Key 只临时使用，刷新后会清空；长期使用请配置服务端 OPENAI_API_KEY。", "ok");
-  checkApiStatus();
-}
-
-function clearApiSettings() {
-  settings.apiKey = "";
-  els.apiKey.value = "";
-  state.settings = { model: els.modelSelect.value };
-  persist();
-  checkApiStatus();
-  setGenerationStatus("已清空当前页面输入的 API Key。本地存储不会保留真实 Key。", "warn");
-}
-
 async function checkApiStatus() {
   try {
     const response = await fetch("/api/health");
@@ -392,36 +382,100 @@ async function checkApiStatus() {
     }
 
     const data = await response.json();
-    settings.apiReady = true;
-    settings.envKeyAvailable = Boolean(data.envKeyAvailable);
+    settings.apiReady = false;
 
     if (data.defaultModel && !state.settings?.model) {
-      els.modelSelect.value = data.defaultModel;
       settings.model = data.defaultModel;
+      els.modelSelect.value = data.defaultModel;
+      state.settings = { ...state.settings, apiKey: settings.apiKey, model: settings.model };
+      persist();
     }
 
-    const hasAnyKey = data.envKeyAvailable || Boolean(els.apiKey.value.trim());
-    setApiStatus(hasAnyKey ? "待检测 Key" : "需要填写 API Key", hasAnyKey ? "neutral" : "warn");
+    if (settings.apiKey) {
+      setApiStatus("待检测", "neutral");
+      setApiFeedback("已读取本机保存的个人 Key，点“检测并启用”后即可使用。", "neutral");
+    } else {
+      setApiStatus("需要填写 API Key", "warn");
+      setApiFeedback("请先填写你自己的 API Key。", "warn");
+    }
+    renderApiStateBoard();
   } catch (_error) {
     settings.apiReady = false;
     setApiStatus("本地服务未启动", "error");
+    setApiFeedback("本地服务未启动，请先启动项目后再检测个人 Key。", "error");
+    renderApiStateBoard();
   }
 }
 
-async function checkAiKey() {
-  const apiKey = els.apiKey.value.trim();
-  const model = els.modelSelect.value;
-  const hasServerKey = settings.envKeyAvailable;
+function saveApiSettings() {
+  settings.apiKey = els.apiKey.value.trim();
+  settings.model = els.modelSelect.value;
+  state.settings = {
+    ...state.settings,
+    apiKey: settings.apiKey,
+    model: settings.model
+  };
+  settings.apiReady = false;
+  persist();
+  setApiStatus(settings.apiKey ? "已保存，待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
+  setApiFeedback(settings.apiKey ? "个人 Key 已保存在当前浏览器，点“检测并启用”后即可使用。" : "已清空个人 Key。", settings.apiKey ? "ok" : "warn");
+  renderApiStateBoard();
+}
 
-  if (!apiKey && !hasServerKey) {
+function clearApiSettings() {
+  settings.apiKey = "";
+  settings.apiReady = false;
+  els.apiKey.value = "";
+  state.settings = {
+    ...state.settings,
+    apiKey: "",
+    model: els.modelSelect.value
+  };
+  persist();
+  setApiStatus("需要填写 API Key", "warn");
+  setApiFeedback("已清空当前浏览器保存的个人 Key。", "warn");
+  renderApiStateBoard();
+}
+
+function handleApiDraftChange() {
+  settings.apiKey = els.apiKey.value.trim();
+  settings.apiReady = false;
+  setApiStatus(settings.apiKey ? "待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
+  renderApiStateBoard();
+}
+
+function toggleApiKeyVisibility() {
+  if (!els.apiKey || !els.toggleApiKey) {
+    return;
+  }
+  const nextType = els.apiKey.type === "password" ? "text" : "password";
+  els.apiKey.type = nextType;
+  els.toggleApiKey.textContent = nextType === "password" ? "显示" : "隐藏";
+}
+
+async function checkAiKey(options = {}) {
+  const { showFeedback = true } = options;
+  const apiKey = els.apiKey.value.trim();
+  const model = settings.model || "gpt-5.4-mini";
+  const checkButton = els.checkApiKey;
+  const originalButtonText = checkButton?.textContent || "检测并启用";
+
+  if (!apiKey) {
     setApiStatus("需要填写 API Key", "warn");
-    setGenerationStatus("请先填写 OpenAI API Key，再检测是否可用。", "warn");
+    if (showFeedback) {
+      setApiFeedback("请先填写你自己的 API Key，再检测是否可用。", "warn");
+    }
     return;
   }
 
-  els.checkApiKey.disabled = true;
+  if (checkButton) {
+    checkButton.disabled = true;
+    checkButton.textContent = "检测中...";
+  }
   setApiStatus("正在检测 Key", "neutral");
-  setGenerationStatus("正在调用 AI 服务检测当前 Key...", "warn");
+  if (showFeedback) {
+    setApiFeedback("正在调用 AI 服务检测当前个人 Key...", "warn");
+  }
 
   try {
     const response = await fetch("/api/check-ai-key", {
@@ -438,22 +492,70 @@ async function checkAiKey() {
     settings.apiKey = apiKey;
     settings.model = model;
     settings.apiReady = true;
-    state.settings = { model };
+    state.settings = {
+      ...state.settings,
+      apiKey,
+      model
+    };
     persist();
-    setApiStatus(apiKey ? "Key 可正常调用 AI" : "环境 Key 可调用 AI", "ok");
-    setGenerationStatus(`检测通过：${apiKey ? "当前页面 Key" : "服务端环境 Key"} 可以调用 ${data.model || model}。${apiKey ? "页面刷新后需重新输入 Key。" : "页面刷新后仍可使用。"}`, "ok");
+    setApiStatus("个人 Key 可调用 AI", "ok");
+    if (showFeedback) {
+      setApiFeedback(`检测通过：你的个人 Key 可以调用 ${data.model || model}，后续生成用例将直接使用它。`, "ok");
+    }
+    renderApiStateBoard();
   } catch (error) {
     settings.apiReady = false;
     setApiStatus("Key 检测失败", "error");
-    setGenerationStatus(error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
+    if (showFeedback) {
+      setApiFeedback(error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
+    }
+    renderApiStateBoard();
   } finally {
-    els.checkApiKey.disabled = false;
+    if (checkButton) {
+      checkButton.disabled = false;
+      checkButton.textContent = originalButtonText;
+    }
   }
 }
 
 function setApiStatus(text, tone) {
   els.apiStatus.textContent = text;
   els.apiStatus.className = `status-pill ${tone}`;
+}
+
+function setApiFeedback(text, tone = "neutral") {
+  if (!els.apiFeedback) {
+    return;
+  }
+  els.apiFeedback.textContent = text;
+  els.apiFeedback.className = `inline-feedback ${tone}`;
+}
+
+function renderApiStateBoard() {
+  if (els.apiSavedState) {
+    const savedTone = settings.apiKey ? "ok" : "neutral";
+    els.apiSavedState.textContent = settings.apiKey ? "已保存" : "未填写";
+    els.apiSavedState.className = `state-chip ${savedTone}`;
+  }
+
+  if (els.apiEnabledState) {
+    let enabledTone = "neutral";
+    let enabledText = "未启用";
+    if (settings.apiReady && settings.apiKey) {
+      enabledTone = "ok";
+      enabledText = "已启用";
+    } else if (settings.apiKey) {
+      enabledTone = "warn";
+      enabledText = "待检测";
+    }
+    els.apiEnabledState.textContent = enabledText;
+    els.apiEnabledState.className = `state-chip ${enabledTone}`;
+  }
+
+  if (els.apiModelState) {
+    els.apiModelState.textContent = settings.model || "gpt-5.4-mini";
+    els.apiModelState.className = "state-chip subtle";
+  }
 }
 
 function setLarkStatus(text, tone) {
@@ -943,7 +1045,6 @@ async function handleGenerateCases(mode) {
       return;
     }
 
-    const apiKey = els.apiKey.value.trim();
     setGenerationStatus("AI 正在生成中，文档越长会越慢一点。", "neutral");
     toggleGenerateButtons(true);
 
@@ -954,8 +1055,8 @@ async function handleGenerateCases(mode) {
         content,
         sourceType,
         focusHint,
-        apiKey,
-        model: els.modelSelect.value
+        apiKey: settings.apiKey,
+        model: settings.model
       });
 
       const generatedCases = appendGeneratedCases(generated, {
@@ -1529,7 +1630,7 @@ function renderOnboarding() {
     {
       key: "bot",
       title: "配置 AI",
-      desc: "填写 Key、选择模型，并检测调用是否正常。",
+      desc: "填写你自己的 Key，检测通过后即可生成用例，当前浏览器会自动保留。",
       done: flow.hasBotConfig,
       current: flow.nextAction === "configure-bot"
     },
@@ -1591,7 +1692,7 @@ function renderOnboarding() {
 }
 
 function getWorkflowState() {
-  const hasBotConfig = Boolean(els.apiKey.value.trim() || settings.envKeyAvailable || settings.apiReady);
+  const hasBotConfig = Boolean(settings.apiKey && settings.apiReady);
   const hasMeta = Boolean(state.activeBatchId && state.activeModuleId);
   const hasTask = Boolean(state.activeTaskId && state.tasks.some((item) => item.id === state.activeTaskId));
   const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || els.sourceText?.value.trim() || state.documents.length);
@@ -1611,9 +1712,9 @@ function getWorkflowState() {
       hasExecutionOrBug,
       hasReportData,
       nextAction: "configure-bot",
-      actionLabel: "先配置机器人",
-      tipTitle: "先配置机器人",
-      tipBody: "先保存本地 API Key 和模型，后面的 AI 生成才可以直接使用。"
+      actionLabel: "先配置个人 Key",
+      tipTitle: "先配置个人 Key",
+      tipBody: "先填写你自己的 API Key 并检测通过。检测通过后，当前浏览器会自动保留，下次刷新无需重新输入。"
     };
   }
 
@@ -1755,7 +1856,7 @@ function handleShortcutAction(action) {
 
   if (action === "configure-bot") {
     switchTab("upload");
-    els.apiKey.focus();
+    window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
 
@@ -1807,10 +1908,6 @@ function renderMetaControls() {
   fillSelectFromItems(els.taskBatchSelect, state.batches, "请选择版本", els.taskBatchSelect.value || state.activeBatchId, (item) => formatTaskBatchLabel(item));
   fillOwnerSelect(els.batchOwnerSelect, editingBatchId ? (getBatchById(editingBatchId)?.owner || "") : "");
   fillOwnerSelect(els.taskOwnerSelect, editingTaskId ? (getTaskById(editingTaskId)?.owner || "") : "");
-  const activeTask = getTaskById(state.activeTaskId);
-  const generationBatch = getBatchById(activeTask?.batchId || state.generationBatchId);
-  const generationModule = getModuleById(activeTask?.moduleId || generationBatch?.moduleId);
-
   els.currentVersionSummary.innerHTML = "";
   els.currentTaskSummary.innerHTML = "";
 
@@ -1822,19 +1919,6 @@ function renderMetaControls() {
         ${state.tasks.map((item) => `<option value="${item.id}" ${item.id === state.activeTaskId ? "selected" : ""}>${escapeHtml(formatTaskLabel(item))}</option>`).join("")}
       </select>
     </label>
-    ${activeTask
-      ? `
-        <div class="version-summary-card generation-version-card">
-          <strong>${escapeHtml(activeTask.name || "")}</strong>
-          <p>${escapeHtml([generationBatch?.version || "", generationModule?.name || activeTask.moduleName || ""].filter(Boolean).join(" / "))}</p>
-        </div>
-      `
-      : `
-        <div class="version-summary-card version-summary-empty generation-version-card">
-          <strong>还没有可关联的任务</strong>
-          <p>请先在上面保存测试任务，然后在这里选择要生成用例的任务。</p>
-        </div>
-      `}
   `;
 
   const generationTaskSelect = document.getElementById("generationTaskSelect");
@@ -3888,13 +3972,7 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    const loadedState = normalizeLoadedState({ ...defaultState(), ...parsed });
-    if (parsed.settings?.apiKey) {
-      const cleanedState = Object.fromEntries(LOCAL_STATE_KEYS.map((key) => [key, structuredCloneSafe(loadedState[key])]));
-      cleanedState.settings = { model: loadedState.settings.model };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanedState));
-    }
-    return loadedState;
+    return normalizeLoadedState({ ...defaultState(), ...parsed });
   } catch (_error) {
     return defaultState();
   }
@@ -3902,6 +3980,7 @@ function loadState() {
 
 function normalizeLoadedState(loadedState) {
   loadedState.settings = {
+    apiKey: loadedState.settings?.apiKey || "",
     model: loadedState.settings?.model || "gpt-5.4-mini"
   };
   return loadedState;
@@ -3927,6 +4006,7 @@ function defaultState() {
     reportConclusions: {},
     lastGeneration: null,
     settings: {
+      apiKey: "",
       model: "gpt-5.4-mini"
     },
     uiMode: "guide"
@@ -3936,7 +4016,10 @@ function defaultState() {
 function persist() {
   const localState = Object.fromEntries(LOCAL_STATE_KEYS.map((key) => [key, structuredCloneSafe(state[key])]));
   if (localState.settings) {
-    localState.settings = { model: localState.settings.model || "gpt-5.4-mini" };
+    localState.settings = {
+      apiKey: localState.settings.apiKey || "",
+      model: localState.settings.model || "gpt-5.4-mini"
+    };
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(localState));
   scheduleSharedPersist();

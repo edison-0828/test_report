@@ -54,15 +54,18 @@
             <div class="section-head">
               <div>
                 <h3>1. AI 配置</h3>
-                <p class="section-note">填写 Key、选择模型，并检测是否能正常调用 AI。</p>
+                <p class="section-note">填写你自己的 Key，检测通过后即可直接生成用例。当前浏览器会自动保留，无需每次重新输入。</p>
               </div>
-              <span id="apiStatus" class="status-pill neutral">正在检查服务</span>
+              <span id="apiStatus" class="status-pill neutral">待配置</span>
             </div>
 
             <div class="form-row">
               <label>
                 OpenAI API Key
-                <input type="password" id="apiKey" placeholder="仅当前页面临时使用；推荐用服务端 OPENAI_API_KEY">
+                <div class="key-input-row">
+                  <input type="password" id="apiKey" placeholder="请输入你自己的 API Key">
+                  <button type="button" id="toggleApiKey" class="ghost-button tiny-button">显示</button>
+                </div>
               </label>
               <label>
                 模型
@@ -72,17 +75,27 @@
                 </select>
               </label>
             </div>
-            <p class="security-note">
-              页面输入的 Key 只在当前页面临时使用，刷新后会清空。长期使用请复制
-              <code>.env.example</code> 为 <code>.env</code>，并在里面配置 <code>OPENAI_API_KEY</code>；
-              <code>.env</code> 不会提交到 GitHub。
-            </p>
-
+            <p class="security-note">当前浏览器会保留你的个人 Key 和模型设置，刷新页面后无需重新输入。</p>
+            <div class="api-state-board">
+              <div class="api-state-item">
+                <span>Key状态</span>
+                <strong id="apiSavedState" class="state-chip neutral">未填写</strong>
+              </div>
+              <div class="api-state-item">
+                <span>启用状态</span>
+                <strong id="apiEnabledState" class="state-chip neutral">未启用</strong>
+              </div>
+              <div class="api-state-item">
+                <span>当前模型</span>
+                <strong id="apiModelState" class="state-chip subtle">gpt-5.4-mini</strong>
+              </div>
+            </div>
             <div class="inline-actions">
-              <button id="checkApiKey" class="primary-button">检测Key</button>
-              <button id="saveApiKey" class="ghost-button">保存模型设置</button>
+              <button id="checkApiKey" class="primary-button">检测并启用</button>
+              <button id="saveApiKey" class="ghost-button">保存配置</button>
               <button id="clearApiKey" class="ghost-button">清空Key</button>
             </div>
+            <p id="apiFeedback" class="inline-feedback">这里会显示你当前个人 Key 的检测结果和使用状态。</p>
           </section>
 
           <section class="panel">
@@ -298,21 +311,6 @@
             </div>
           </div>
           <div id="reportVersionCards" class="report-version-cards"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-head">
-            <div>
-              <h3>Lark 联动（可选）</h3>
-              <p class="section-note">团队需要协作时再配置；不配置也不影响 AI 生成、用例执行和报告导出。</p>
-            </div>
-            <span id="larkStatus" class="status-pill neutral">未检测</span>
-          </div>
-          <div class="inline-actions">
-            <button id="checkLark" class="primary-button">检测 Lark</button>
-            <button id="syncLark" class="ghost-button">同步到 Lark</button>
-          </div>
-          <p id="larkFeedback" class="inline-feedback">可选功能：配置 .env 后可把版本、任务、用例和 BUG 同步到 Lark Base。</p>
         </section>
 
         <div class="section-head report-detail-head">
