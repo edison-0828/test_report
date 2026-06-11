@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>测试管理平台</title>
+  <title>测试辅助工具</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -12,8 +12,8 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <h1>测试管理平台</h1>
-        <p>按版本创建任务，生成用例，记录执行，导出报告。</p>
+        <h1>测试辅助工具</h1>
+        <p>使用此工具 助你测试起飞</p>
       </div>
 
       <nav class="nav">
@@ -89,6 +89,14 @@
                 <span>当前模型</span>
                 <strong id="apiModelState" class="state-chip subtle">gpt-5.4-mini</strong>
               </div>
+            </div>
+            <div class="form-row">
+              <label>
+                当前操作人
+                <select id="currentOperatorSelect">
+                  <option value="">请选择当前操作人</option>
+                </select>
+              </label>
             </div>
             <div class="inline-actions">
               <button id="checkApiKey" class="primary-button">检测并启用</button>
@@ -193,9 +201,10 @@
               </label>
             </div>
 
-            <label class="upload-box">
+            <label class="upload-box" id="documentUploadBox">
               <input type="file" id="documentInput" accept=".json,.yaml,.yml,.txt,.md,.markdown">
-              <span>拖入或选择需求 / API 文件</span>
+              <span id="uploadBoxPrimary" class="upload-box-primary">拖入或选择需求 / API 文件</span>
+              <span id="uploadBoxSecondary" class="upload-box-secondary">支持 txt / md / json / yaml</span>
             </label>
 
             <label id="sourceUrlWrap" class="hidden-field">
@@ -404,6 +413,8 @@
               <textarea class="case-execution-note" rows="2"></textarea>
             </label>
           </div>
+
+          <div class="trace-meta case-trace-meta"></div>
         </div>
       </div>
     </article>
@@ -459,6 +470,7 @@
             <button type="button" class="primary-button tiny-button save-bug">保存BUG</button>
             <button type="button" class="ghost-button tiny-button toggle-bug-detail">展开详情</button>
             <button type="button" class="ghost-button tiny-button mark-bug-regression hidden-field">标记待回归</button>
+            <button type="button" class="ghost-button tiny-button mark-bug-verified hidden-field">回归通过</button>
             <button class="ghost-button tiny-button delete-bug">删除</button>
           </div>
         </div>
@@ -513,6 +525,8 @@
             <span class="summary-label">备注</span>
             <textarea class="bug-note" rows="2"></textarea>
           </div>
+
+          <div class="trace-meta bug-trace-meta"></div>
         </div>
       </div>
     </article>

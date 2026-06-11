@@ -28,6 +28,9 @@ const els = {
   navLinks: [...document.querySelectorAll(".nav-link")],
   panels: [...document.querySelectorAll(".tab-panel")],
   documentInput: document.getElementById("documentInput"),
+  documentUploadBox: document.getElementById("documentUploadBox"),
+  uploadBoxPrimary: document.getElementById("uploadBoxPrimary"),
+  uploadBoxSecondary: document.getElementById("uploadBoxSecondary"),
   sourceType: document.getElementById("sourceType"),
   sourceUrl: document.getElementById("sourceUrl"),
   sourceUrlWrap: document.getElementById("sourceUrlWrap"),
@@ -62,6 +65,7 @@ const els = {
   sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
   toggleApiKey: document.getElementById("toggleApiKey"),
+  currentOperatorSelect: document.getElementById("currentOperatorSelect"),
   apiStatus: document.getElementById("apiStatus"),
   checkApiKey: document.getElementById("checkApiKey"),
   saveApiKey: document.getElementById("saveApiKey"),
@@ -110,6 +114,7 @@ const els = {
 const settings = {
   apiKey: state.settings?.apiKey || "",
   model: state.settings?.model || "gpt-5.4-mini",
+  currentOperator: state.settings?.currentOperator || "",
   apiReady: false
 };
 
@@ -120,6 +125,9 @@ let persistSharedTimer = 0;
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
+if (els.currentOperatorSelect) {
+  els.currentOperatorSelect.value = settings.currentOperator;
+}
 autoResizeTextarea();
 
 ensureSeedMetadata();
@@ -171,6 +179,7 @@ function bindEvents() {
   els.clearApiKey?.addEventListener("click", clearApiSettings);
   els.modelSelect?.addEventListener("change", saveApiSettings);
   els.apiKey?.addEventListener("input", handleApiDraftChange);
+  els.currentOperatorSelect?.addEventListener("change", handleCurrentOperatorChange);
   els.toggleApiKey?.addEventListener("click", toggleApiKeyVisibility);
   els.checkLark?.addEventListener("click", checkLarkStatus);
   els.syncLark?.addEventListener("click", syncLarkData);
@@ -307,6 +316,7 @@ function initOwnerUi() {
 
   els.batchOwnerSelect = document.getElementById("batchOwnerSelect");
   els.taskOwnerSelect = document.getElementById("taskOwnerSelect");
+  fillOwnerSelect(els.currentOperatorSelect, settings.currentOperator, "请选择当前操作人");
 }
 
 function switchTab(tabId) {
@@ -346,6 +356,7 @@ function handleGlobalActionClick(event) {
 function handleFileUpload(event) {
   const [file] = event.target.files;
   if (!file) {
+    renderUploadedFileState();
     return;
   }
 
@@ -353,6 +364,7 @@ function handleFileUpload(event) {
   reader.onload = () => {
     els.documentName.value = file.name.replace(/\.[^.]+$/, "");
     uploadedFileContent = String(reader.result || "");
+    renderUploadedFileState(file.name);
     setGenerationStatus(`已读取文件：${file.name}。`, "ok");
   };
   reader.readAsText(file, "utf-8");
@@ -372,6 +384,22 @@ function renderSourceMode() {
   els.sourceUrlWrap.classList.toggle("hidden-field", !isUrl);
   els.sourceTextWrap?.classList.toggle("hidden-field", !isText);
   els.focusHintWrap.classList.remove("hidden-field");
+  if (!isFile) {
+    renderUploadedFileState();
+  }
+}
+
+function renderUploadedFileState(fileName = "") {
+  if (!els.documentUploadBox || !els.uploadBoxPrimary || !els.uploadBoxSecondary) {
+    return;
+  }
+
+  const resolvedFileName = fileName || els.documentInput?.files?.[0]?.name || "";
+  const hasFile = Boolean(resolvedFileName);
+
+  els.documentUploadBox.classList.toggle("has-file", hasFile);
+  els.uploadBoxPrimary.textContent = hasFile ? resolvedFileName : "拖入或选择需求 / API 文件";
+  els.uploadBoxSecondary.textContent = hasFile ? "文件已导入，重新选择可覆盖当前文件" : "支持 txt / md / json / yaml";
 }
 
 async function checkApiStatus() {
@@ -413,7 +441,8 @@ function saveApiSettings() {
   state.settings = {
     ...state.settings,
     apiKey: settings.apiKey,
-    model: settings.model
+    model: settings.model,
+    currentOperator: settings.currentOperator
   };
   settings.apiReady = false;
   persist();
@@ -429,7 +458,8 @@ function clearApiSettings() {
   state.settings = {
     ...state.settings,
     apiKey: "",
-    model: els.modelSelect.value
+    model: els.modelSelect.value,
+    currentOperator: settings.currentOperator
   };
   persist();
   setApiStatus("需要填写 API Key", "warn");
@@ -442,6 +472,17 @@ function handleApiDraftChange() {
   settings.apiReady = false;
   setApiStatus(settings.apiKey ? "待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
   renderApiStateBoard();
+}
+
+function handleCurrentOperatorChange() {
+  settings.currentOperator = els.currentOperatorSelect?.value.trim() || "";
+  state.settings = {
+    ...state.settings,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    currentOperator: settings.currentOperator
+  };
+  persist();
 }
 
 function toggleApiKeyVisibility() {
@@ -495,7 +536,8 @@ async function checkAiKey(options = {}) {
     state.settings = {
       ...state.settings,
       apiKey,
-      model
+      model,
+      currentOperator: settings.currentOperator
     };
     persist();
     setApiStatus("个人 Key 可调用 AI", "ok");
@@ -529,6 +571,57 @@ function setApiFeedback(text, tone = "neutral") {
   }
   els.apiFeedback.textContent = text;
   els.apiFeedback.className = `inline-feedback ${tone}`;
+}
+
+function getCurrentOperator() {
+  return settings.currentOperator || "";
+}
+
+function nowIsoString() {
+  return new Date().toISOString();
+}
+
+function applyCreateAuditFields(item) {
+  const operator = getCurrentOperator();
+  const now = nowIsoString();
+  return {
+    ...item,
+    createdBy: item.createdBy || operator,
+    createdAt: item.createdAt || now,
+    updatedBy: operator,
+    updatedAt: now
+  };
+}
+
+function applyUpdateAuditFields(item) {
+  const operator = getCurrentOperator();
+  return {
+    ...item,
+    updatedBy: operator,
+    updatedAt: nowIsoString()
+  };
+}
+
+function formatAuditTime(value) {
+  if (!value) {
+    return "未记录";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString("zh-CN");
+}
+
+function renderTraceMetaHtml(item, creatorFallback = "未记录") {
+  const createdBy = item.createdBy || creatorFallback || "未记录";
+  const updatedBy = item.updatedBy || createdBy || "未记录";
+  return `
+    <div class="trace-meta-item"><span>创建人</span><strong>${escapeHtml(createdBy)}</strong></div>
+    <div class="trace-meta-item"><span>创建时间</span><strong>${escapeHtml(formatAuditTime(item.createdAt))}</strong></div>
+    <div class="trace-meta-item"><span>最后修改人</span><strong>${escapeHtml(updatedBy)}</strong></div>
+    <div class="trace-meta-item"><span>更新时间</span><strong>${escapeHtml(formatAuditTime(item.updatedAt))}</strong></div>
+  `;
 }
 
 function renderApiStateBoard() {
@@ -922,17 +1015,20 @@ function createBatch() {
     owners: splitOwnerValues(owner),
     status: getBatchById(editingBatchId)?.status || "进行中"
   };
+  const auditedBatch = editingBatchId
+    ? applyUpdateAuditFields({ ...getBatchById(editingBatchId), ...batch })
+    : applyCreateAuditFields(batch);
 
   const isEditing = Boolean(editingBatchId);
 
   if (isEditing) {
-    state.batches = state.batches.map((item) => (item.id === editingBatchId ? batch : item));
+    state.batches = state.batches.map((item) => (item.id === editingBatchId ? auditedBatch : item));
   } else {
-    state.batches.unshift(batch);
+    state.batches.unshift(auditedBatch);
   }
-  state.activeBatchId = batch.id;
-  state.generationBatchId = batch.id;
-  state.activeModuleId = batch.moduleId || state.activeModuleId;
+  state.activeBatchId = auditedBatch.id;
+  state.generationBatchId = auditedBatch.id;
+  state.activeModuleId = auditedBatch.moduleId || state.activeModuleId;
   els.batchVersionInput.value = "";
   fillOwnerSelect(els.batchOwnerSelect, "");
   editingBatchId = "";
@@ -940,9 +1036,9 @@ function createBatch() {
   autoResizeTextarea();
   persist();
   renderAll();
-  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}版本：${batch.version}。下一步请新增测试任务。`, "ok");
+  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}版本：${auditedBatch.version}。下一步请新增测试任务。`, "ok");
   switchTab("upload");
-  els.taskBatchSelect.value = batch.id;
+  els.taskBatchSelect.value = auditedBatch.id;
   els.taskNameInput.focus();
   els.taskNameInput.scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -981,20 +1077,23 @@ function createTask() {
     owners: splitOwnerValues(owner),
     status: getTaskById(editingTaskId)?.status || "进行中"
   };
+  const auditedTask = editingTaskId
+    ? applyUpdateAuditFields({ ...getTaskById(editingTaskId), ...task })
+    : applyCreateAuditFields(task);
 
   const isEditing = Boolean(editingTaskId);
   if (isEditing) {
-    state.tasks = state.tasks.map((item) => (item.id === editingTaskId ? task : item));
+    state.tasks = state.tasks.map((item) => (item.id === editingTaskId ? auditedTask : item));
   } else {
-    state.tasks.unshift(task);
+    state.tasks.unshift(auditedTask);
   }
 
-  state.activeTaskId = task.id;
-  state.generationBatchId = task.batchId;
-  state.activeBatchId = task.batchId;
-  state.activeModuleId = task.moduleId || state.activeModuleId;
+  state.activeTaskId = auditedTask.id;
+  state.generationBatchId = auditedTask.batchId;
+  state.activeBatchId = auditedTask.batchId;
+  state.activeModuleId = auditedTask.moduleId || state.activeModuleId;
 
-  els.taskBatchSelect.value = task.batchId;
+  els.taskBatchSelect.value = auditedTask.batchId;
   els.taskNameInput.value = "";
   els.taskScopeInput.value = "";
   fillOwnerSelect(els.taskOwnerSelect, "");
@@ -1003,7 +1102,7 @@ function createTask() {
   autoResizeTextarea();
   persist();
   renderAll();
-  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}任务：${task.name}。下一步请生成测试用例。`, "ok");
+  setGenerationStatus(`${isEditing ? "已更新" : "已保存"}任务：${auditedTask.name}。下一步请生成测试用例。`, "ok");
 }
 
 function autoResizeTextarea() {
@@ -1150,7 +1249,7 @@ function appendGeneratedCases(cases, meta) {
   const activeBatch = getBatchById(activeTask?.batchId || state.generationBatchId);
   const activeModule = getModuleById(activeTask?.moduleId || activeBatch?.moduleId || state.activeModuleId);
 
-  const generatedCases = cases.map((item, index) => ({
+  const generatedCases = cases.map((item, index) => applyCreateAuditFields({
     ...item,
     id: item.id || `case-${Date.now()}-${index}`,
     taskId: activeTask?.id || "",
@@ -1192,7 +1291,7 @@ function handleCaseImport(event) {
         return;
       }
 
-      state.cases = importedCases.map((item, index) => ({
+      state.cases = importedCases.map((item, index) => applyCreateAuditFields({
         ...item,
         id: `case-import-${Date.now()}-${index}`,
         taskId: item.taskId || state.activeTaskId || "",
@@ -1613,6 +1712,7 @@ function extractModuleName(text) {
 }
 
 function renderAll() {
+  fillOwnerSelect(els.currentOperatorSelect, settings.currentOperator, "请选择当前操作人");
   renderOnboarding();
   renderMetaControls();
   renderVersionManager();
@@ -1995,6 +2095,12 @@ function renderVersionManager() {
               <span class="summary-label">版本负责人</span>
               <p>${escapeHtml(ownerText)}</p>
             </div>
+            <div class="summary-block version-owner-panel">
+              <span class="summary-label">协作留痕</span>
+              <div class="trace-meta compact-trace-meta">
+                ${renderTraceMetaHtml(batch, ownerText)}
+              </div>
+            </div>
           </div>
           <div class="version-task-section">
             <div class="version-task-head">
@@ -2029,6 +2135,12 @@ function renderVersionManager() {
                       <div class="summary-block">
                         <span class="summary-label">负责人</span>
                         <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
+                      </div>
+                      <div class="summary-block">
+                        <span class="summary-label">协作留痕</span>
+                        <div class="trace-meta compact-trace-meta">
+                          ${renderTraceMetaHtml(task, getOwnerDisplay(task.owners || task.owner) || "未记录")}
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -2115,7 +2227,7 @@ function handleVersionAction(action, batchId) {
   if (action === "suspend" || action === "resume") {
     const nextStatus = action === "suspend" ? "已挂起" : "进行中";
     state.batches = state.batches.map((item) => (
-      item.id === batch.id ? { ...item, status: nextStatus } : item
+      item.id === batch.id ? applyUpdateAuditFields({ ...item, status: nextStatus }) : item
     ));
     if (action === "suspend" && state.activeBatchId === batch.id) {
       state.activeBatchId = "";
@@ -2135,7 +2247,7 @@ function handleVersionAction(action, batchId) {
   if (action === "complete") {
     const taskIdsToClear = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
     state.batches = state.batches.map((item) => (
-      item.id === batch.id ? { ...item, status: "已完成" } : item
+      item.id === batch.id ? applyUpdateAuditFields({ ...item, status: "已完成" }) : item
     ));
     state.cases = state.cases.filter((item) => item.batchId !== batch.id && !taskIdsToClear.includes(item.taskId));
     persist();
@@ -2440,7 +2552,11 @@ function normalizeBatchItem(item) {
     moduleName: moduleName || item.moduleName || item.name,
     moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || "",
     owner: owners.join("、"),
-    owners
+    owners,
+    createdBy: String(item.createdBy || "").trim(),
+    createdAt: item.createdAt || "",
+    updatedBy: String(item.updatedBy || "").trim(),
+    updatedAt: item.updatedAt || item.createdAt || ""
   };
 }
 
@@ -2457,7 +2573,11 @@ function normalizeTaskItem(item) {
     moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || linkedBatch?.moduleId || "",
     owner: owners.join("、"),
     owners,
-    status: item.status || "进行中"
+    status: item.status || "进行中",
+    createdBy: String(item.createdBy || "").trim(),
+    createdAt: item.createdAt || "",
+    updatedBy: String(item.updatedBy || "").trim(),
+    updatedAt: item.updatedAt || item.createdAt || ""
   };
 }
 
@@ -2468,7 +2588,11 @@ function normalizeCaseItem(item) {
     taskId: item.taskId || "",
     taskName: item.taskName || "",
     module: moduleName || item.module,
-    moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || ""
+    moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || "",
+    createdBy: String(item.createdBy || "").trim(),
+    createdAt: item.createdAt || "",
+    updatedBy: String(item.updatedBy || "").trim(),
+    updatedAt: item.updatedAt || item.createdAt || ""
   };
 }
 
@@ -2480,7 +2604,11 @@ function normalizeBugItem(item) {
     taskName: item.taskName || "",
     moduleName: moduleName || item.moduleName,
     moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || "",
-    owner: String(item.owner || "").trim()
+    owner: String(item.owner || "").trim(),
+    createdBy: String(item.createdBy || "").trim(),
+    createdAt: item.createdAt || "",
+    updatedBy: String(item.updatedBy || "").trim(),
+    updatedAt: item.updatedAt || item.createdAt || ""
   };
 }
 
@@ -2726,9 +2854,17 @@ function renderCases() {
     node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
+    const traceMeta = node.querySelector(".case-trace-meta");
+    if (traceMeta) {
+      traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
+    }
 
     executionSelect.addEventListener("change", (event) => {
       item.executionStatus = event.target.value;
+      Object.assign(item, applyUpdateAuditFields(item));
+      if (traceMeta) {
+        traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
+      }
       statusBadge.textContent = item.executionStatus;
       applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
       syncExecutionStatusBadge(executionBadge, item.executionStatus);
@@ -2740,6 +2876,10 @@ function renderCases() {
 
     executionNote.addEventListener("input", (event) => {
       item.executionNote = event.target.value.trim();
+      Object.assign(item, applyUpdateAuditFields(item));
+      if (traceMeta) {
+        traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
+      }
       persist();
     });
 
@@ -2784,6 +2924,7 @@ function createBugRecord(sourceCase) {
   const activeTask = getTaskById(state.activeTaskId);
   const activeModule = getModuleById(state.activeModuleId);
   const linkedBug = firstCase ? state.bugs.find((item) => item.caseId === firstCase.id && !["已修复", "已验证", "已关闭"].includes(item.status)) : null;
+  const duplicateBug = firstCase ? findPotentialDuplicateBug(firstCase) : null;
 
   if (linkedBug) {
     switchTab("bugs");
@@ -2791,7 +2932,12 @@ function createBugRecord(sourceCase) {
     return;
   }
 
-  state.bugs.unshift({
+  if (duplicateBug) {
+    switchTab("bugs");
+    setBugStatus(`疑似重复 BUG：${duplicateBug.title}。可先确认是否复用已有记录。`, "warn");
+  }
+
+  state.bugs.unshift(applyCreateAuditFields({
     id: `bug-${Date.now()}`,
     title: firstCase ? `${firstCase.title} - 缺陷记录` : "新BUG",
     caseId: firstCase ? firstCase.id : "",
@@ -2807,7 +2953,7 @@ function createBugRecord(sourceCase) {
     owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || splitOwnerValues(activeBatch?.owners || activeBatch?.owner)[0] || "",
     link: "",
     note: buildBugNoteFromCase(firstCase)
-  });
+  }));
 
   persist();
   renderAll();
@@ -2820,11 +2966,53 @@ function buildBugNoteFromCase(caseItem) {
     return "";
   }
   return [
+    caseItem.batchVersion ? `关联版本：${caseItem.batchVersion}` : "",
+    caseItem.taskName ? `关联任务：${caseItem.taskName}` : "",
+    caseItem.module ? `所属模块：${caseItem.module}` : "",
     `关联用例：${caseItem.title || "未命名用例"}`,
     `执行状态：${caseItem.executionStatus || "未执行"}`,
     caseItem.executionNote ? `执行备注：${caseItem.executionNote}` : "",
+    caseItem.preconditions ? `前置条件：${caseItem.preconditions}` : "",
+    caseItem.steps ? `测试步骤：${caseItem.steps}` : "",
     caseItem.expected ? `预期结果：${caseItem.expected}` : ""
   ].filter(Boolean).join("\n");
+}
+
+function findPotentialDuplicateBug(sourceCase, excludeBugId = "") {
+  if (!sourceCase) {
+    return null;
+  }
+
+  const normalizedTitle = normalizeBugCompareText(sourceCase.title);
+  const sourceCaseId = sourceCase.caseId || sourceCase.id || "";
+  return state.bugs.find((item) => {
+    if (excludeBugId && item.id === excludeBugId) {
+      return false;
+    }
+    if (["已验证", "已关闭"].includes(item.status)) {
+      return false;
+    }
+    if (sourceCaseId && item.caseId && item.caseId === sourceCaseId) {
+      return true;
+    }
+    const sameTask = !sourceCase.taskId || !item.taskId || sourceCase.taskId === item.taskId;
+    const sameBatch = !sourceCase.batchId || !item.batchId || sourceCase.batchId === item.batchId;
+    if (!sameTask && !sameBatch) {
+      return false;
+    }
+    if (!normalizedTitle) {
+      return false;
+    }
+    const itemTitle = normalizeBugCompareText(item.title);
+    if (!itemTitle) {
+      return false;
+    }
+    return itemTitle.includes(normalizedTitle) || normalizedTitle.includes(itemTitle);
+  }) || null;
+}
+
+function normalizeBugCompareText(value) {
+  return String(value || "").replace(/\s+/g, "").trim().toLowerCase();
 }
 
 function renderBugs() {
@@ -2860,8 +3048,14 @@ function renderBugs() {
     fillOwnerSelect(node.querySelector(".bug-owner"), bug.owner, "未选择");
     node.querySelector(".bug-link").value = bug.link;
     node.querySelector(".bug-note").value = bug.note;
+    const bugTraceMeta = node.querySelector(".bug-trace-meta");
+    if (bugTraceMeta) {
+      bugTraceMeta.innerHTML = renderTraceMetaHtml(bug, bug.owner || "未记录");
+    }
     const regressionButton = node.querySelector(".mark-bug-regression");
+    const verifyButton = node.querySelector(".mark-bug-verified");
     regressionButton.classList.toggle("hidden-field", bug.status !== "已修复");
+    verifyButton.classList.toggle("hidden-field", !["待回归", "已修复"].includes(bug.status));
 
     detailToggle.addEventListener("click", () => {
       const isHidden = detail.classList.contains("hidden-field");
@@ -2889,9 +3083,20 @@ function renderBugs() {
 
     regressionButton.addEventListener("click", () => {
       bug.status = "待回归";
+      Object.assign(bug, applyUpdateAuditFields(bug));
+      syncLinkedCaseByBug(bug, "pending-regression");
       persist();
       renderAll();
       setBugStatus("BUG 已标记为待回归。", "ok");
+    });
+
+    verifyButton.addEventListener("click", () => {
+      bug.status = "已验证";
+      Object.assign(bug, applyUpdateAuditFields(bug));
+      syncLinkedCaseByBug(bug, "verified");
+      persist();
+      renderAll();
+      setBugStatus("BUG 已标记为回归通过，关联用例已更新为通过。", "ok");
     });
 
     node.querySelector(".delete-bug").addEventListener("click", () => {
@@ -2961,6 +3166,8 @@ function updateBugFromNode(node, bugId) {
     return;
   }
 
+  const previousStatus = item.status;
+
   item.title = node.querySelector(".bug-title").value.trim() || "未命名BUG";
   item.caseId = node.querySelector(".bug-case").value;
   item.severity = node.querySelector(".bug-severity").value;
@@ -2985,14 +3192,78 @@ function updateBugFromNode(node, bugId) {
   if (!item.taskName && item.taskId) {
     item.taskName = getTaskNameById(item.taskId);
   }
+  Object.assign(item, applyUpdateAuditFields(item));
+
+  const duplicateBug = findPotentialDuplicateBug({
+    caseId: item.caseId,
+    taskId: item.taskId,
+    batchId: item.batchId,
+    title: item.title
+  }, item.id);
+
+  if (duplicateBug) {
+    setBugStatus(`已保存，但疑似与 BUG「${duplicateBug.title}」重复，请确认是否需要合并。`, "warn");
+  }
+
+  if (item.status !== previousStatus || item.caseId) {
+    syncLinkedCaseByBug(item, item.status === "已验证" ? "verified" : item.status === "待回归" ? "pending-regression" : "open");
+  }
 
   syncBugBadges(node, item.severity, item.status);
   syncBugSourceBadge(node, item);
   syncBugLinkedInfo(node, item);
+  const bugTraceMeta = node.querySelector(".bug-trace-meta");
+  if (bugTraceMeta) {
+    bugTraceMeta.innerHTML = renderTraceMetaHtml(item, item.owner || "未记录");
+  }
   node.querySelector(".mark-bug-regression").classList.toggle("hidden-field", item.status !== "已修复");
+  node.querySelector(".mark-bug-verified").classList.toggle("hidden-field", !["待回归", "已修复"].includes(item.status));
   persist();
   renderQuickStats();
   renderReport();
+}
+
+function syncLinkedCaseByBug(bug, mode) {
+  if (!bug?.caseId) {
+    return;
+  }
+
+  const linkedCase = state.cases.find((item) => item.id === bug.caseId);
+  if (!linkedCase) {
+    return;
+  }
+
+  if (mode === "verified") {
+    linkedCase.executionStatus = "通过";
+    linkedCase.executionNote = appendExecutionNote(linkedCase.executionNote, `关联BUG已回归通过：${bug.title || "未命名BUG"}`);
+    return;
+  }
+
+  linkedCase.executionStatus = "失败";
+
+  if (mode === "pending-regression") {
+    linkedCase.executionNote = appendExecutionNote(linkedCase.executionNote, `关联BUG待回归：${bug.title || "未命名BUG"}`);
+    return;
+  }
+
+  if (["新建", "已提交", "已修复"].includes(bug.status)) {
+    linkedCase.executionNote = appendExecutionNote(linkedCase.executionNote, `关联BUG跟进中：${bug.title || "未命名BUG"}（${bug.status}）`);
+  }
+}
+
+function appendExecutionNote(original, extra) {
+  const base = String(original || "").trim();
+  const next = String(extra || "").trim();
+  if (!next) {
+    return base;
+  }
+  if (!base) {
+    return next;
+  }
+  if (base.includes(next)) {
+    return base;
+  }
+  return `${base}\n${next}`;
 }
 
 function syncExecutionStatusBadge(node, status) {
@@ -3981,7 +4252,8 @@ function loadState() {
 function normalizeLoadedState(loadedState) {
   loadedState.settings = {
     apiKey: loadedState.settings?.apiKey || "",
-    model: loadedState.settings?.model || "gpt-5.4-mini"
+    model: loadedState.settings?.model || "gpt-5.4-mini",
+    currentOperator: loadedState.settings?.currentOperator || ""
   };
   return loadedState;
 }
@@ -4007,7 +4279,8 @@ function defaultState() {
     lastGeneration: null,
     settings: {
       apiKey: "",
-      model: "gpt-5.4-mini"
+      model: "gpt-5.4-mini",
+      currentOperator: ""
     },
     uiMode: "guide"
   };
@@ -4018,7 +4291,8 @@ function persist() {
   if (localState.settings) {
     localState.settings = {
       apiKey: localState.settings.apiKey || "",
-      model: localState.settings.model || "gpt-5.4-mini"
+      model: localState.settings.model || "gpt-5.4-mini",
+      currentOperator: localState.settings.currentOperator || ""
     };
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(localState));
