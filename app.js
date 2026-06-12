@@ -20,7 +20,7 @@ const BUSINESS_ALIAS_MAP = {
   "本地收单业务": "本地收单业务"
 };
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
-const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode"];
+const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport"];
 
 const state = loadState();
 
@@ -44,6 +44,9 @@ const els = {
   generateCasesLocal: document.getElementById("generateCasesLocal"),
   saveDocument: document.getElementById("saveDocument"),
   generationStatus: document.getElementById("generationStatus"),
+  caseQualityBadge: document.getElementById("caseQualityBadge"),
+  caseQualitySummary: document.getElementById("caseQualitySummary"),
+  caseQualityIssues: document.getElementById("caseQualityIssues"),
   onboardingSteps: document.getElementById("onboardingSteps"),
   activeBatchSelect: document.getElementById("activeBatchSelect"),
   activeModuleSelect: document.getElementById("activeModuleSelect"),
@@ -101,6 +104,9 @@ const els = {
   reportVersionCards: document.getElementById("reportVersionCards"),
   reportDetailHeader: document.getElementById("reportDetailHeader"),
   exportReport: document.getElementById("exportReport"),
+  runSelfTest: document.getElementById("runSelfTest"),
+  selfTestStatus: document.getElementById("selfTestStatus"),
+  selfTestFeedback: document.getElementById("selfTestFeedback"),
   checkLark: document.getElementById("checkLark"),
   syncLark: document.getElementById("syncLark"),
   larkStatus: document.getElementById("larkStatus"),
@@ -122,6 +128,12 @@ let uploadedFileContent = "";
 let editingBatchId = "";
 let editingTaskId = "";
 let persistSharedTimer = 0;
+const buttonSuccessTimers = new WeakMap();
+const selfTestState = {
+  running: false,
+  result: state.selfTestSnapshot?.result || null,
+  error: state.selfTestSnapshot?.error || ""
+};
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
@@ -140,9 +152,11 @@ bindEvents();
 renderAll();
 loadTeamMembersConfig();
 loadSharedState();
+loadSelfTestStatus();
 checkApiStatus();
 renderApiStateBoard();
 renderSourceMode();
+renderSelfTestPanel();
 
 function bindEvents() {
   els.navLinks.forEach((link) => {
@@ -174,6 +188,7 @@ function bindEvents() {
   els.bugTaskFilter.addEventListener("change", renderBugs);
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
+  els.runSelfTest?.addEventListener("click", runSelfTest);
   els.checkApiKey?.addEventListener("click", () => checkAiKey());
   els.saveApiKey?.addEventListener("click", saveApiSettings);
   els.clearApiKey?.addEventListener("click", clearApiSettings);
@@ -435,7 +450,9 @@ async function checkApiStatus() {
   }
 }
 
-function saveApiSettings() {
+async function saveApiSettings() {
+  const previousApiKey = state.settings?.apiKey || "";
+  const previousModel = state.settings?.model || "gpt-5.4-mini";
   settings.apiKey = els.apiKey.value.trim();
   settings.model = els.modelSelect.value;
   state.settings = {
@@ -444,11 +461,25 @@ function saveApiSettings() {
     model: settings.model,
     currentOperator: settings.currentOperator
   };
-  settings.apiReady = false;
+  const configChanged = settings.apiKey !== previousApiKey || settings.model !== previousModel;
+  if (configChanged) {
+    settings.apiReady = false;
+  }
   persist();
-  setApiStatus(settings.apiKey ? "已保存，待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
-  setApiFeedback(settings.apiKey ? "个人 Key 已保存在当前浏览器，点“检测并启用”后即可使用。" : "已清空个人 Key。", settings.apiKey ? "ok" : "warn");
+  setApiStatus(settings.apiKey ? "已保存，正在检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
+  setApiFeedback(settings.apiKey ? "个人 Key 已保存，正在自动检测并启用。" : "已清空个人 Key。", settings.apiKey ? "neutral" : "warn");
   renderApiStateBoard();
+  flashButtonSuccess(els.saveApiKey, "保存成功");
+
+  if (!settings.apiKey) {
+    return;
+  }
+
+  await checkAiKey({
+    showFeedback: false,
+    successMessage: "个人 Key 已保存并启用，接下来可以直接生成用例。",
+    errorMessage: "个人 Key 已保存，但自动启用失败了，请检查 Key、模型或网络。"
+  });
 }
 
 function clearApiSettings() {
@@ -495,7 +526,7 @@ function toggleApiKeyVisibility() {
 }
 
 async function checkAiKey(options = {}) {
-  const { showFeedback = true } = options;
+  const { showFeedback = true, successMessage = "", pendingMessage = "", errorMessage = "" } = options;
   const apiKey = els.apiKey.value.trim();
   const model = settings.model || "gpt-5.4-mini";
   const checkButton = els.checkApiKey;
@@ -515,7 +546,7 @@ async function checkAiKey(options = {}) {
   }
   setApiStatus("正在检测 Key", "neutral");
   if (showFeedback) {
-    setApiFeedback("正在调用 AI 服务检测当前个人 Key...", "warn");
+    setApiFeedback(pendingMessage || "正在调用 AI 服务检测当前个人 Key...", "warn");
   }
 
   try {
@@ -541,15 +572,13 @@ async function checkAiKey(options = {}) {
     };
     persist();
     setApiStatus("个人 Key 可调用 AI", "ok");
-    if (showFeedback) {
-      setApiFeedback(`检测通过：你的个人 Key 可以调用 ${data.model || model}，后续生成用例将直接使用它。`, "ok");
-    }
+    setApiFeedback(successMessage || `检测通过：你的个人 Key 可以调用 ${data.model || model}，后续生成用例将直接使用它。`, "ok");
     renderApiStateBoard();
   } catch (error) {
     settings.apiReady = false;
     setApiStatus("Key 检测失败", "error");
-    if (showFeedback) {
-      setApiFeedback(error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
+    if (showFeedback || errorMessage) {
+      setApiFeedback(errorMessage || error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
     }
     renderApiStateBoard();
   } finally {
@@ -558,6 +587,32 @@ async function checkAiKey(options = {}) {
       checkButton.textContent = originalButtonText;
     }
   }
+}
+
+async function ensureAiReadyForGeneration() {
+  if (!settings.apiKey) {
+    setApiStatus("需要填写 API Key", "warn");
+    setApiFeedback("请先填写并保存你的个人 API Key。", "warn");
+    renderApiStateBoard();
+    return false;
+  }
+
+  if (settings.apiReady) {
+    return true;
+  }
+
+  await checkAiKey({
+    showFeedback: false,
+    successMessage: "已自动启用个人 Key，本次会直接继续生成用例。",
+    errorMessage: "自动启用个人 Key 失败，请检查 Key、模型或网络。"
+  });
+
+  if (settings.apiReady) {
+    return true;
+  }
+
+  setGenerationStatus("你的 API Key 还没有启用成功，请检查 Key、模型或网络后重试。", "error");
+  return false;
 }
 
 function setApiStatus(text, tone) {
@@ -613,6 +668,41 @@ function formatAuditTime(value) {
   return date.toLocaleString("zh-CN");
 }
 
+function formatDuration(value) {
+  const duration = Number(value || 0);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return "0 ms";
+  }
+  if (duration < 1000) {
+    return `${Math.round(duration)} ms`;
+  }
+  return `${(duration / 1000).toFixed(2)} s`;
+}
+
+function flashButtonSuccess(button, successText = "保存成功") {
+  if (!button) {
+    return;
+  }
+
+  const originalText = button.dataset.defaultLabel || button.textContent || "";
+  button.dataset.defaultLabel = originalText;
+  button.textContent = `✓ ${successText}`;
+  button.classList.add("button-success-flash");
+
+  const existingTimer = buttonSuccessTimers.get(button);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(() => {
+    button.textContent = button.dataset.defaultLabel || originalText;
+    button.classList.remove("button-success-flash");
+    buttonSuccessTimers.delete(button);
+  }, 1500);
+
+  buttonSuccessTimers.set(button, timer);
+}
+
 function renderTraceMetaHtml(item, creatorFallback = "未记录") {
   const createdBy = item.createdBy || creatorFallback || "未记录";
   const updatedBy = item.updatedBy || createdBy || "未记录";
@@ -665,6 +755,129 @@ function setLarkFeedback(text, tone = "neutral") {
   }
   els.larkFeedback.textContent = text;
   els.larkFeedback.className = `inline-feedback ${tone}`;
+}
+
+function setSelfTestStatus(text, tone) {
+  if (!els.selfTestStatus) {
+    return;
+  }
+  els.selfTestStatus.textContent = text;
+  els.selfTestStatus.className = `status-pill ${tone}`;
+}
+
+function setSelfTestFeedback(text, tone = "neutral") {
+  if (!els.selfTestFeedback) {
+    return;
+  }
+  els.selfTestFeedback.textContent = text;
+  els.selfTestFeedback.className = `inline-feedback ${tone}`;
+}
+
+async function runSelfTest() {
+  if (!els.runSelfTest || selfTestState.running) {
+    return;
+  }
+
+  selfTestState.running = true;
+  selfTestState.error = "";
+  setSelfTestStatus("正在运行", "neutral");
+  setSelfTestFeedback("正在启动系统自检，这会执行当前项目里的 smoke tests。", "warn");
+  els.runSelfTest.disabled = true;
+  els.runSelfTest.textContent = "自检中...";
+  renderSelfTestPanel();
+
+  try {
+    const response = await fetch("/api/self-test", {
+      method: "POST"
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "系统自检执行失败。");
+    }
+
+    selfTestState.result = data;
+    if (data.ok) {
+      setSelfTestStatus("自检通过", "ok");
+      setSelfTestFeedback(`本轮自检已通过，共执行 ${data.summary?.tests || 0} 项。`, "ok");
+    } else {
+      setSelfTestStatus("发现问题", "error");
+      setSelfTestFeedback(`本轮自检有 ${data.summary?.fail || 0} 项失败，请查看下方结果。`, "error");
+    }
+    persistSelfTestSnapshot();
+  } catch (error) {
+    selfTestState.result = null;
+    selfTestState.error = error.message || "系统自检执行失败。";
+    setSelfTestStatus("运行失败", "error");
+    setSelfTestFeedback(selfTestState.error, "error");
+    persistSelfTestSnapshot();
+  } finally {
+    selfTestState.running = false;
+    els.runSelfTest.disabled = false;
+    els.runSelfTest.textContent = "运行自检";
+    renderSelfTestPanel();
+  }
+}
+
+async function loadSelfTestStatus() {
+  try {
+    const response = await fetch("/api/self-test-status");
+    if (!response.ok) {
+      throw new Error("load self test status failed");
+    }
+    const data = await response.json();
+    selfTestState.running = Boolean(data.running);
+    selfTestState.result = data.result && typeof data.result === "object" ? data.result : null;
+    selfTestState.error = typeof data.error === "string" ? data.error : "";
+    persistSelfTestSnapshot();
+    renderSelfTestPanel();
+  } catch (_error) {
+    renderSelfTestPanel();
+  }
+}
+
+function renderSelfTestPanel() {
+  if (!els.selfTestFeedback) {
+    return;
+  }
+
+  syncSelfTestHeader();
+}
+
+function syncSelfTestHeader() {
+  if (selfTestState.running) {
+    setSelfTestStatus("正在运行", "neutral");
+    setSelfTestFeedback("系统正在后台执行自检，请稍后查看最新状态。", "warn");
+    return;
+  }
+
+  if (selfTestState.error && !selfTestState.result) {
+    setSelfTestStatus("运行失败", "error");
+    setSelfTestFeedback(selfTestState.error, "error");
+    return;
+  }
+
+  if (!selfTestState.result) {
+    setSelfTestStatus("尚未运行", "neutral");
+    setSelfTestFeedback("系统会在后台每 3 个小时自动执行一次自检。", "neutral");
+    return;
+  }
+
+  if (selfTestState.result.ok) {
+    setSelfTestStatus("自检通过", "ok");
+    setSelfTestFeedback(`最近一次自检已通过，执行时间：${formatAuditTime(selfTestState.result.finishedAt)}。`, "ok");
+    return;
+  }
+
+  setSelfTestStatus("发现问题", "error");
+  setSelfTestFeedback("最近一次自检发现异常，建议联系管理员或在终端执行 npm test 排查。", "error");
+}
+
+function persistSelfTestSnapshot() {
+  state.selfTestSnapshot = {
+    result: selfTestState.result ? structuredCloneSafe(selfTestState.result) : null,
+    error: selfTestState.error || ""
+  };
+  persist();
 }
 
 async function checkLarkStatus() {
@@ -863,6 +1076,7 @@ function saveCurrentDocument() {
   persist();
   renderQuickStats();
   setGenerationStatus("文档已保存。", "ok");
+  flashButtonSuccess(els.saveDocument, "保存成功");
 }
 
 function ensureSeedMetadata() {
@@ -1037,6 +1251,7 @@ function createBatch() {
   persist();
   renderAll();
   setGenerationStatus(`${isEditing ? "已更新" : "已保存"}版本：${auditedBatch.version}。下一步请新增测试任务。`, "ok");
+  flashButtonSuccess(els.createBatchBtn, "保存成功");
   switchTab("upload");
   els.taskBatchSelect.value = auditedBatch.id;
   els.taskNameInput.focus();
@@ -1103,6 +1318,7 @@ function createTask() {
   persist();
   renderAll();
   setGenerationStatus(`${isEditing ? "已更新" : "已保存"}任务：${auditedTask.name}。下一步请生成测试用例。`, "ok");
+  flashButtonSuccess(els.createTaskBtn, "保存成功");
 }
 
 function autoResizeTextarea() {
@@ -1139,8 +1355,8 @@ async function handleGenerateCases(mode) {
   }
 
   if (mode === "ai") {
-    if (!settings.apiReady) {
-      setGenerationStatus("本地服务还没有启动成功，请先启动服务或先用规则生成。", "error");
+    const ready = await ensureAiReadyForGeneration();
+    if (!ready) {
       return;
     }
 
@@ -1164,7 +1380,7 @@ async function handleGenerateCases(mode) {
         documentType: type
       });
       downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
-      setGenerationStatus(`AI 已生成 ${generated.length} 条用例，并已导出 CSV。`, "ok");
+      setGenerationStatus(buildCaseQualityStatusMessage(`AI 已生成 ${generated.length} 条用例，并已导出 CSV。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
       return;
     } catch (error) {
       setGenerationStatus(`AI 生成失败：${error.message}`, "error");
@@ -1194,7 +1410,7 @@ async function handleGenerateCases(mode) {
     documentType: type
   });
   downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
-  setGenerationStatus(`规则生成完成，共 ${generated.length} 条用例，并已导出 CSV。`, "ok");
+  setGenerationStatus(buildCaseQualityStatusMessage(`规则生成完成，共 ${generated.length} 条用例，并已导出 CSV。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
 }
 
 function toggleGenerateButtons(loading) {
@@ -1244,6 +1460,39 @@ function normalizeMultiline(value) {
   return String(value || "").trim();
 }
 
+function mergeCasesIntoState(existingCases, nextCases, scope = {}) {
+  const currentCases = Array.isArray(existingCases) ? existingCases : [];
+  const incomingCases = Array.isArray(nextCases) ? nextCases : [];
+  const taskIds = new Set(
+    [...incomingCases.map((item) => item.taskId), scope.taskId]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  );
+  const batchIds = new Set(
+    [...incomingCases.map((item) => item.batchId), scope.batchId]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  );
+
+  if (!taskIds.size && !batchIds.size) {
+    return [...currentCases, ...incomingCases];
+  }
+
+  const preservedCases = currentCases.filter((item) => {
+    const taskId = String(item.taskId || "").trim();
+    const batchId = String(item.batchId || "").trim();
+    if (taskId && taskIds.has(taskId)) {
+      return false;
+    }
+    if (!taskId && batchId && !taskIds.size && batchIds.has(batchId)) {
+      return false;
+    }
+    return true;
+  });
+
+  return [...preservedCases, ...incomingCases];
+}
+
 function appendGeneratedCases(cases, meta) {
   const activeTask = getTaskById(state.activeTaskId);
   const activeBatch = getBatchById(activeTask?.batchId || state.generationBatchId);
@@ -1261,7 +1510,10 @@ function appendGeneratedCases(cases, meta) {
     module: activeModule?.name || item.module || "未分类"
   }));
 
-  state.cases = generatedCases;
+  state.cases = mergeCasesIntoState(state.cases, generatedCases, {
+    taskId: activeTask?.id || "",
+    batchId: activeBatch?.id || ""
+  });
 
   state.lastGeneration = {
     name: meta.documentName,
@@ -1270,6 +1522,7 @@ function appendGeneratedCases(cases, meta) {
     mode: meta.mode,
     createdAt: new Date().toLocaleString("zh-CN")
   };
+  state.caseQualityReport = analyzeCaseQuality(generatedCases, meta.mode);
 
   persist();
   renderAll();
@@ -1291,7 +1544,7 @@ function handleCaseImport(event) {
         return;
       }
 
-      state.cases = importedCases.map((item, index) => applyCreateAuditFields({
+      const normalizedImportedCases = importedCases.map((item, index) => applyCreateAuditFields({
         ...item,
         id: `case-import-${Date.now()}-${index}`,
         taskId: item.taskId || state.activeTaskId || "",
@@ -1304,11 +1557,16 @@ function handleCaseImport(event) {
         executionStatus: item.executionStatus || "未执行",
         executionNote: item.executionNote || ""
       }));
+      state.cases = mergeCasesIntoState(state.cases, normalizedImportedCases, {
+        taskId: state.activeTaskId || "",
+        batchId: state.activeBatchId || ""
+      });
+      state.caseQualityReport = analyzeCaseQuality(normalizedImportedCases, "导入");
 
       persist();
       renderAll();
       switchTab("cases");
-      setGenerationStatus(`已导入 ${importedCases.length} 条用例。`, "ok");
+      setGenerationStatus(buildCaseQualityStatusMessage(`已导入 ${importedCases.length} 条用例。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
     } catch (error) {
       setGenerationStatus(`CSV 导入失败：${error.message}`, "error");
     } finally {
@@ -1352,6 +1610,195 @@ function parseCasesCsv(csvText) {
       executionStatus: normalizeExecutionStatus(getValue(row, ["执行状态", "执行结果", "状态"])),
       executionNote: getValue(row, ["执行备注"])
     }));
+}
+
+function analyzeCaseQuality(cases, sourceLabel) {
+  const list = Array.isArray(cases) ? cases : [];
+  if (!list.length) {
+    return null;
+  }
+
+  const missingTitle = list.filter((item) => !String(item.title || "").trim() || /^未命名/.test(String(item.title || "").trim())).length;
+  const missingSteps = list.filter((item) => !String(item.steps || "").trim()).length;
+  const missingExpected = list.filter((item) => {
+    const text = String(item.expected || "").trim();
+    return !text || text === "待补充";
+  }).length;
+  const uncategorized = list.filter((item) => !String(item.module || "").trim() || String(item.module || "").trim() === "未分类").length;
+  const abnormalCount = list.filter((item) => String(item.type || "").trim() === "异常").length;
+  const boundaryCount = list.filter((item) => /边界|上限|下限|最大|最小|长度|为空|缺失/.test(`${item.title || ""}\n${item.steps || ""}\n${item.expected || ""}`)).length;
+  const permissionCount = list.filter((item) => /权限|鉴权|未登录|token|登录失效|越权|角色/.test(`${item.title || ""}\n${item.steps || ""}\n${item.expected || ""}`)).length;
+  const requiredParamCount = list.filter((item) => /必填|缺少参数|参数校验|required|空值/.test(`${item.title || ""}\n${item.steps || ""}\n${item.expected || ""}`)).length;
+
+  const titleMap = new Map();
+  const stepMap = new Map();
+  list.forEach((item) => {
+    const key = String(item.title || "").trim().toLowerCase();
+    if (!key) {
+      // continue
+    } else {
+      titleMap.set(key, (titleMap.get(key) || 0) + 1);
+    }
+
+    const stepKey = normalizeCaseFingerprint(item.steps, item.expected);
+    if (stepKey) {
+      stepMap.set(stepKey, (stepMap.get(stepKey) || 0) + 1);
+    }
+  });
+  const duplicateTitles = [...titleMap.values()].filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0);
+  const duplicateFlows = [...stepMap.values()].filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0);
+
+  const issues = [];
+  if (missingSteps > 0) {
+    issues.push({
+      level: "有风险",
+      tone: "tone-red",
+      title: "存在缺少测试步骤的用例",
+      detail: `${missingSteps} 条用例没有完整步骤，执行时很容易落空或理解不一致。`
+    });
+  }
+  if (missingExpected > 0) {
+    issues.push({
+      level: "有风险",
+      tone: "tone-red",
+      title: "存在缺少预期结果的用例",
+      detail: `${missingExpected} 条用例没有明确预期结果，后续执行和判定会比较模糊。`
+    });
+  }
+  if (duplicateTitles > 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "发现重复标题",
+      detail: `当前有 ${duplicateTitles} 条用例标题重复，建议合并或改成更具体的场景名。`
+    });
+  }
+  if (duplicateFlows > 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "存在步骤高度重复的用例",
+      detail: `识别到 ${duplicateFlows} 条用例的步骤和预期几乎一致，可能只是换了标题，建议合并或改成更明确的差异场景。`
+    });
+  }
+  if (abnormalCount === 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "异常场景覆盖偏少",
+      detail: "这批用例里还没有标记为异常的场景，建议补一点参数校验、权限、边界和错误处理。"
+    });
+  }
+  if (permissionCount === 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "权限 / 鉴权场景不明显",
+      detail: "没有识别到登录失效、越权访问、角色限制或 token 异常等场景，建议补 1 到 2 条。"
+    });
+  }
+  if (requiredParamCount === 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "必填参数异常覆盖不足",
+      detail: "没有识别到缺少必填参数、空值或参数校验失败场景，建议补一些接口和表单异常校验。"
+    });
+  }
+  if (boundaryCount === 0) {
+    issues.push({
+      level: "需关注",
+      tone: "tone-orange",
+      title: "边界值场景不明显",
+      detail: "没有识别到明显的边界值描述，可以补一些上限、下限、空值和长度限制场景。"
+    });
+  }
+  if (uncategorized > 0) {
+    issues.push({
+      level: "提示",
+      tone: "tone-gray",
+      title: "部分用例还没归类模块",
+      detail: `${uncategorized} 条用例仍是“未分类”，后面查找和汇总时会不太顺手。`
+    });
+  }
+  if (missingTitle > 0) {
+    issues.push({
+      level: "提示",
+      tone: "tone-gray",
+      title: "存在默认标题",
+      detail: `${missingTitle} 条用例还在使用默认命名，建议改成更具体的业务动作或校验点。`
+    });
+  }
+
+  const severeCount = [missingSteps, missingExpected].filter((count) => count > 0).length;
+  const warningCount = [duplicateTitles > 0, duplicateFlows > 0, abnormalCount === 0].filter(Boolean).length;
+
+  return {
+    label: severeCount > 0 ? "有风险" : warningCount > 0 ? "需关注" : "通过",
+    tone: severeCount > 0 ? "error" : warningCount > 0 ? "warn" : "ok",
+    sourceLabel,
+    quickTip: buildCaseQualityQuickTip({
+      missingSteps,
+      missingExpected,
+      duplicateTitles,
+      duplicateFlows,
+      abnormalCount,
+      permissionCount,
+      requiredParamCount
+    }),
+    metrics: [
+      ["用例总数", list.length],
+      ["异常场景", abnormalCount],
+      ["权限/鉴权", permissionCount],
+      ["参数异常", requiredParamCount],
+      ["重复项", duplicateTitles + duplicateFlows],
+      ["缺步骤/预期", missingSteps + missingExpected]
+    ],
+    issues
+  };
+}
+
+function buildCaseQualityQuickTip(stats) {
+  if (stats.missingSteps > 0 || stats.missingExpected > 0) {
+    return "先补齐缺少步骤和预期结果的用例，这会直接影响后续执行和判定。";
+  }
+  if (stats.duplicateTitles > 0 || stats.duplicateFlows > 0) {
+    return "建议先清理重复或高度相似的用例，避免后面执行时重复劳动。";
+  }
+  if (stats.abnormalCount === 0) {
+    return "建议至少补 1 到 2 条异常场景，比如缺参、错误输入或接口失败提示。";
+  }
+  if (stats.permissionCount === 0) {
+    return "建议补一条权限或鉴权场景，比如未登录、token 失效或越权访问。";
+  }
+  if (stats.requiredParamCount === 0) {
+    return "建议补一条必填参数异常场景，检查缺参、空值和参数校验提示。";
+  }
+  return "这批用例的基础质量已经不错，可以进入执行阶段，边测边补细节。";
+}
+
+function buildCaseQualityStatusMessage(prefix) {
+  const label = state.caseQualityReport?.label;
+  return label ? `${prefix} 质量检查：${label}。` : prefix;
+}
+
+function mapCaseQualityToneToFeedbackTone(tone) {
+  if (tone === "error") return "warn";
+  if (tone === "warn") return "warn";
+  if (tone === "ok") return "ok";
+  return "neutral";
+}
+
+function normalizeCaseFingerprint(steps, expected) {
+  const raw = `${steps || ""}\n${expected || ""}`.toLowerCase().trim();
+  if (!raw) {
+    return "";
+  }
+  return raw
+    .replace(/\s+/g, " ")
+    .replace(/[0-9]+/g, "#")
+    .replace(/[：:，,。.()（）[\]{}]/g, "")
+    .trim();
 }
 
 function parseCsvRows(text) {
@@ -1718,10 +2165,62 @@ function renderAll() {
   renderVersionManager();
   renderTaskManager();
   renderQuickStats();
+  renderCaseQuality();
   renderCaseFilters();
   renderCases();
   renderBugs();
   renderReport();
+}
+
+function renderCaseQuality() {
+  if (!els.caseQualityBadge || !els.caseQualitySummary || !els.caseQualityIssues) {
+    return;
+  }
+
+  const report = state.caseQualityReport;
+  if (!report) {
+    els.caseQualityBadge.textContent = "未检查";
+    els.caseQualityBadge.className = "status-pill neutral";
+    els.caseQualitySummary.innerHTML = `
+      <div class="empty-state empty-state-rich compact-empty-state">
+        <strong>还没有可分析的用例</strong>
+        <p>生成或导入一批测试用例后，这里会自动给出基础质量检查结果。</p>
+      </div>
+    `;
+    els.caseQualityIssues.innerHTML = "";
+    return;
+  }
+
+  els.caseQualityBadge.textContent = report.label;
+  els.caseQualityBadge.className = `status-pill ${report.tone}`;
+  els.caseQualitySummary.innerHTML = `
+    <div class="quality-callout ${report.tone}">
+      <strong>快速建议</strong>
+      <p>${escapeHtml(report.quickTip)}</p>
+    </div>
+    <div class="report-simple-grid quality-summary-grid">
+      ${report.metrics.map(([label, value]) => `
+        <article class="report-simple-item">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value))}</strong>
+        </article>
+      `).join("")}
+    </div>
+  `;
+  els.caseQualityIssues.innerHTML = report.issues.length
+    ? report.issues.map((item) => `
+      <article class="highlight-card">
+        <span class="badge ${item.tone}">${escapeHtml(item.level)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </article>
+    `).join("")
+    : `
+      <div class="empty-state empty-state-rich compact-empty-state">
+        <strong>这批用例的基础质量看起来不错</strong>
+        <p>标题、步骤、预期结果和基础覆盖项都没有发现明显问题。</p>
+      </div>
+    `;
 }
 
 function renderOnboarding() {
@@ -3079,6 +3578,7 @@ function renderBugs() {
       detail.classList.add("hidden-field");
       detailToggle.textContent = "展开详情";
       setBugStatus("BUG 已保存。", "ok");
+      flashButtonSuccess(saveButton, "保存成功");
     });
 
     regressionButton.addEventListener("click", () => {
@@ -4255,6 +4755,8 @@ function normalizeLoadedState(loadedState) {
     model: loadedState.settings?.model || "gpt-5.4-mini",
     currentOperator: loadedState.settings?.currentOperator || ""
   };
+  loadedState.selfTestSnapshot = normalizeSelfTestSnapshot(loadedState.selfTestSnapshot);
+  loadedState.caseQualityReport = normalizeCaseQualityReport(loadedState.caseQualityReport);
   return loadedState;
 }
 
@@ -4282,7 +4784,40 @@ function defaultState() {
       model: "gpt-5.4-mini",
       currentOperator: ""
     },
-    uiMode: "guide"
+    uiMode: "guide",
+    selfTestSnapshot: {
+      result: null,
+      error: ""
+    },
+    caseQualityReport: null
+  };
+}
+
+function normalizeSelfTestSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return {
+      result: null,
+      error: ""
+    };
+  }
+
+  return {
+    result: snapshot.result && typeof snapshot.result === "object" ? snapshot.result : null,
+    error: typeof snapshot.error === "string" ? snapshot.error : ""
+  };
+}
+
+function normalizeCaseQualityReport(report) {
+  if (!report || typeof report !== "object") {
+    return null;
+  }
+
+  return {
+    label: typeof report.label === "string" ? report.label : "未检查",
+    tone: typeof report.tone === "string" ? report.tone : "neutral",
+    sourceLabel: typeof report.sourceLabel === "string" ? report.sourceLabel : "",
+    metrics: Array.isArray(report.metrics) ? report.metrics : [],
+    issues: Array.isArray(report.issues) ? report.issues : []
   };
 }
 

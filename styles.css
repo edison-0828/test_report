@@ -102,6 +102,15 @@ button:hover:not(:disabled) {
   box-shadow: 0 14px 28px rgba(36, 87, 214, 0.28);
 }
 
+.button-success-flash,
+.button-success-flash:hover:not(:disabled) {
+  background: linear-gradient(180deg, #27a163 0%, #1e7f4f 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(30, 127, 79, 0.24);
+  transform: none;
+}
+
 .tiny-button {
   padding: 8px 13px;
   font-size: 13px;
@@ -418,6 +427,25 @@ button:hover:not(:disabled) {
 .onboarding-panel {
   padding-bottom: 18px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.onboarding-self-test {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.onboarding-self-test .badge {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.onboarding-self-test-result {
+  display: grid;
+  gap: 12px;
 }
 
 .section-head {
@@ -2354,6 +2382,52 @@ textarea:focus {
   gap: 10px;
 }
 
+.quality-panel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e8edf5;
+  display: grid;
+  gap: 14px;
+}
+
+.quality-panel-head {
+  margin-bottom: 0;
+}
+
+.quality-callout {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f2;
+  background: linear-gradient(180deg, #f9fbff 0%, #f3f7fc 100%);
+}
+
+.quality-callout strong {
+  display: block;
+  color: var(--heading);
+  margin-bottom: 6px;
+}
+
+.quality-callout p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.quality-callout.ok {
+  border-color: #cfe8d9;
+  background: linear-gradient(180deg, #f1fbf5 0%, #e9f7ef 100%);
+}
+
+.quality-callout.warn,
+.quality-callout.error {
+  border-color: #ecd9b2;
+  background: linear-gradient(180deg, #fff9ee 0%, #fff4dd 100%);
+}
+
+.quality-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .attention-section {
   display: grid;
   gap: 12px;
@@ -2470,6 +2544,14 @@ textarea:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .quality-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onboarding-self-test {
+    justify-content: flex-start;
+  }
+
   .report-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2497,6 +2579,15 @@ textarea:focus {
 
   .report-simple-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quality-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-self-test {
+    justify-content: flex-start;
+    align-items: stretch;
   }
 
   .panel-header,

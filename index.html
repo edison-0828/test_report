@@ -45,8 +45,16 @@
               <h3>操作流程</h3>
               <p class="section-note">当前步骤会自动高亮，按提示补齐信息即可继续。</p>
             </div>
+            <div class="onboarding-self-test">
+              <span class="badge subtle">每3个小时执行一次自检</span>
+              <span id="selfTestStatus" class="status-pill neutral">尚未运行</span>
+              <button id="runSelfTest" class="ghost-button tiny-button" type="button">立即自检</button>
+            </div>
           </div>
           <div id="onboardingSteps" class="onboarding-steps"></div>
+          <div class="onboarding-self-test-result">
+            <p id="selfTestFeedback" class="inline-feedback">点击后会在当前页面显示系统自检状态。</p>
+          </div>
         </section>
 
         <div class="panel-grid upload-grid">
@@ -232,6 +240,18 @@
               <button id="saveDocument" class="ghost-button">保存文档</button>
             </div>
             <p id="generationStatus" class="inline-feedback">还没开始生成。</p>
+
+            <section class="quality-panel">
+              <div class="section-head quality-panel-head">
+                <div>
+                  <h4>用例质量检查</h4>
+                  <p class="section-note">生成或导入后，自动检查当前这批用例的完整性、重复项和基础覆盖情况。</p>
+                </div>
+                <span id="caseQualityBadge" class="status-pill neutral">未检查</span>
+              </div>
+              <div id="caseQualitySummary"></div>
+              <div id="caseQualityIssues" class="list-stack compact-stack"></div>
+            </section>
           </section>
         </div>
       </section>

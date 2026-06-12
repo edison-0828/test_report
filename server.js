@@ -9,12 +9,27 @@ loadEnvFile(path.join(__dirname, ".env"));
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
-const TEAM_MEMBERS_FILE = path.join(ROOT, "team-members.json");
-const APP_STATE_FILE = path.join(ROOT, "app-state.json");
-const PYTHON_BIN = process.env.CODEX_PYTHON || path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe");
+const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team-members.json");
+const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
+const PYTHON_BIN = resolvePythonBin();
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
 const LARK_API_BASE_URL = process.env.LARK_API_BASE_URL || "https://open.larksuite.com";
+const SELF_TEST_INTERVAL_MS = 3 * 60 * 60 * 1000;
+const SELF_TEST_AUTORUN = process.env.SELF_TEST_AUTORUN !== "false";
+const STATIC_FILE_ALLOWLIST = new Map([
+  ["/", "index.html"],
+  ["/index.html", "index.html"],
+  ["/styles.css", "styles.css"],
+  ["/app.js", "app.js"]
+]);
+const selfTestRuntime = {
+  running: false,
+  lastResult: null,
+  lastError: "",
+  nextRunAt: null,
+  currentPromise: null
+};
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -60,6 +75,26 @@ function stripEnvQuotes(value) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function resolvePythonBin() {
+  if (process.env.CODEX_PYTHON) {
+    return process.env.CODEX_PYTHON;
+  }
+
+  const candidates = [
+    path.join(ROOT, ".venv", "bin", "python"),
+    path.join(ROOT, ".venv", "Scripts", "python.exe"),
+    path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "bin", "python"),
+    path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
+  ];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (found) {
+    return found;
+  }
+
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 const server = http.createServer(async (req, res) => {
@@ -122,6 +157,14 @@ const server = http.createServer(async (req, res) => {
       return handleExportReportDocx(body, res);
     }
 
+    if (req.method === "POST" && req.url === "/api/self-test") {
+      return await handleSelfTest(res);
+    }
+
+    if (req.method === "GET" && req.url === "/api/self-test-status") {
+      return sendJson(res, 200, buildSelfTestStatusPayload());
+    }
+
     if (req.method === "GET") {
       return serveStatic(req, res);
     }
@@ -134,6 +177,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Test flow tool listening on http://${HOST}:${PORT}`);
+  startSelfTestScheduler();
 });
 
 async function handleGenerateCases(body, res) {
@@ -416,6 +460,152 @@ function handleExportReportDocx(body, res) {
     "Cache-Control": "no-store"
   });
   res.end(fileBuffer);
+}
+
+async function handleSelfTest(res) {
+  const result = await runSelfTestProcess("manual");
+  if (!result.ok && result.executionError) {
+    return sendJson(res, 500, { error: result.executionError });
+  }
+  return sendJson(res, 200, result);
+}
+
+function getSelfTestFiles() {
+  const testsDir = path.join(ROOT, "tests");
+  if (!fs.existsSync(testsDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(testsDir)
+    .filter((fileName) => fileName.endsWith(".test.js"))
+    .sort()
+    .map((fileName) => path.join(testsDir, fileName));
+}
+
+function startSelfTestScheduler() {
+  if (!SELF_TEST_AUTORUN) {
+    return;
+  }
+
+  scheduleNextSelfTestRun();
+  void runSelfTestProcess("scheduled");
+  setInterval(() => {
+    void runSelfTestProcess("scheduled");
+  }, SELF_TEST_INTERVAL_MS);
+}
+
+function scheduleNextSelfTestRun() {
+  selfTestRuntime.nextRunAt = new Date(Date.now() + SELF_TEST_INTERVAL_MS).toISOString();
+}
+
+function buildSelfTestStatusPayload() {
+  return {
+    ok: true,
+    autorunEnabled: SELF_TEST_AUTORUN,
+    intervalHours: SELF_TEST_INTERVAL_MS / (60 * 60 * 1000),
+    running: selfTestRuntime.running,
+    nextRunAt: selfTestRuntime.nextRunAt,
+    result: selfTestRuntime.lastResult,
+    error: selfTestRuntime.lastError || ""
+  };
+}
+
+async function runSelfTestProcess(trigger) {
+  if (selfTestRuntime.currentPromise) {
+    return selfTestRuntime.currentPromise;
+  }
+
+  selfTestRuntime.currentPromise = Promise.resolve(executeSelfTest(trigger)).finally(() => {
+    selfTestRuntime.currentPromise = null;
+  });
+  return selfTestRuntime.currentPromise;
+}
+
+function executeSelfTest(trigger) {
+  const testFiles = getSelfTestFiles();
+  if (!testFiles.length) {
+    const message = "没有可执行的自检脚本。";
+    selfTestRuntime.lastError = message;
+    selfTestRuntime.lastResult = null;
+    return {
+      ok: false,
+      executionError: message
+    };
+  }
+
+  selfTestRuntime.running = true;
+  selfTestRuntime.lastError = "";
+
+  const startedAt = Date.now();
+  const result = spawnSync(process.execPath, ["--test", ...testFiles], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    windowsHide: true,
+    timeout: 120_000
+  });
+
+  let payload;
+  if (result.error) {
+    payload = {
+      ok: false,
+      executionError: `系统自检执行失败：${result.error.message}`
+    };
+    selfTestRuntime.lastResult = null;
+    selfTestRuntime.lastError = payload.executionError;
+  } else {
+    const parsed = parseSelfTestOutput(result.stdout || "", result.stderr || "");
+    payload = {
+      ok: result.status === 0,
+      exitCode: typeof result.status === "number" ? result.status : null,
+      startedAt: new Date(startedAt).toISOString(),
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      summary: parsed.summary,
+      failures: parsed.failures,
+      outputPreview: parsed.outputPreview,
+      trigger
+    };
+    selfTestRuntime.lastResult = payload;
+    selfTestRuntime.lastError = payload.ok ? "" : (parsed.failures[0] || "系统自检未通过。");
+  }
+
+  selfTestRuntime.running = false;
+  scheduleNextSelfTestRun();
+  return payload;
+}
+
+function parseSelfTestOutput(stdout, stderr) {
+  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
+  const failures = [];
+  const summary = {
+    tests: 0,
+    pass: 0,
+    fail: 0,
+    skipped: 0,
+    todo: 0,
+    cancelled: 0
+  };
+
+  combined.split(/\r?\n/).forEach((line) => {
+    const failMatch = line.match(/^not ok\s+\d+\s+-\s+(.+)$/);
+    if (failMatch) {
+      failures.push(failMatch[1].trim());
+      return;
+    }
+
+    const summaryMatch = line.match(/^#\s+(tests|pass|fail|skipped|todo|cancelled)\s+(\d+)$/);
+    if (summaryMatch) {
+      summary[summaryMatch[1]] = Number(summaryMatch[2]);
+    }
+  });
+
+  const outputLines = combined ? combined.split(/\r?\n/).slice(-24) : [];
+
+  return {
+    summary,
+    failures,
+    outputPreview: outputLines.join("\n")
+  };
 }
 
 async function handleLarkStatus(res) {
@@ -1158,12 +1348,19 @@ function narrowPlainTextContent(content, keywords) {
 }
 
 function serveStatic(req, res) {
-  const safeUrl = req.url === "/" ? "/index.html" : req.url;
-  const filePath = path.join(ROOT, path.normalize(safeUrl).replace(/^(\.\.[/\\])+/, ""));
-
-  if (!filePath.startsWith(ROOT)) {
-    return sendJson(res, 403, { error: "Forbidden" });
+  let pathname;
+  try {
+    pathname = new URL(req.url, `http://${req.headers.host || "localhost"}`).pathname;
+  } catch (_error) {
+    return sendJson(res, 400, { error: "Bad request" });
   }
+
+  const allowedFile = STATIC_FILE_ALLOWLIST.get(pathname);
+  if (!allowedFile) {
+    return sendJson(res, 404, { error: "Not found" });
+  }
+
+  const filePath = path.join(ROOT, allowedFile);
 
   fs.readFile(filePath, (error, data) => {
     if (error) {
