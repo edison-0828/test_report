@@ -3353,17 +3353,9 @@ function renderCases() {
     node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
-    const traceMeta = node.querySelector(".case-trace-meta");
-    if (traceMeta) {
-      traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
-    }
-
     executionSelect.addEventListener("change", (event) => {
       item.executionStatus = event.target.value;
       Object.assign(item, applyUpdateAuditFields(item));
-      if (traceMeta) {
-        traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
-      }
       statusBadge.textContent = item.executionStatus;
       applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
       syncExecutionStatusBadge(executionBadge, item.executionStatus);
@@ -3376,9 +3368,6 @@ function renderCases() {
     executionNote.addEventListener("input", (event) => {
       item.executionNote = event.target.value.trim();
       Object.assign(item, applyUpdateAuditFields(item));
-      if (traceMeta) {
-        traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
-      }
       persist();
     });
 
