@@ -275,13 +275,41 @@
         <div class="panel-header">
           <div>
             <h2>测试用例</h2>
-            <p>查看生成结果，展开用例详情，记录执行状态和备注。</p>
+            <p>查看生成结果，展开用例详情，记录执行状态和备注，也可以为可复用流程配置 UI 自动执行。</p>
           </div>
           <label class="import-button primary-import">
             <input type="file" id="caseImportInput" accept=".csv">
             <span>上传CSV</span>
           </label>
         </div>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <h3>自动化登录态</h3>
+              <p>针对有滑块验证的后台，先人工登录一次并保存登录态，后续自动执行会直接复用。</p>
+            </div>
+            <span id="automationSessionChip" class="state-chip neutral">未准备</span>
+          </div>
+
+          <div class="form-row">
+            <label>
+              站点地址
+              <input type="url" id="automationBaseUrl" placeholder="例如：https://admin.example.com">
+            </label>
+            <label>
+              登录页路径
+              <input type="text" id="automationLoginPath" placeholder="例如：/login">
+            </label>
+          </div>
+
+          <div class="inline-actions">
+            <button id="startAutomationLoginSession" type="button">打开登录窗口</button>
+            <button id="confirmAutomationLoginSession" class="ghost-button" type="button">确认已登录</button>
+            <button id="refreshAutomationSession" class="ghost-button" type="button">刷新状态</button>
+          </div>
+          <p id="automationSessionFeedback" class="inline-feedback">先填写站点地址，打开浏览器完成人工登录，再回来确认保存登录态。</p>
+        </section>
 
         <section class="panel">
           <div class="actions compact section-toolbar case-toolbar">
@@ -463,6 +491,41 @@
               <span class="summary-label">执行备注</span>
               <textarea class="case-execution-note" rows="2"></textarea>
             </label>
+          </div>
+
+          <div class="case-automation-block">
+            <div class="case-automation-head">
+              <div>
+                <span class="summary-label">UI 自动执行</span>
+                <p class="case-automation-copy">适合后台稳定、步骤可复用的用例。登录态来自上面的人工登录保存。</p>
+              </div>
+              <label class="case-automation-toggle">
+                <input type="checkbox" class="case-automation-enabled">
+                <span>启用</span>
+              </label>
+            </div>
+
+            <div class="case-automation-grid">
+              <label>
+                目标页面路径
+                <input type="text" class="case-automation-target-path" placeholder="例如：/orders/list">
+              </label>
+              <div class="case-automation-status-wrap">
+                <span class="summary-label">最近状态</span>
+                <span class="case-automation-status state-chip neutral">未运行</span>
+              </div>
+            </div>
+
+            <label>
+              自动化步骤(JSON)
+              <textarea class="case-automation-steps" rows="5" placeholder='例如：[{"action":"click","selector":"[data-test=\'search\']"},{"action":"assertVisible","selector":".table-row"}]'></textarea>
+            </label>
+
+            <div class="inline-actions">
+              <button type="button" class="ghost-button case-automation-save">保存自动化配置</button>
+              <button type="button" class="case-automation-run">运行自动化</button>
+            </div>
+            <p class="case-automation-feedback inline-feedback">启用后，可为这条用例单独保存页面路径和执行步骤。</p>
           </div>
         </div>
       </div>

@@ -1,0 +1,46 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "https://test-merchant.temar.ai",
+      "localStorage": [
+        {
+          "name": "userLastActiveTime",
+          "value": "1781328000648"
+        },
+        {
+          "name": "temar-merchant-token",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjEzMSIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJkdW1wZHVucEBxcS5jb20iLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9lbWFpbGFkZHJlc3MiOiJkdW1wZHVucEBxcS5jb20iLCJBc3BOZXQuSWRlbnRpdHkuU2VjdXJpdHlTdGFtcCI6IkJBRUhNM1dTVlE1RFRDQU1FT0xJWVlEUjczTkFCRVRJIiwiaHR0cDovL3d3dy5hc3BuZXRib2lsZXJwbGF0ZS5jb20vaWRlbnRpdHkvY2xhaW1zL3RlbmFudElkIjoiMSIsImN1c3RvbVJlbGF0aW9uSWQiOiIxYTVjMzdhZC03MTViLTQxMjgtOGMxMS0wMWU5NjNmNjYzYTIiLCJjdXN0b21Vc2VyVHlwZSI6IlJlY2VpdmVQYXltZW50IiwiY3VzdG9tTmFtZSI6ImR1bXBkdW5wIiwibmJmIjoxNzgxMzI3OTkzLCJleHAiOjE3ODEzMzUxOTMsImlzcyI6IlBSRVZHUEFZQlVTSU5FU1MiLCJhdWQiOiJQUkVWR1BBWUJVU0lORVNTIn0.JnRX6izU7oeEsBu8XCcQ82ibiSvRsn5fesvPMCeBvvQ"
+        },
+        {
+          "name": "accessTokenExpireInSeconds",
+          "value": "7200"
+        },
+        {
+          "name": "refreshTokenExpireInSeconds",
+          "value": "12000"
+        },
+        {
+          "name": "accessToken",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjEzMSIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJkdW1wZHVucEBxcS5jb20iLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9lbWFpbGFkZHJlc3MiOiJkdW1wZHVucEBxcS5jb20iLCJBc3BOZXQuSWRlbnRpdHkuU2VjdXJpdHlTdGFtcCI6IkJBRUhNM1dTVlE1RFRDQU1FT0xJWVlEUjczTkFCRVRJIiwiaHR0cDovL3d3dy5hc3BuZXRib2lsZXJwbGF0ZS5jb20vaWRlbnRpdHkvY2xhaW1zL3RlbmFudElkIjoiMSIsImN1c3RvbVJlbGF0aW9uSWQiOiIxYTVjMzdhZC03MTViLTQxMjgtOGMxMS0wMWU5NjNmNjYzYTIiLCJjdXN0b21Vc2VyVHlwZSI6IlJlY2VpdmVQYXltZW50IiwiY3VzdG9tTmFtZSI6ImR1bXBkdW5wIiwibmJmIjoxNzgxMzI3OTkzLCJleHAiOjE3ODEzMzUxOTMsImlzcyI6IlBSRVZHUEFZQlVTSU5FU1MiLCJhdWQiOiJQUkVWR1BBWUJVU0lORVNTIn0.JnRX6izU7oeEsBu8XCcQ82ibiSvRsn5fesvPMCeBvvQ"
+        },
+        {
+          "name": "UserGet",
+          "value": "{\"userName\":\"dumpdunp@qq.com\",\"adminType\":0,\"adminTypeName\":\"Ordinary\",\"name\":\"dumpdunp\",\"surname\":\"dumpdunp\",\"roleName\":null,\"areaCode\":null,\"phoneNumber\":\"\",\"emailAddress\":\"dumpdunp@qq.com\",\"isActive\":true,\"fullName\":\"dumpdunp dumpdunp\",\"lastLoginTime\":null,\"creationTime\":\"2026-03-30 06:54:38\",\"roleNames\":null,\"userType\":1,\"userTypeName\":\"ReceivePayment\",\"myProperty\":0,\"isRestPwd\":true,\"timeZoneValue\":-8,\"googleKey\":\"131562116253\",\"joinType\":0,\"id\":131}"
+        },
+        {
+          "name": "refreshToken",
+          "value": "Taekr/1QjlN1rWHnR84m9TRj3NVQ2Wrte9zcAf2RvAk="
+        },
+        {
+          "name": "userId",
+          "value": "131"
+        },
+        {
+          "name": "refreshTime",
+          "value": "1781327993656"
+        }
+      ]
+    }
+  ]
+}

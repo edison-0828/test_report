@@ -30,6 +30,22 @@ const selfTestRuntime = {
   nextRunAt: null,
   currentPromise: null
 };
+const UI_AUTOMATION_ROOT = path.join(ROOT, "tmp", "ui-automation");
+const UI_AUTOMATION_AUTH_FILE = path.join(UI_AUTOMATION_ROOT, "auth-state.json");
+const UI_AUTOMATION_RUNS_DIR = path.join(UI_AUTOMATION_ROOT, "runs");
+const UI_AUTOMATION_SESSION_DIR = path.join(UI_AUTOMATION_ROOT, "session");
+const UI_AUTOMATION_HEADLESS = process.env.UI_AUTOMATION_HEADLESS !== "false";
+const uiAutomationRuntime = {
+  context: null,
+  page: null,
+  active: false,
+  sessionStartedAt: "",
+  baseUrl: "",
+  loginPath: "",
+  browserPath: "",
+  userDataDir: "",
+  lastError: ""
+};
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -95,6 +111,330 @@ function resolvePythonBin() {
   }
 
   return process.platform === "win32" ? "python" : "python3";
+}
+
+function ensureDir(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function buildUiAutomationSessionStatusPayload() {
+  const browserPath = resolveUiAutomationBrowserPath();
+  return {
+    ok: true,
+    available: Boolean(browserPath),
+    browserPath: browserPath || "",
+    active: uiAutomationRuntime.active,
+    authSaved: fs.existsSync(UI_AUTOMATION_AUTH_FILE),
+    sessionStartedAt: uiAutomationRuntime.sessionStartedAt || "",
+    baseUrl: uiAutomationRuntime.baseUrl || "",
+    loginPath: uiAutomationRuntime.loginPath || "",
+    headless: UI_AUTOMATION_HEADLESS,
+    lastError: uiAutomationRuntime.lastError || ""
+  };
+}
+
+function resolveUiAutomationBrowserPath() {
+  const candidates = [
+    process.env.UI_AUTOMATION_BROWSER_PATH,
+    process.env.CHROME_PATH,
+    process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "",
+    process.platform === "darwin" ? "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" : "",
+    process.platform === "linux" ? "/usr/bin/google-chrome" : "",
+    process.platform === "linux" ? "/usr/bin/chromium-browser" : "",
+    process.platform === "linux" ? "/usr/bin/chromium" : "",
+    process.platform === "win32" ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" : "",
+    process.platform === "win32" ? "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" : "",
+    process.platform === "win32" ? "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" : ""
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
+}
+
+function resolveUiAutomationUrl(baseUrl, targetPath) {
+  const normalizedBaseUrl = String(baseUrl || "").trim();
+  const normalizedTargetPath = String(targetPath || "").trim();
+
+  if (!normalizedBaseUrl) {
+    throw new Error("缺少自动化站点地址。");
+  }
+
+  if (!normalizedTargetPath) {
+    return normalizedBaseUrl;
+  }
+
+  return new URL(normalizedTargetPath, normalizedBaseUrl).toString();
+}
+
+async function getPlaywrightChromium() {
+  let playwright;
+  try {
+    playwright = require("playwright-core");
+  } catch (_error) {
+    throw new Error("当前环境缺少 playwright-core，无法执行 UI 自动化。");
+  }
+
+  if (!playwright?.chromium) {
+    throw new Error("当前环境没有可用的 Chromium 驱动。");
+  }
+
+  return playwright.chromium;
+}
+
+async function closeUiAutomationSession() {
+  const currentContext = uiAutomationRuntime.context;
+
+  uiAutomationRuntime.context = null;
+  uiAutomationRuntime.page = null;
+  uiAutomationRuntime.active = false;
+
+  if (currentContext) {
+    await currentContext.close();
+  }
+}
+
+async function handleStartUiAutomationLoginSession(body, res) {
+  const baseUrl = String(body.baseUrl || "").trim();
+  const loginPath = String(body.loginPath || "").trim();
+
+  if (!baseUrl) {
+    return sendJson(res, 400, { error: "请先填写站点地址。" });
+  }
+
+  const browserPath = resolveUiAutomationBrowserPath();
+  if (!browserPath) {
+    return sendJson(res, 400, {
+      error: "没有找到可用浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Chrome。"
+    });
+  }
+
+  try {
+    ensureDir(UI_AUTOMATION_ROOT);
+    ensureDir(UI_AUTOMATION_RUNS_DIR);
+    fs.rmSync(UI_AUTOMATION_SESSION_DIR, { recursive: true, force: true });
+    ensureDir(UI_AUTOMATION_SESSION_DIR);
+    await closeUiAutomationSession();
+
+    const chromium = await getPlaywrightChromium();
+    const context = await chromium.launchPersistentContext(UI_AUTOMATION_SESSION_DIR, {
+      executablePath: browserPath,
+      headless: false,
+      viewport: null,
+      args: ["--start-maximized"]
+    });
+    const page = context.pages()[0] || await context.newPage();
+    const targetUrl = resolveUiAutomationUrl(baseUrl, loginPath);
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+
+    uiAutomationRuntime.context = context;
+    uiAutomationRuntime.page = page;
+    uiAutomationRuntime.active = true;
+    uiAutomationRuntime.sessionStartedAt = new Date().toISOString();
+    uiAutomationRuntime.baseUrl = baseUrl;
+    uiAutomationRuntime.loginPath = loginPath;
+    uiAutomationRuntime.browserPath = browserPath;
+    uiAutomationRuntime.userDataDir = UI_AUTOMATION_SESSION_DIR;
+    uiAutomationRuntime.lastError = "";
+
+    return sendJson(res, 200, {
+      ok: true,
+      message: "登录窗口已打开，请在浏览器里手动完成账号登录和滑块验证，然后回来点击“确认已登录”。",
+      status: buildUiAutomationSessionStatusPayload()
+    });
+  } catch (error) {
+    uiAutomationRuntime.lastError = error.message || "启动登录会话失败。";
+    await closeUiAutomationSession().catch(() => {});
+    return sendJson(res, 500, { error: uiAutomationRuntime.lastError });
+  }
+}
+
+async function handleConfirmUiAutomationLoginSession(res) {
+  if (!uiAutomationRuntime.active || !uiAutomationRuntime.context) {
+    return sendJson(res, 400, { error: "当前没有待确认的登录会话。" });
+  }
+
+  try {
+    ensureDir(UI_AUTOMATION_ROOT);
+    await uiAutomationRuntime.context.storageState({ path: UI_AUTOMATION_AUTH_FILE });
+    await closeUiAutomationSession();
+    uiAutomationRuntime.lastError = "";
+
+    return sendJson(res, 200, {
+      ok: true,
+      message: "登录态已保存，后续执行用例时会复用这次登录结果。",
+      status: buildUiAutomationSessionStatusPayload()
+    });
+  } catch (error) {
+    uiAutomationRuntime.lastError = error.message || "保存登录态失败。";
+    return sendJson(res, 500, { error: uiAutomationRuntime.lastError });
+  }
+}
+
+async function handleRunUiAutomationCase(body, res) {
+  const baseUrl = String(body.baseUrl || "").trim();
+  const targetPath = String(body.targetPath || "").trim();
+  const caseTitle = String(body.caseTitle || "未命名用例").trim();
+  const steps = normalizeUiAutomationSteps(body.steps);
+
+  if (!baseUrl) {
+    return sendJson(res, 400, { error: "请先填写站点地址。" });
+  }
+
+  if (!targetPath) {
+    return sendJson(res, 400, { error: "请先填写用例目标页面路径。" });
+  }
+
+  if (!fs.existsSync(UI_AUTOMATION_AUTH_FILE)) {
+    return sendJson(res, 400, { error: "还没有可用登录态，请先完成一次人工登录保存。" });
+  }
+
+  const browserPath = resolveUiAutomationBrowserPath();
+  if (!browserPath) {
+    return sendJson(res, 400, {
+      error: "没有找到可用浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Chrome。"
+    });
+  }
+
+  const startedAt = new Date();
+  const runId = `run-${Date.now()}`;
+  const runDir = path.join(UI_AUTOMATION_RUNS_DIR, runId);
+  const screenshotPath = path.join(runDir, "result.png");
+  let browser = null;
+  let context = null;
+
+  try {
+    ensureDir(runDir);
+    const chromium = await getPlaywrightChromium();
+    browser = await chromium.launch({
+      executablePath: browserPath,
+      headless: UI_AUTOMATION_HEADLESS
+    });
+    context = await browser.newContext({
+      storageState: UI_AUTOMATION_AUTH_FILE,
+      viewport: { width: 1440, height: 900 }
+    });
+    const page = await context.newPage();
+    const targetUrl = resolveUiAutomationUrl(baseUrl, targetPath);
+
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+    const executedSteps = await executeUiAutomationSteps(page, steps, baseUrl);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await context.close();
+    await browser.close();
+
+    return sendJson(res, 200, {
+      ok: true,
+      result: {
+        status: "通过",
+        summary: `自动执行完成，共 ${executedSteps} 步。`,
+        caseTitle,
+        startedAt: startedAt.toISOString(),
+        finishedAt: new Date().toISOString(),
+        targetUrl,
+        screenshotFileName: path.basename(screenshotPath)
+      }
+    });
+  } catch (error) {
+    if (context) {
+      await context.close().catch(() => {});
+    }
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    return sendJson(res, 200, {
+      ok: false,
+      result: {
+        status: "失败",
+        summary: error.message || "自动执行失败。",
+        caseTitle,
+        startedAt: startedAt.toISOString(),
+        finishedAt: new Date().toISOString()
+      }
+    });
+  }
+}
+
+function normalizeUiAutomationSteps(input) {
+  if (Array.isArray(input)) {
+    return input;
+  }
+
+  if (typeof input === "string" && input.trim()) {
+    try {
+      const parsed = JSON.parse(input);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_error) {
+      throw new Error("自动化步骤不是合法 JSON，请检查格式。");
+    }
+  }
+
+  return [];
+}
+
+async function executeUiAutomationSteps(page, steps, baseUrl) {
+  for (const rawStep of steps) {
+    const step = rawStep && typeof rawStep === "object" ? rawStep : {};
+    const action = String(step.action || "").trim();
+    const selector = String(step.selector || "").trim();
+    const timeout = Number(step.timeout) > 0 ? Number(step.timeout) : 10000;
+
+    if (!action) {
+      continue;
+    }
+
+    if (action === "goto") {
+      await page.goto(resolveUiAutomationUrl(baseUrl, step.path || step.url || ""), {
+        waitUntil: "domcontentloaded",
+        timeout
+      });
+      continue;
+    }
+
+    if (action === "click") {
+      if (!selector) throw new Error("click 步骤缺少 selector。");
+      await page.locator(selector).click({ timeout });
+      continue;
+    }
+
+    if (action === "fill") {
+      if (!selector) throw new Error("fill 步骤缺少 selector。");
+      await page.locator(selector).fill(String(step.value || ""), { timeout });
+      continue;
+    }
+
+    if (action === "waitFor") {
+      if (!selector) throw new Error("waitFor 步骤缺少 selector。");
+      await page.locator(selector).waitFor({
+        state: String(step.state || "visible"),
+        timeout
+      });
+      continue;
+    }
+
+    if (action === "assertVisible") {
+      if (!selector) throw new Error("assertVisible 步骤缺少 selector。");
+      await page.locator(selector).waitFor({ state: "visible", timeout });
+      continue;
+    }
+
+    if (action === "assertText") {
+      if (!selector) throw new Error("assertText 步骤缺少 selector。");
+      const actualText = await page.locator(selector).textContent({ timeout });
+      const expectedText = String(step.text || "");
+      if (!String(actualText || "").includes(expectedText)) {
+        throw new Error(`断言文本失败：预期包含“${expectedText}”。`);
+      }
+      continue;
+    }
+
+    if (action === "waitForTimeout") {
+      await page.waitForTimeout(Number(step.ms) > 0 ? Number(step.ms) : 1000);
+      continue;
+    }
+
+    throw new Error(`暂不支持的自动化动作：${action}`);
+  }
+
+  return steps.length;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -163,6 +503,24 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && req.url === "/api/self-test-status") {
       return sendJson(res, 200, buildSelfTestStatusPayload());
+    }
+
+    if (req.method === "GET" && req.url === "/api/ui-automation/session-status") {
+      return sendJson(res, 200, buildUiAutomationSessionStatusPayload());
+    }
+
+    if (req.method === "POST" && req.url === "/api/ui-automation/start-login-session") {
+      const body = await readJsonBody(req);
+      return await handleStartUiAutomationLoginSession(body, res);
+    }
+
+    if (req.method === "POST" && req.url === "/api/ui-automation/confirm-login-session") {
+      return await handleConfirmUiAutomationLoginSession(res);
+    }
+
+    if (req.method === "POST" && req.url === "/api/ui-automation/run-case") {
+      const body = await readJsonBody(req);
+      return await handleRunUiAutomationCase(body, res);
     }
 
     if (req.method === "GET") {
@@ -1438,6 +1796,7 @@ function sanitizeSharedState(input) {
     batches: Array.isArray(state.batches) ? state.batches : [],
     tasks: Array.isArray(state.tasks) ? state.tasks : [],
     reportConclusion: typeof state.reportConclusion === "string" ? state.reportConclusion : "",
+    reportConclusions: state.reportConclusions && typeof state.reportConclusions === "object" ? state.reportConclusions : {},
     lastGeneration: state.lastGeneration && typeof state.lastGeneration === "object" ? state.lastGeneration : null
   };
 }

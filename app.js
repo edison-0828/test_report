@@ -20,7 +20,7 @@ const BUSINESS_ALIAS_MAP = {
   "本地收单业务": "本地收单业务"
 };
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
-const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport"];
+const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport", "uiAutomationSettings", "uiAutomationSession"];
 
 const state = loadState();
 
@@ -89,6 +89,13 @@ const els = {
   caseBulkStatus: document.getElementById("caseBulkStatus"),
   applyCaseBulkStatus: document.getElementById("applyCaseBulkStatus"),
   caseActionStatus: document.getElementById("caseActionStatus"),
+  automationBaseUrl: document.getElementById("automationBaseUrl"),
+  automationLoginPath: document.getElementById("automationLoginPath"),
+  automationSessionChip: document.getElementById("automationSessionChip"),
+  automationSessionFeedback: document.getElementById("automationSessionFeedback"),
+  startAutomationLoginSession: document.getElementById("startAutomationLoginSession"),
+  confirmAutomationLoginSession: document.getElementById("confirmAutomationLoginSession"),
+  refreshAutomationSession: document.getElementById("refreshAutomationSession"),
   executionBatchFilter: document.getElementById("executionBatchFilter"),
   executionTaskFilter: document.getElementById("executionTaskFilter"),
   executionModuleFilter: document.getElementById("executionModuleFilter"),
@@ -141,11 +148,18 @@ const selfTestState = {
   result: state.selfTestSnapshot?.result || null,
   error: state.selfTestSnapshot?.error || ""
 };
+const uiAutomationState = normalizeUiAutomationSession(state.uiAutomationSession);
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
 if (els.currentOperatorSelect) {
   els.currentOperatorSelect.value = settings.currentOperator;
+}
+if (els.automationBaseUrl) {
+  els.automationBaseUrl.value = state.uiAutomationSettings?.baseUrl || "";
+}
+if (els.automationLoginPath) {
+  els.automationLoginPath.value = state.uiAutomationSettings?.loginPath || "";
 }
 autoResizeTextarea();
 
@@ -160,10 +174,12 @@ renderAll();
 loadTeamMembersConfig();
 loadSharedState();
 loadSelfTestStatus();
+loadUiAutomationStatus();
 checkApiStatus();
 renderApiStateBoard();
 renderSourceMode();
 renderSelfTestPanel();
+renderUiAutomationPanel();
 
 function bindEvents() {
   els.navLinks.forEach((link) => {
@@ -191,6 +207,11 @@ function bindEvents() {
   els.caseTaskFilter.addEventListener("change", renderCases);
   els.caseStatusFilter?.addEventListener("change", renderCases);
   els.applyCaseBulkStatus?.addEventListener("click", applyBulkCaseExecutionStatus);
+  els.automationBaseUrl?.addEventListener("input", handleUiAutomationDraftChange);
+  els.automationLoginPath?.addEventListener("input", handleUiAutomationDraftChange);
+  els.startAutomationLoginSession?.addEventListener("click", startUiAutomationLoginSession);
+  els.confirmAutomationLoginSession?.addEventListener("click", confirmUiAutomationLoginSession);
+  els.refreshAutomationSession?.addEventListener("click", loadUiAutomationStatus);
   els.bugBatchFilter.addEventListener("change", () => {
     renderCaseFilters();
     renderBugs();
@@ -1059,6 +1080,186 @@ function setCaseQualityStatus(text, tone = "neutral") {
   }
   els.caseQualityStatus.textContent = text;
   els.caseQualityStatus.className = `inline-feedback ${tone}`;
+}
+
+function setUiAutomationFeedback(text, tone = "neutral") {
+  if (!els.automationSessionFeedback) {
+    return;
+  }
+  els.automationSessionFeedback.textContent = text;
+  els.automationSessionFeedback.className = `inline-feedback ${tone}`;
+}
+
+function normalizeUiAutomationSettings(settingsValue) {
+  if (!settingsValue || typeof settingsValue !== "object") {
+    return {
+      baseUrl: "",
+      loginPath: ""
+    };
+  }
+
+  return {
+    baseUrl: String(settingsValue.baseUrl || "").trim(),
+    loginPath: String(settingsValue.loginPath || "").trim()
+  };
+}
+
+function normalizeUiAutomationSession(sessionValue) {
+  if (!sessionValue || typeof sessionValue !== "object") {
+    return {
+      available: false,
+      browserPath: "",
+      active: false,
+      authSaved: false,
+      sessionStartedAt: "",
+      baseUrl: "",
+      loginPath: "",
+      headless: true,
+      lastError: ""
+    };
+  }
+
+  return {
+    available: Boolean(sessionValue.available),
+    browserPath: String(sessionValue.browserPath || "").trim(),
+    active: Boolean(sessionValue.active),
+    authSaved: Boolean(sessionValue.authSaved),
+    sessionStartedAt: String(sessionValue.sessionStartedAt || "").trim(),
+    baseUrl: String(sessionValue.baseUrl || "").trim(),
+    loginPath: String(sessionValue.loginPath || "").trim(),
+    headless: sessionValue.headless !== false,
+    lastError: String(sessionValue.lastError || "").trim()
+  };
+}
+
+function getUiAutomationSettingsPayload() {
+  return {
+    baseUrl: els.automationBaseUrl?.value.trim() || "",
+    loginPath: els.automationLoginPath?.value.trim() || ""
+  };
+}
+
+function handleUiAutomationDraftChange() {
+  state.uiAutomationSettings = getUiAutomationSettingsPayload();
+  persist();
+  renderUiAutomationPanel();
+}
+
+function getUiAutomationChipTone() {
+  if (!uiAutomationState.available) return "warn";
+  if (uiAutomationState.active) return "subtle";
+  if (uiAutomationState.authSaved) return "ok";
+  return "neutral";
+}
+
+function getUiAutomationChipText() {
+  if (!uiAutomationState.available) return "未就绪";
+  if (uiAutomationState.active) return "待确认";
+  if (uiAutomationState.authSaved) return "已保存";
+  return "未准备";
+}
+
+function renderUiAutomationPanel() {
+  if (els.automationSessionChip) {
+    els.automationSessionChip.textContent = getUiAutomationChipText();
+    els.automationSessionChip.className = `state-chip ${getUiAutomationChipTone()}`;
+  }
+
+  if (els.automationBaseUrl && document.activeElement !== els.automationBaseUrl) {
+    els.automationBaseUrl.value = state.uiAutomationSettings?.baseUrl || "";
+  }
+  if (els.automationLoginPath && document.activeElement !== els.automationLoginPath) {
+    els.automationLoginPath.value = state.uiAutomationSettings?.loginPath || "";
+  }
+
+  if (!uiAutomationState.available) {
+    setUiAutomationFeedback("当前机器没有找到可用 Chrome / Edge，请先配置浏览器路径后再使用。", "warn");
+    return;
+  }
+
+  if (uiAutomationState.active) {
+    setUiAutomationFeedback("登录窗口已打开。请在浏览器中手动完成登录和滑块验证，然后回来点击“确认已登录”。", "neutral");
+    return;
+  }
+
+  if (uiAutomationState.authSaved) {
+    setUiAutomationFeedback("登录态已保存，后续运行自动化会直接复用这次登录结果。", "ok");
+    return;
+  }
+
+  if (uiAutomationState.lastError) {
+    setUiAutomationFeedback(uiAutomationState.lastError, "error");
+    return;
+  }
+
+  setUiAutomationFeedback("先填写站点地址，打开浏览器完成人工登录，再回来确认保存登录态。", "neutral");
+}
+
+async function loadUiAutomationStatus() {
+  try {
+    const response = await fetch("/api/ui-automation/session-status");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "加载自动化状态失败");
+    }
+    state.uiAutomationSession = normalizeUiAutomationSession(data);
+    Object.assign(uiAutomationState, state.uiAutomationSession);
+    persist();
+    renderUiAutomationPanel();
+  } catch (error) {
+    uiAutomationState.lastError = error.message || "加载自动化状态失败";
+    renderUiAutomationPanel();
+  }
+}
+
+async function startUiAutomationLoginSession() {
+  const payload = getUiAutomationSettingsPayload();
+  if (!payload.baseUrl) {
+    setUiAutomationFeedback("请先填写站点地址。", "warn");
+    return;
+  }
+
+  state.uiAutomationSettings = payload;
+  persist();
+  setUiAutomationFeedback("正在打开登录窗口...", "neutral");
+
+  try {
+    const response = await fetch("/api/ui-automation/start-login-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "启动登录会话失败");
+    }
+    state.uiAutomationSession = normalizeUiAutomationSession(data.status);
+    Object.assign(uiAutomationState, state.uiAutomationSession);
+    persist();
+    renderUiAutomationPanel();
+  } catch (error) {
+    setUiAutomationFeedback(error.message || "启动登录会话失败", "error");
+  }
+}
+
+async function confirmUiAutomationLoginSession() {
+  setUiAutomationFeedback("正在保存登录态...", "neutral");
+
+  try {
+    const response = await fetch("/api/ui-automation/confirm-login-session", {
+      method: "POST"
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "保存登录态失败");
+    }
+    state.uiAutomationSession = normalizeUiAutomationSession(data.status);
+    Object.assign(uiAutomationState, state.uiAutomationSession);
+    persist();
+    renderUiAutomationPanel();
+  } catch (error) {
+    setUiAutomationFeedback(error.message || "保存登录态失败", "error");
+  }
 }
 
 function saveCurrentDocument() {
@@ -3119,10 +3320,44 @@ function normalizeCaseItem(item) {
     taskName: item.taskName || "",
     module: moduleName || item.module,
     moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || "",
+    automationEnabled: Boolean(item.automationEnabled),
+    automationTargetPath: String(item.automationTargetPath || "").trim(),
+    automationSteps: normalizeCaseAutomationSteps(item.automationSteps),
+    automationLastRun: normalizeCaseAutomationLastRun(item.automationLastRun),
     createdBy: String(item.createdBy || "").trim(),
     createdAt: item.createdAt || "",
     updatedBy: String(item.updatedBy || "").trim(),
     updatedAt: item.updatedAt || item.createdAt || ""
+  };
+}
+
+function normalizeCaseAutomationSteps(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function normalizeCaseAutomationLastRun(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return {
+    status: String(value.status || "").trim(),
+    summary: String(value.summary || "").trim(),
+    startedAt: String(value.startedAt || "").trim(),
+    finishedAt: String(value.finishedAt || "").trim()
   };
 }
 
@@ -3399,6 +3634,13 @@ function renderCases() {
     const executionSelect = node.querySelector(".case-execution-select");
     const executionNote = node.querySelector(".case-execution-note");
     const caseToBug = node.querySelector(".case-to-bug");
+    const automationEnabled = node.querySelector(".case-automation-enabled");
+    const automationTargetPath = node.querySelector(".case-automation-target-path");
+    const automationSteps = node.querySelector(".case-automation-steps");
+    const automationStatus = node.querySelector(".case-automation-status");
+    const automationFeedback = node.querySelector(".case-automation-feedback");
+    const automationSave = node.querySelector(".case-automation-save");
+    const automationRun = node.querySelector(".case-automation-run");
     statusBadge.textContent = item.executionStatus || "未执行";
     priorityBadge.textContent = item.priority;
     applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus || "未执行"));
@@ -3413,6 +3655,12 @@ function renderCases() {
     node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
+    automationEnabled.checked = Boolean(item.automationEnabled);
+    automationTargetPath.value = item.automationTargetPath || "";
+    automationSteps.value = item.automationSteps?.length ? JSON.stringify(item.automationSteps, null, 2) : "";
+    syncAutomationStatusChip(automationStatus, item.automationLastRun?.status || "");
+    automationFeedback.textContent = getCaseAutomationFeedbackText(item);
+    automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
     executionSelect.addEventListener("change", (event) => {
       updateCaseExecutionState(item, event.target.value);
       statusBadge.textContent = item.executionStatus;
@@ -3436,6 +3684,56 @@ function renderCases() {
       switchTab("bugs");
     });
 
+    automationSave.addEventListener("click", async () => {
+      const saved = saveCaseAutomationConfig(item, {
+        enabled: automationEnabled.checked,
+        targetPath: automationTargetPath.value,
+        stepsText: automationSteps.value
+      });
+      if (!saved) {
+        automationFeedback.textContent = getCaseAutomationFeedbackText(item);
+        automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        return;
+      }
+      flashButtonSuccess(automationSave, "保存成功");
+      automationFeedback.textContent = "自动化配置已保存。";
+      automationFeedback.className = "inline-feedback ok";
+      renderCases();
+    });
+
+    automationRun.addEventListener("click", async () => {
+      const saved = saveCaseAutomationConfig(item, {
+        enabled: automationEnabled.checked,
+        targetPath: automationTargetPath.value,
+        stepsText: automationSteps.value
+      });
+      if (!saved) {
+        automationFeedback.textContent = getCaseAutomationFeedbackText(item);
+        automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        return;
+      }
+
+      automationFeedback.textContent = "正在执行自动化...";
+      automationFeedback.className = "inline-feedback neutral";
+      automationRun.disabled = true;
+
+      try {
+        const result = await runCaseAutomation(item);
+        statusBadge.textContent = item.executionStatus;
+        applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
+        syncExecutionStatusBadge(executionBadge, item.executionStatus);
+        caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
+        syncAutomationStatusChip(automationStatus, result.status || "");
+        automationFeedback.textContent = result.summary || getCaseAutomationFeedbackText(item);
+        automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        renderQuickStats();
+        renderReport();
+        renderCases();
+      } finally {
+        automationRun.disabled = false;
+      }
+    });
+
     bindCaseCard(node, item.id);
     els.caseList.appendChild(node);
   });
@@ -3456,6 +3754,133 @@ function bindCaseCard(node, caseId) {
     persist();
     renderAll();
   });
+}
+
+function saveCaseAutomationConfig(item, payload) {
+  const enabled = Boolean(payload.enabled);
+  const targetPath = String(payload.targetPath || "").trim();
+  const stepsText = String(payload.stepsText || "").trim();
+  let parsedSteps = [];
+
+  if (stepsText) {
+    try {
+      parsedSteps = JSON.parse(stepsText);
+    } catch (_error) {
+      item.automationLastRun = {
+        status: "失败",
+        summary: "自动化步骤不是合法 JSON，请先修正后再保存。",
+        startedAt: "",
+        finishedAt: new Date().toISOString()
+      };
+      persist();
+      return false;
+    }
+
+    if (!Array.isArray(parsedSteps)) {
+      item.automationLastRun = {
+        status: "失败",
+        summary: "自动化步骤必须是 JSON 数组。",
+        startedAt: "",
+        finishedAt: new Date().toISOString()
+      };
+      persist();
+      return false;
+    }
+  }
+
+  item.automationEnabled = enabled;
+  item.automationTargetPath = targetPath;
+  item.automationSteps = parsedSteps;
+  Object.assign(item, applyUpdateAuditFields(item));
+  persist();
+  return true;
+}
+
+async function runCaseAutomation(item) {
+  if (!item.automationEnabled) {
+    item.automationLastRun = {
+      status: "未运行",
+      summary: "请先启用这条用例的自动化执行。",
+      startedAt: "",
+      finishedAt: ""
+    };
+    persist();
+    return item.automationLastRun;
+  }
+
+  if (!state.uiAutomationSettings?.baseUrl) {
+    item.automationLastRun = {
+      status: "失败",
+      summary: "请先在页面上方填写站点地址。",
+      startedAt: "",
+      finishedAt: new Date().toISOString()
+    };
+    persist();
+    return item.automationLastRun;
+  }
+
+  const response = await fetch("/api/ui-automation/run-case", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      caseTitle: item.title,
+      baseUrl: state.uiAutomationSettings.baseUrl,
+      targetPath: item.automationTargetPath,
+      steps: item.automationSteps
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "执行自动化失败");
+  }
+
+  const result = normalizeCaseAutomationLastRun(data.result) || {
+    status: data.ok ? "通过" : "失败",
+    summary: data.error || "自动化执行失败",
+    startedAt: "",
+    finishedAt: new Date().toISOString()
+  };
+  item.automationLastRun = result;
+  updateCaseExecutionState(item, result.status === "通过" ? "通过" : "失败");
+  item.executionNote = result.summary || item.executionNote || "";
+  persist();
+  setCaseActionStatus(`已完成「${item.title || "未命名用例"}」自动化执行。`, data.ok ? "ok" : "warn");
+  return result;
+}
+
+function getCaseAutomationFeedbackText(item) {
+  if (item.automationLastRun?.summary) {
+    return item.automationLastRun.summary;
+  }
+  if (item.automationEnabled) {
+    return "自动化已启用，可保存配置后直接运行。";
+  }
+  return "启用后，可为这条用例单独保存页面路径和执行步骤。";
+}
+
+function getCaseAutomationFeedbackTone(item) {
+  const status = item.automationLastRun?.status || "";
+  if (status === "通过") return "ok";
+  if (status === "失败") return "warn";
+  return "neutral";
+}
+
+function syncAutomationStatusChip(node, status) {
+  if (!node) {
+    return;
+  }
+
+  const normalizedStatus = status || "未运行";
+  node.textContent = normalizedStatus;
+  if (normalizedStatus === "通过") {
+    node.className = "case-automation-status state-chip ok";
+    return;
+  }
+  if (normalizedStatus === "失败") {
+    node.className = "case-automation-status state-chip warn";
+    return;
+  }
+  node.className = "case-automation-status state-chip neutral";
 }
 
 function truncateText(text, limit) {
@@ -4804,6 +5229,8 @@ function normalizeLoadedState(loadedState) {
   };
   loadedState.selfTestSnapshot = normalizeSelfTestSnapshot(loadedState.selfTestSnapshot);
   loadedState.caseQualityReport = normalizeCaseQualityReport(loadedState.caseQualityReport);
+  loadedState.uiAutomationSettings = normalizeUiAutomationSettings(loadedState.uiAutomationSettings);
+  loadedState.uiAutomationSession = normalizeUiAutomationSession(loadedState.uiAutomationSession);
   return loadedState;
 }
 
@@ -4836,7 +5263,22 @@ function defaultState() {
       result: null,
       error: ""
     },
-    caseQualityReport: null
+    caseQualityReport: null,
+    uiAutomationSettings: {
+      baseUrl: "",
+      loginPath: ""
+    },
+    uiAutomationSession: {
+      available: false,
+      browserPath: "",
+      active: false,
+      authSaved: false,
+      sessionStartedAt: "",
+      baseUrl: "",
+      loginPath: "",
+      headless: true,
+      lastError: ""
+    }
   };
 }
 

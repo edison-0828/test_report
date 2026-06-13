@@ -90,6 +90,17 @@ test("reports self-test scheduler status", async () => {
   assert.equal(data.running, false);
 });
 
+test("reports ui automation session status", async () => {
+  const response = await fetch(`${BASE_URL}/api/ui-automation/session-status`);
+  const data = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(data.ok, true);
+  assert.equal(typeof data.available, "boolean");
+  assert.equal(typeof data.authSaved, "boolean");
+  assert.equal(typeof data.active, "boolean");
+});
+
 test("blocks direct access to private server files", async () => {
   const serverFileResponse = await fetch(`${BASE_URL}/server.js`);
   const stateFileResponse = await fetch(`${BASE_URL}/app-state.json`);
@@ -107,6 +118,7 @@ test("persists and reloads shared app state", async () => {
       batches: [{ id: "batch-1", version: "V1.0.0" }],
       tasks: [{ id: "task-1", name: "smoke" }],
       reportConclusion: "Looks good",
+      reportConclusions: { "batch-1": "Looks good" },
       lastGeneration: { at: "2026-06-12T00:00:00Z" }
     }
   };

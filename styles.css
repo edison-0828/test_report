@@ -1492,6 +1492,57 @@ textarea {
   min-height: 82px;
 }
 
+.case-automation-block {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #e3eaf4;
+}
+
+.case-automation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.case-automation-copy {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.case-automation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--heading);
+}
+
+.case-automation-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.case-automation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: end;
+}
+
+.case-automation-status-wrap {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.case-automation-status {
+  justify-content: center;
+}
+
 #cases .list-card {
   border-radius: 18px;
   border: 1px solid #dbe5f2;
