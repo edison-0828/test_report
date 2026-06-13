@@ -44,7 +44,10 @@ const els = {
   generateCasesLocal: document.getElementById("generateCasesLocal"),
   saveDocument: document.getElementById("saveDocument"),
   generationStatus: document.getElementById("generationStatus"),
+  qualityImportInput: document.getElementById("qualityImportInput"),
   caseQualityBadge: document.getElementById("caseQualityBadge"),
+  caseQualitySource: document.getElementById("caseQualitySource"),
+  caseQualityStatus: document.getElementById("caseQualityStatus"),
   caseQualitySummary: document.getElementById("caseQualitySummary"),
   caseQualityIssues: document.getElementById("caseQualityIssues"),
   onboardingSteps: document.getElementById("onboardingSteps"),
@@ -82,6 +85,10 @@ const els = {
   caseImportInput: document.getElementById("caseImportInput"),
   caseBatchFilter: document.getElementById("caseBatchFilter"),
   caseTaskFilter: document.getElementById("caseTaskFilter"),
+  caseStatusFilter: document.getElementById("caseStatusFilter"),
+  caseBulkStatus: document.getElementById("caseBulkStatus"),
+  applyCaseBulkStatus: document.getElementById("applyCaseBulkStatus"),
+  caseActionStatus: document.getElementById("caseActionStatus"),
   executionBatchFilter: document.getElementById("executionBatchFilter"),
   executionTaskFilter: document.getElementById("executionTaskFilter"),
   executionModuleFilter: document.getElementById("executionModuleFilter"),
@@ -176,11 +183,14 @@ function bindEvents() {
   els.createBatchBtn.addEventListener("click", createBatch);
   els.createTaskBtn.addEventListener("click", createTask);
   els.caseImportInput.addEventListener("change", handleCaseImport);
+  els.qualityImportInput?.addEventListener("change", handleQualityImport);
   els.caseBatchFilter.addEventListener("change", () => {
     renderCaseFilters();
     renderCases();
   });
   els.caseTaskFilter.addEventListener("change", renderCases);
+  els.caseStatusFilter?.addEventListener("change", renderCases);
+  els.applyCaseBulkStatus?.addEventListener("click", applyBulkCaseExecutionStatus);
   els.bugBatchFilter.addEventListener("change", () => {
     renderCaseFilters();
     renderBugs();
@@ -294,21 +304,8 @@ function initTextSourceUi() {
 }
 
 function initOwnerUi() {
-  const versionFlow = document.querySelector(".version-flow");
   const taskPanel = els.currentTaskSummary?.closest(".panel");
   const bugOwnerField = els.bugTemplate?.content.querySelector(".bug-owner");
-
-  if (versionFlow && !document.getElementById("batchOwnerSelect")) {
-    const ownerField = document.createElement("label");
-    ownerField.className = "step-field";
-    ownerField.innerHTML = `
-      <span class="step-label">版本负责人</span>
-      <select id="batchOwnerSelect">
-        <option value="">未选择</option>
-      </select>
-    `;
-    versionFlow.appendChild(ownerField);
-  }
 
   if (taskPanel && !document.getElementById("taskOwnerSelect")) {
     const taskActions = taskPanel.querySelector(".inline-actions");
@@ -329,7 +326,6 @@ function initOwnerUi() {
     bugOwnerField.replaceWith(select);
   }
 
-  els.batchOwnerSelect = document.getElementById("batchOwnerSelect");
   els.taskOwnerSelect = document.getElementById("taskOwnerSelect");
   fillOwnerSelect(els.currentOperatorSelect, settings.currentOperator, "请选择当前操作人");
 }
@@ -1049,6 +1045,22 @@ function setBugStatus(text, tone = "neutral") {
   els.bugStatus.className = `inline-feedback ${tone}`;
 }
 
+function setCaseActionStatus(text, tone = "neutral") {
+  if (!els.caseActionStatus) {
+    return;
+  }
+  els.caseActionStatus.textContent = text;
+  els.caseActionStatus.className = `inline-feedback ${tone}`;
+}
+
+function setCaseQualityStatus(text, tone = "neutral") {
+  if (!els.caseQualityStatus) {
+    return;
+  }
+  els.caseQualityStatus.textContent = text;
+  els.caseQualityStatus.className = `inline-feedback ${tone}`;
+}
+
 function saveCurrentDocument() {
   const name = els.documentName.value.trim();
   const sourceType = els.sourceType.value;
@@ -1205,7 +1217,6 @@ function createBatch() {
   const version = els.batchVersionInput.value.trim();
   const moduleId = els.activeModuleSelect.value;
   const moduleItem = getModuleById(moduleId);
-  const owner = els.batchOwnerSelect?.value.trim() || "";
   const duplicateBatch = state.batches.find((item) => item.version === version && item.id !== editingBatchId);
 
   if (!version) {
@@ -1225,8 +1236,6 @@ function createBatch() {
     scope: getBatchById(editingBatchId)?.scope || "",
     moduleId: moduleItem?.id || getBatchById(editingBatchId)?.moduleId || "",
     moduleName: moduleItem?.name || getBatchById(editingBatchId)?.moduleName || "",
-    owner,
-    owners: splitOwnerValues(owner),
     status: getBatchById(editingBatchId)?.status || "进行中"
   };
   const auditedBatch = editingBatchId
@@ -1244,7 +1253,6 @@ function createBatch() {
   state.generationBatchId = auditedBatch.id;
   state.activeModuleId = auditedBatch.moduleId || state.activeModuleId;
   els.batchVersionInput.value = "";
-  fillOwnerSelect(els.batchOwnerSelect, "");
   editingBatchId = "";
   els.createBatchBtn.textContent = "保存当前版本";
   autoResizeTextarea();
@@ -1561,7 +1569,7 @@ function handleCaseImport(event) {
         taskId: state.activeTaskId || "",
         batchId: state.activeBatchId || ""
       });
-      state.caseQualityReport = analyzeCaseQuality(normalizedImportedCases, "导入");
+      state.caseQualityReport = analyzeCaseQuality(normalizedImportedCases, "导入", file.name);
 
       persist();
       renderAll();
@@ -1571,6 +1579,35 @@ function handleCaseImport(event) {
       setGenerationStatus(`CSV 导入失败：${error.message}`, "error");
     } finally {
       els.caseImportInput.value = "";
+    }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function handleQualityImport(event) {
+  const [file] = event.target.files;
+  if (!file) {
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const importedCases = parseCasesCsv(String(reader.result || ""));
+      if (!importedCases.length) {
+        setCaseQualityStatus("上传的 CSV 没识别到有效用例，暂时无法检测。", "warn");
+        return;
+      }
+
+      state.caseQualityReport = analyzeCaseQuality(importedCases, "手动导入检测", file.name);
+      persist();
+      renderCaseQuality();
+      switchTab("quality");
+      setCaseQualityStatus(`已基于上传的 CSV 检测 ${importedCases.length} 条用例。`, mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
+    } catch (error) {
+      setCaseQualityStatus(`CSV 检测失败：${error.message}`, "error");
+    } finally {
+      els.qualityImportInput.value = "";
     }
   };
   reader.readAsText(file, "utf-8");
@@ -1612,7 +1649,7 @@ function parseCasesCsv(csvText) {
     }));
 }
 
-function analyzeCaseQuality(cases, sourceLabel) {
+function analyzeCaseQuality(cases, sourceLabel, fileName = "") {
   const list = Array.isArray(cases) ? cases : [];
   if (!list.length) {
     return null;
@@ -1737,6 +1774,8 @@ function analyzeCaseQuality(cases, sourceLabel) {
     label: severeCount > 0 ? "有风险" : warningCount > 0 ? "需关注" : "通过",
     tone: severeCount > 0 ? "error" : warningCount > 0 ? "warn" : "ok",
     sourceLabel,
+    fileName: String(fileName || "").trim(),
+    checkedAt: new Date().toLocaleString("zh-CN"),
     quickTip: buildCaseQualityQuickTip({
       missingSteps,
       missingExpected,
@@ -2173,18 +2212,20 @@ function renderAll() {
 }
 
 function renderCaseQuality() {
-  if (!els.caseQualityBadge || !els.caseQualitySummary || !els.caseQualityIssues) {
+  if (!els.caseQualityBadge || !els.caseQualitySummary || !els.caseQualityIssues || !els.caseQualitySource) {
     return;
   }
 
   const report = state.caseQualityReport;
   if (!report) {
-    els.caseQualityBadge.textContent = "未检查";
+    els.caseQualityBadge.textContent = "未开始";
     els.caseQualityBadge.className = "status-pill neutral";
+    els.caseQualitySource.textContent = "还没有开始检测，先上传 CSV，或者先去用 AI 生成一批用例。";
+    setCaseQualityStatus("等待检测中。", "neutral");
     els.caseQualitySummary.innerHTML = `
       <div class="empty-state empty-state-rich compact-empty-state">
-        <strong>还没有可分析的用例</strong>
-        <p>生成或导入一批测试用例后，这里会自动给出基础质量检查结果。</p>
+        <strong>还没有开始检测</strong>
+        <p>这个模块支持独立上传测试用例 CSV 检测，也会在 AI 生成用例后自动刷新结果。</p>
       </div>
     `;
     els.caseQualityIssues.innerHTML = "";
@@ -2193,11 +2234,22 @@ function renderCaseQuality() {
 
   els.caseQualityBadge.textContent = report.label;
   els.caseQualityBadge.className = `status-pill ${report.tone}`;
+  const qualityMetaParts = [];
+  if (report.fileName) {
+    qualityMetaParts.push(`最近一次检测文件：${report.fileName}`);
+  }
+  if (report.checkedAt) {
+    qualityMetaParts.push(`最近一次检测时间：${report.checkedAt}`);
+  }
+  els.caseQualitySource.textContent = qualityMetaParts.join(" | ") || "最近一次检测信息未记录";
+  setCaseQualityStatus(report.checkedAt ? `检测完成于 ${report.checkedAt}` : "检测已完成。", "neutral");
   els.caseQualitySummary.innerHTML = `
+    ${report.quickTip ? `
     <div class="quality-callout ${report.tone}">
       <strong>快速建议</strong>
       <p>${escapeHtml(report.quickTip)}</p>
     </div>
+    ` : ""}
     <div class="report-simple-grid quality-summary-grid">
       ${report.metrics.map(([label, value]) => `
         <article class="report-simple-item">
@@ -2236,7 +2288,7 @@ function renderOnboarding() {
     {
       key: "meta",
       title: "创建版本",
-      desc: "填写本次测试对应的版本号和负责人。",
+      desc: "填写本次测试对应的版本号，并建立当前测试范围。",
       done: flow.hasMeta,
       current: flow.nextAction === "create-meta"
     },
@@ -2329,7 +2381,7 @@ function getWorkflowState() {
       nextAction: "create-meta",
       actionLabel: "先保存当前版本",
       tipTitle: "先建立测试范围",
-      tipBody: "先选择当前业务、填写版本号，再指定版本负责人。后面生成的用例、BUG、报告都会自动归到这里。"
+      tipBody: "先选择当前业务、填写版本号。后面生成的用例、BUG、报告都会自动归到这里。"
     };
   }
 
@@ -2505,7 +2557,6 @@ function renderMetaControls() {
   fillSelectFromItems(els.activeBatchSelect, state.batches, "未选择", state.activeBatchId, formatBatchLabel);
   fillSelectFromItems(els.activeModuleSelect, state.modules, "未选择", state.activeModuleId, (item) => item.name);
   fillSelectFromItems(els.taskBatchSelect, state.batches, "请选择版本", els.taskBatchSelect.value || state.activeBatchId, (item) => formatTaskBatchLabel(item));
-  fillOwnerSelect(els.batchOwnerSelect, editingBatchId ? (getBatchById(editingBatchId)?.owner || "") : "");
   fillOwnerSelect(els.taskOwnerSelect, editingTaskId ? (getTaskById(editingTaskId)?.owner || "") : "");
   els.currentVersionSummary.innerHTML = "";
   els.currentTaskSummary.innerHTML = "";
@@ -2550,7 +2601,6 @@ function renderVersionManager() {
     const isActive = batch.id === state.activeBatchId;
     const isSuspended = batch.status === "已挂起";
     const isCompleted = batch.status === "已完成";
-    const ownerText = getOwnerDisplay(batch.owners || batch.owner) || "未分配";
     const node = document.createElement("article");
     node.className = "list-card version-card";
     node.innerHTML = `
@@ -2567,8 +2617,8 @@ function renderVersionManager() {
           </div>
           <div class="version-card-summary">
             <div class="version-summary-chip">
-              <span>负责人</span>
-              <strong>${escapeHtml(ownerText)}</strong>
+              <span>所属业务</span>
+              <strong>${escapeHtml(batch.moduleName || batch.name || "未设置")}</strong>
             </div>
             <div class="version-summary-chip">
               <span>可操作状态</span>
@@ -2591,14 +2641,8 @@ function renderVersionManager() {
         <div class="version-card-detail hidden-field">
           <div class="version-card-body">
             <div class="summary-block version-owner-panel">
-              <span class="summary-label">版本负责人</span>
-              <p>${escapeHtml(ownerText)}</p>
-            </div>
-            <div class="summary-block version-owner-panel">
-              <span class="summary-label">协作留痕</span>
-              <div class="trace-meta compact-trace-meta">
-                ${renderTraceMetaHtml(batch, ownerText)}
-              </div>
+              <span class="summary-label">版本范围</span>
+              <p>${escapeHtml(batch.moduleName || batch.name || "未设置")}</p>
             </div>
           </div>
           <div class="version-task-section">
@@ -2714,7 +2758,6 @@ function handleVersionAction(action, batchId) {
     editingBatchId = batch.id;
     els.batchVersionInput.value = batch.version || "";
     els.activeModuleSelect.value = batch.moduleId || "";
-    fillOwnerSelect(els.batchOwnerSelect, batch.owner || "");
     els.createBatchBtn.textContent = "保存版本修改";
     autoResizeTextarea();
     switchTab("upload");
@@ -2788,7 +2831,6 @@ function handleVersionAction(action, batchId) {
       editingBatchId = "";
       els.createBatchBtn.textContent = "4. 保存当前版本";
       els.batchVersionInput.value = "";
-      fillOwnerSelect(els.batchOwnerSelect, "");
       autoResizeTextarea();
     }
     persist();
@@ -2901,10 +2943,6 @@ function getReportOwners(scope) {
     });
   }
 
-  if (!owners.length && scope.batch) {
-    owners.push(...splitOwnerValues(scope.batch.owners || scope.batch.owner));
-  }
-
   return normalizeTeamMembers(owners);
 }
 
@@ -2960,10 +2998,6 @@ function deleteTeamMember(name) {
     return;
   }
   state.teamMembers = state.teamMembers.filter((item) => item !== name);
-  state.batches = state.batches.map((item) => {
-    const owners = splitOwnerValues(item.owners || item.owner).filter((owner) => owner !== name);
-    return { ...item, owners, owner: owners.join("、") };
-  });
   state.tasks = state.tasks.map((item) => {
     const owners = splitOwnerValues(item.owners || item.owner).filter((owner) => owner !== name);
     return { ...item, owners, owner: owners.join("、") };
@@ -3044,14 +3078,11 @@ function normalizeModuleId(value) {
 
 function normalizeBatchItem(item) {
   const moduleName = normalizeBusinessName(item.moduleName || item.name);
-  const owners = splitOwnerValues(item.owners || item.owner);
   return {
     ...item,
     name: moduleName || item.name,
     moduleName: moduleName || item.moduleName || item.name,
     moduleId: moduleName ? slugifyBusiness(moduleName) : item.moduleId || "",
-    owner: owners.join("、"),
-    owners,
     createdBy: String(item.createdBy || "").trim(),
     createdAt: item.createdAt || "",
     updatedBy: String(item.updatedBy || "").trim(),
@@ -3117,7 +3148,6 @@ function normalizeTeamMembers(list) {
 
 function collectOwnersIntoTeamMembers() {
   const owners = [
-    ...state.batches.flatMap((item) => splitOwnerValues(item.owners || item.owner)),
     ...state.tasks.flatMap((item) => splitOwnerValues(item.owners || item.owner)),
     ...state.bugs.map((item) => item.owner)
   ];
@@ -3154,10 +3184,12 @@ function getTasksByBatchForFilters(batchId, source = "all") {
 function getFilteredCasesForView() {
   const batchFilter = els.caseBatchFilter.value;
   const taskFilter = els.caseTaskFilter.value;
+  const statusFilter = els.caseStatusFilter?.value || "";
 
   return state.cases.filter((item) => {
     return (!batchFilter || item.batchId === batchFilter)
-      && (!taskFilter || item.taskName === taskFilter);
+      && (!taskFilter || item.taskName === taskFilter)
+      && (!statusFilter || (item.executionStatus || "未执行") === statusFilter);
   });
 }
 
@@ -3241,6 +3273,32 @@ function renderCaseFilters() {
   els.bugTaskFilter.value = bugTaskValue;
 }
 
+function updateCaseExecutionState(item, nextStatus) {
+  item.executionStatus = nextStatus;
+  Object.assign(item, applyUpdateAuditFields(item));
+}
+
+function applyBulkCaseExecutionStatus() {
+  const nextStatus = els.caseBulkStatus?.value || "";
+  if (!nextStatus) {
+    setCaseActionStatus("请先选择要批量设置成什么执行状态。", "warn");
+    return;
+  }
+
+  const filteredCases = getFilteredCasesForView();
+  if (!filteredCases.length) {
+    setCaseActionStatus("当前筛选范围里没有可批量更新的测试用例。", "warn");
+    return;
+  }
+
+  filteredCases.forEach((item) => updateCaseExecutionState(item, nextStatus));
+  persist();
+  renderCases();
+  renderQuickStats();
+  renderReport();
+  setCaseActionStatus(`已将 ${filteredCases.length} 条测试用例批量更新为“${nextStatus}”。`, "ok");
+}
+
 function getReportConclusionForBatch(batchId) {
   if (!batchId) {
     return state.reportConclusion || "";
@@ -3316,11 +3374,13 @@ function renderCases() {
   if (!filtered.length) {
     els.caseList.innerHTML = `
       <div class="empty-state empty-state-rich">
-        <strong>这里还没有测试用例</strong>
-        <p>先去生成用例，或者直接上传现成 CSV。</p>
+        <strong>${state.cases.length ? "当前筛选范围里没有匹配的测试用例" : "这里还没有测试用例"}</strong>
+        <p>${state.cases.length ? "换个筛选条件试试，或者继续补充执行结果。" : "先去生成用例，或者直接上传现成 CSV。"}</p>
+        ${state.cases.length ? "" : `
         <div class="empty-actions">
           <button class="primary-button" data-action="generate-cases">去生成用例</button>
         </div>
+        `}
       </div>
     `;
     return;
@@ -3354,8 +3414,7 @@ function renderCases() {
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
     executionSelect.addEventListener("change", (event) => {
-      item.executionStatus = event.target.value;
-      Object.assign(item, applyUpdateAuditFields(item));
+      updateCaseExecutionState(item, event.target.value);
       statusBadge.textContent = item.executionStatus;
       applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
       syncExecutionStatusBadge(executionBadge, item.executionStatus);
@@ -3363,6 +3422,7 @@ function renderCases() {
       persist();
       renderQuickStats();
       renderReport();
+      setCaseActionStatus(`已将「${item.title || "未命名用例"}」更新为“${item.executionStatus}”。`, "ok");
     });
 
     executionNote.addEventListener("input", (event) => {
@@ -3438,7 +3498,7 @@ function createBugRecord(sourceCase) {
     moduleName: firstCase?.module || activeModule?.name || "",
     severity: "中",
     status: "新建",
-    owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || splitOwnerValues(activeBatch?.owners || activeBatch?.owner)[0] || "",
+    owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || "",
     link: "",
     note: buildBugNoteFromCase(firstCase)
   }));
@@ -3997,7 +4057,7 @@ function buildReportViewModel(scope = getReportScope()) {
     scope.task ? `任务：${scope.task.name || ""}` : "",
     getOwnerDisplay(scope.task?.owners || scope.task?.owner)
       ? `任务负责人：${getOwnerDisplay(scope.task?.owners || scope.task?.owner)}`
-      : (getOwnerDisplay(scope.batch?.owners || scope.batch?.owner) ? `版本负责人：${getOwnerDisplay(scope.batch?.owners || scope.batch?.owner)}` : "")
+      : ""
   ].filter(Boolean).join(" / ") || "当前全部范围";
 
   return {
@@ -4037,7 +4097,6 @@ function buildReportViewModel(scope = getReportScope()) {
       ["测试负责人", testOwners.join("、") || "未分配"],
       ["测试任务数", versionTaskCount],
       ["测试用例总数", total],
-      ["版本负责人", getOwnerDisplay(scope.batch?.owners || scope.batch?.owner) || "未分配"],
       ["任务负责人", getOwnerDisplay(scope.task?.owners || scope.task?.owner) || "未分配"],
       ["执行用例数", executed],
       ["成功用例数", passed],
@@ -4615,8 +4674,7 @@ function seedDemoData() {
     version: "V2026.06.10",
     scope: "登录、下单、退款回归",
     moduleId: "business-VA业务",
-    moduleName: "VA业务",
-    owner: "测试A"
+    moduleName: "VA业务"
   }];
   state.modules = [{
     id: "business-VA业务",
@@ -4805,6 +4863,9 @@ function normalizeCaseQualityReport(report) {
     label: typeof report.label === "string" ? report.label : "未检查",
     tone: typeof report.tone === "string" ? report.tone : "neutral",
     sourceLabel: typeof report.sourceLabel === "string" ? report.sourceLabel : "",
+    fileName: typeof report.fileName === "string" ? report.fileName : "",
+    checkedAt: typeof report.checkedAt === "string" ? report.checkedAt : "",
+    quickTip: typeof report.quickTip === "string" ? report.quickTip : "",
     metrics: Array.isArray(report.metrics) ? report.metrics : [],
     issues: Array.isArray(report.issues) ? report.issues : []
   };

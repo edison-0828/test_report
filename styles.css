@@ -1822,6 +1822,20 @@ textarea {
   flex: 1 1 280px;
 }
 
+.case-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  align-items: center;
+}
+
+.case-toolbar > * {
+  min-width: 0;
+}
+
+.case-toolbar #applyCaseBulkStatus {
+  white-space: nowrap;
+}
+
 #caseList .list-card,
 #bugList .list-card {
   position: relative;
@@ -2386,6 +2400,11 @@ textarea:focus {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid #e8edf5;
+  display: grid;
+  gap: 14px;
+}
+
+.quality-module-panel {
   display: grid;
   gap: 14px;
 }

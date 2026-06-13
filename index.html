@@ -18,6 +18,7 @@
 
       <nav class="nav">
         <button class="nav-link active" data-tab="upload">用例生成</button>
+        <button class="nav-link" data-tab="quality">质量检查</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
         <button class="nav-link" data-tab="cases">测试用例</button>
         <button class="nav-link" data-tab="bugs">BUG管理</button>
@@ -240,20 +241,34 @@
               <button id="saveDocument" class="ghost-button">保存文档</button>
             </div>
             <p id="generationStatus" class="inline-feedback">还没开始生成。</p>
-
-            <section class="quality-panel">
-              <div class="section-head quality-panel-head">
-                <div>
-                  <h3>5. 用例质量检查</h3>
-                  <p class="section-note">生成或导入后，自动检查当前这批用例的完整性、重复项和基础覆盖情况。</p>
-                </div>
-                <span id="caseQualityBadge" class="status-pill neutral">未检查</span>
-              </div>
-              <div id="caseQualitySummary"></div>
-              <div id="caseQualityIssues" class="list-stack compact-stack"></div>
-            </section>
           </section>
         </div>
+      </section>
+
+      <section class="tab-panel" id="quality">
+        <div class="panel-header">
+          <div>
+            <h2>用例质量检查</h2>
+            <p>独立检查一批测试用例的完整性、重复项和基础覆盖情况。AI 生成后也会自动刷新这里的结果。</p>
+          </div>
+          <label class="import-button primary-import">
+            <input type="file" id="qualityImportInput" accept=".csv">
+            <span>上传CSV检测</span>
+          </label>
+        </div>
+
+        <section class="panel quality-module-panel">
+          <div class="section-head quality-panel-head">
+            <div>
+              <h3>当前检测结果</h3>
+              <p class="section-note" id="caseQualitySource">还没有开始检测，先上传 CSV，或者先去用 AI 生成一批用例。</p>
+            </div>
+            <span id="caseQualityBadge" class="status-pill neutral">未开始</span>
+          </div>
+          <p id="caseQualityStatus" class="inline-feedback neutral">这里会显示最近一次质量检查的来源和结果。</p>
+          <div id="caseQualitySummary"></div>
+          <div id="caseQualityIssues" class="list-stack compact-stack"></div>
+        </section>
       </section>
 
       <section class="tab-panel" id="cases">
@@ -269,14 +284,30 @@
         </div>
 
         <section class="panel">
-          <div class="actions compact section-toolbar">
+          <div class="actions compact section-toolbar case-toolbar">
             <select id="caseBatchFilter">
               <option value="">全部版本</option>
             </select>
             <select id="caseTaskFilter">
               <option value="">全部任务</option>
             </select>
+            <select id="caseStatusFilter">
+              <option value="">全部状态</option>
+              <option value="未执行">未执行</option>
+              <option value="通过">通过</option>
+              <option value="失败">失败</option>
+              <option value="阻塞">阻塞</option>
+            </select>
+            <select id="caseBulkStatus">
+              <option value="">批量改为</option>
+              <option value="未执行">未执行</option>
+              <option value="通过">通过</option>
+              <option value="失败">失败</option>
+              <option value="阻塞">阻塞</option>
+            </select>
+            <button id="applyCaseBulkStatus" class="ghost-button" type="button">批量应用</button>
           </div>
+          <p id="caseActionStatus" class="inline-feedback">这里会显示筛选结果和批量执行状态更新结果。</p>
           <div id="caseList" class="list-stack"></div>
         </section>
       </section>
@@ -285,7 +316,7 @@
         <div class="panel-header">
           <div>
             <h2>版本管理</h2>
-            <p>按版本查看测试任务、负责人、范围和操作入口。</p>
+            <p>按版本查看测试任务、范围和操作入口。</p>
           </div>
         </div>
 
@@ -293,7 +324,7 @@
           <div class="section-head">
             <div>
               <h3>版本卡片</h3>
-              <p class="section-note">点击展开详情后，可查看该版本下的测试任务、负责人和操作入口。</p>
+              <p class="section-note">点击展开详情后，可查看该版本下的测试任务、范围和操作入口。</p>
             </div>
           </div>
           <div id="versionManagerList" class="list-stack"></div>

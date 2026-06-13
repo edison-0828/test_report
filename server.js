@@ -857,7 +857,6 @@ function buildLarkRecords(state) {
         "外部ID": batch.id,
         "版本号": batch.version,
         "状态": batch.status,
-        "负责人": formatOwners(batch.owners || batch.owner),
         "任务数": batchTasks.length,
         "用例数": batchCases.length,
         "BUG数": batchBugs.length,
