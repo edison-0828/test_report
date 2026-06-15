@@ -1387,14 +1387,113 @@ function buildResponseSchema() {
   };
 }
 
+function tryParseStructuredJson(raw) {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  if (!text) return null;
+
+  const candidates = [text];
+
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]) {
+    candidates.push(fencedMatch[1].trim());
+  }
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(text.slice(firstBrace, lastBrace + 1).trim());
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function normalizeStructuredOutput(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const rawCases = Array.isArray(parsed.testCases)
+    ? parsed.testCases
+    : Array.isArray(parsed.test_cases)
+      ? parsed.test_cases
+      : Array.isArray(parsed.cases)
+        ? parsed.cases
+        : [];
+
+  const normalizedCases = rawCases
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const moduleValue = String(item.module || item.category || item.group || "未分类").trim();
+      const titleValue = String(item.title || item.name || item.caseTitle || "").trim();
+      const rawType = String(item.type || item.caseType || item.scenarioType || "").trim();
+      const rawPriority = String(item.priority || item.level || "").trim().toUpperCase();
+      const preconditions = Array.isArray(item.preconditions)
+        ? item.preconditions
+        : Array.isArray(item.precondition)
+          ? item.precondition
+          : typeof item.preconditions === "string"
+            ? [item.preconditions]
+            : typeof item.precondition === "string"
+              ? [item.precondition]
+              : [];
+      const steps = Array.isArray(item.steps)
+        ? item.steps
+        : typeof item.steps === "string"
+          ? [item.steps]
+          : [];
+      const expectedValue = String(item.expected || item.expectedResult || item.expect || "").trim();
+
+      const typeMap = {
+        "正常": "正常",
+        "异常": "异常",
+        "边界": "边界",
+        "normal": "正常",
+        "exception": "异常",
+        "error": "异常",
+        "boundary": "边界"
+      };
+
+      const normalizedType = typeMap[rawType.toLowerCase?.() ? rawType.toLowerCase() : rawType] || typeMap[rawType] || "";
+      const normalizedPriority = ["P0", "P1", "P2", "P3"].includes(rawPriority) ? rawPriority : "P2";
+
+      if (!titleValue || !steps.length || !expectedValue) return null;
+
+      return {
+        module: moduleValue || "未分类",
+        title: titleValue,
+        type: normalizedType || "正常",
+        priority: normalizedPriority,
+        preconditions: preconditions.map((value) => String(value || "").trim()).filter(Boolean),
+        steps: steps.map((value) => String(value || "").trim()).filter(Boolean),
+        expected: expectedValue
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalizedCases.length) return null;
+
+  return {
+    summary: String(parsed.summary || parsed.overview || "已生成测试用例。").trim(),
+    assumptions: Array.isArray(parsed.assumptions)
+      ? parsed.assumptions.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+    testCases: normalizedCases
+  };
+}
+
 function extractStructuredOutput(responseJson) {
   const directText = responseJson.output_text;
   if (directText) {
-    try {
-      return JSON.parse(directText);
-    } catch (_error) {
-      return null;
-    }
+    const parsed = tryParseStructuredJson(directText);
+    const normalized = normalizeStructuredOutput(parsed);
+    if (normalized) return normalized;
   }
 
   const outputs = Array.isArray(responseJson.output) ? responseJson.output : [];
@@ -1402,11 +1501,9 @@ function extractStructuredOutput(responseJson) {
     const contents = Array.isArray(item.content) ? item.content : [];
     for (const content of contents) {
       if (typeof content.text === "string") {
-        try {
-          return JSON.parse(content.text);
-        } catch (_error) {
-          continue;
-        }
+        const parsed = tryParseStructuredJson(content.text);
+        const normalized = normalizeStructuredOutput(parsed);
+        if (normalized) return normalized;
       }
     }
   }

@@ -116,39 +116,38 @@ test("saveApiSettings auto-enables a saved API key", async () => {
   const calls = [];
   const settings = {
     apiKey: "",
-    model: "gpt-5.4-mini",
+    model: "gpt-5.4",
     currentOperator: "QA",
     apiReady: false
   };
   const state = {
     settings: {
       apiKey: "",
-      model: "gpt-5.4-mini",
+      model: "gpt-5.4",
       currentOperator: "QA"
     }
   };
   const els = {
     apiKey: { value: "sk-test" },
-    modelSelect: { value: "gpt-5.4" },
-    saveApiKey: {}
+    modelSelect: { value: "gpt-5.4" }
   };
 
   const saveApiSettings = loadFunction("saveApiSettings", {
     settings,
     state,
     els,
+    normalizeAiModel: (value) => String(value || "").trim() || "gpt-5.4",
     persist: () => calls.push("persist"),
     setApiStatus: (text, tone) => calls.push(["setApiStatus", text, tone]),
     setApiFeedback: (text, tone) => calls.push(["setApiFeedback", text, tone]),
     renderApiStateBoard: () => calls.push("renderApiStateBoard"),
-    flashButtonSuccess: (button, text) => calls.push(["flashButtonSuccess", button === els.saveApiKey, text]),
     checkAiKey: async (options) => {
       calls.push(["checkAiKey", options]);
       settings.apiReady = true;
     }
   });
 
-  await saveApiSettings();
+  await saveApiSettings({ autoCheck: true });
 
   assert.equal(settings.apiKey, "sk-test");
   assert.equal(settings.model, "gpt-5.4");
@@ -163,7 +162,6 @@ test("saveApiSettings auto-enables a saved API key", async () => {
     ["setApiStatus", "已保存，正在检测", "neutral"],
     ["setApiFeedback", "个人 Key 已保存，正在自动检测并启用。", "neutral"],
     "renderApiStateBoard",
-    ["flashButtonSuccess", true, "保存成功"],
     ["checkAiKey", {
       showFeedback: false,
       successMessage: "个人 Key 已保存并启用，接下来可以直接生成用例。",
@@ -176,7 +174,7 @@ test("ensureAiReadyForGeneration auto-checks saved key before generating", async
   const calls = [];
   const settings = {
     apiKey: "sk-test",
-    model: "gpt-5.4-mini",
+    model: "gpt-5.4",
     currentOperator: "",
     apiReady: false
   };
@@ -211,7 +209,7 @@ test("ensureAiReadyForGeneration blocks generation when no API key is saved", as
   const calls = [];
   const settings = {
     apiKey: "",
-    model: "gpt-5.4-mini",
+    model: "gpt-5.4",
     currentOperator: "",
     apiReady: false
   };
@@ -230,7 +228,7 @@ test("ensureAiReadyForGeneration blocks generation when no API key is saved", as
   assert.equal(ready, false);
   assert.deepEqual(toPlainJson(calls), [
     ["setApiStatus", "需要填写 API Key", "warn"],
-    ["setApiFeedback", "请先填写并保存你的个人 API Key。", "warn"],
+    ["setApiFeedback", "请先填写你的个人 API Key，再点“检测并启用”。", "warn"],
     "renderApiStateBoard"
   ]);
 });

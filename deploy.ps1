@@ -19,6 +19,7 @@ $IncludePaths = @(
   ".env.example",
   "app-state.json",
   "team-members.json",
+  "tests",
   "tmp",
   "ops"
 )
