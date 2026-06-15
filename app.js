@@ -74,7 +74,6 @@ const els = {
   currentOperatorSelect: document.getElementById("currentOperatorSelect"),
   apiStatus: document.getElementById("apiStatus"),
   checkApiKey: document.getElementById("checkApiKey"),
-  saveApiKey: document.getElementById("saveApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
   modelSelect: document.getElementById("modelSelect"),
   apiFeedback: document.getElementById("apiFeedback"),
@@ -83,6 +82,7 @@ const els = {
   apiModelState: document.getElementById("apiModelState"),
   caseList: document.getElementById("caseList"),
   caseImportInput: document.getElementById("caseImportInput"),
+  automationCaseImportInput: document.getElementById("automationCaseImportInput"),
   caseBatchFilter: document.getElementById("caseBatchFilter"),
   caseTaskFilter: document.getElementById("caseTaskFilter"),
   caseStatusFilter: document.getElementById("caseStatusFilter"),
@@ -204,6 +204,7 @@ function bindEvents() {
   els.createBatchBtn.addEventListener("click", createBatch);
   els.createTaskBtn.addEventListener("click", createTask);
   els.caseImportInput.addEventListener("change", handleCaseImport);
+  els.automationCaseImportInput?.addEventListener("change", handleCaseImport);
   els.qualityImportInput?.addEventListener("change", handleQualityImport);
   els.caseBatchFilter.addEventListener("change", () => {
     renderCaseFilters();
@@ -231,8 +232,7 @@ function bindEvents() {
   els.addBug.addEventListener("click", createBugRecord);
   els.exportReport.addEventListener("click", exportReport);
   els.runSelfTest?.addEventListener("click", runSelfTest);
-  els.checkApiKey?.addEventListener("click", () => checkAiKey());
-  els.saveApiKey?.addEventListener("click", saveApiSettings);
+  els.checkApiKey?.addEventListener("click", () => saveApiSettings({ autoCheck: true }));
   els.clearApiKey?.addEventListener("click", clearApiSettings);
   els.modelSelect?.addEventListener("change", saveApiSettings);
   els.apiKey?.addEventListener("input", handleApiDraftChange);
@@ -478,7 +478,8 @@ async function checkApiStatus() {
   }
 }
 
-async function saveApiSettings() {
+async function saveApiSettings(options = {}) {
+  const { autoCheck = false } = options;
   const previousApiKey = state.settings?.apiKey || "";
   const previousModel = state.settings?.model || "gpt-5.4-mini";
   settings.apiKey = els.apiKey.value.trim();
@@ -494,12 +495,23 @@ async function saveApiSettings() {
     settings.apiReady = false;
   }
   persist();
-  setApiStatus(settings.apiKey ? "已保存，正在检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
-  setApiFeedback(settings.apiKey ? "个人 Key 已保存，正在自动检测并启用。" : "已清空个人 Key。", settings.apiKey ? "neutral" : "warn");
-  renderApiStateBoard();
-  flashButtonSuccess(els.saveApiKey, "保存成功");
-
   if (!settings.apiKey) {
+    setApiStatus("需要填写 API Key", "warn");
+    setApiFeedback(autoCheck ? "请先填写你的个人 Key，再检测并启用。" : "已清空个人 Key。", "warn");
+    renderApiStateBoard();
+    return;
+  }
+
+  if (autoCheck) {
+    setApiStatus("已保存，正在检测", "neutral");
+    setApiFeedback("个人 Key 已保存，正在自动检测并启用。", "neutral");
+  } else {
+    setApiStatus("待检测", "neutral");
+    setApiFeedback("当前 Key 和模型已保存，如需使用请点“检测并启用”。", "neutral");
+  }
+  renderApiStateBoard();
+
+  if (!autoCheck) {
     return;
   }
 
@@ -620,7 +632,7 @@ async function checkAiKey(options = {}) {
 async function ensureAiReadyForGeneration() {
   if (!settings.apiKey) {
     setApiStatus("需要填写 API Key", "warn");
-    setApiFeedback("请先填写并保存你的个人 API Key。", "warn");
+    setApiFeedback("请先填写你的个人 API Key，再点“检测并启用”。", "warn");
     renderApiStateBoard();
     return false;
   }
@@ -1798,7 +1810,9 @@ function handleCaseImport(event) {
     } catch (error) {
       setGenerationStatus(`CSV 导入失败：${error.message}`, "error");
     } finally {
-      els.caseImportInput.value = "";
+      if (event?.target) {
+        event.target.value = "";
+      }
     }
   };
   reader.readAsText(file, "utf-8");
@@ -2109,12 +2123,10 @@ function parseCsvRows(text) {
 }
 
 function downloadCasesCsv(cases, activeBatch, activeTask, documentName) {
-  const headers = ["测试任务", "关联版本号", "批次", "模块", "标题", "类型", "优先级", "前置条件", "步骤", "预期结果", "执行状态", "执行备注"];
+  const headers = ["测试任务", "关联版本号", "标题", "类型", "优先级", "前置条件", "步骤", "预期结果", "执行状态", "执行备注"];
   const rows = cases.map((item) => [
     item.taskName || activeTask?.name || "",
     item.batchVersion || activeBatch?.version || "",
-    item.batchName || (activeBatch ? formatBatchLabel(activeBatch) : ""),
-    item.module || "",
     item.title || "",
     item.type || "",
     item.priority || "",
@@ -2145,8 +2157,6 @@ function downloadCaseTemplateCsv() {
   const headers = [
     "测试任务",
     "关联版本号",
-    "批次",
-    "模块",
     "标题",
     "类型",
     "优先级",
@@ -2159,8 +2169,6 @@ function downloadCaseTemplateCsv() {
   const exampleRow = [
     activeTask?.name || "",
     activeBatch?.version || "",
-    activeBatch ? formatBatchLabel(activeBatch) : "",
-    activeTask?.moduleName || getModuleNameById(activeTask?.moduleId || state.activeModuleId) || "",
     "",
     "正常",
     "P2",

@@ -1,0 +1,15 @@
+[Unit]
+Description=Test Report Tool
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+Environment=NODE_ENV=production
+ExecStart=__NODE_BIN__ __APP_DIR__/server.js
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -62,7 +62,7 @@ Recommended server path:
 Recommended long-running mode:
 
 - Ubuntu server
-- `pm2` process manager
+- `systemd` service
 - project Python virtual environment at `/opt/test-report/.venv`
 
 ### First-time server preparation
@@ -98,7 +98,8 @@ CODEX_PYTHON=/opt/test-report/.venv/bin/python
 This repo now includes:
 
 - `deploy.ps1`
-- `ecosystem.config.cjs`
+- `ops/test-report.service`
+- `ops/install-systemd-service.sh`
 
 Usage:
 
@@ -114,7 +115,8 @@ What it does:
 3. Keeps the server `.env` file in place.
 4. Runs `npm install`.
 5. Ensures `.venv` exists and installs `python-docx`.
-6. Starts or reloads the service with `pm2`.
+6. Installs or refreshes a `systemd` service.
+7. Restarts the service and sets it to start on boot.
 
 After deploy, open:
 
@@ -127,20 +129,25 @@ http://192.168.1.210:4173
 Check status:
 
 ```bash
-pm2 status
+systemctl status test-report --no-pager
 ```
 
 View logs:
 
 ```bash
-pm2 logs test-report
+journalctl -u test-report -n 100 --no-pager
 ```
 
 Restart manually:
 
 ```bash
-cd /opt/test-report
-pm2 restart test-report
+systemctl restart test-report
+```
+
+Enable startup on boot again if needed:
+
+```bash
+systemctl enable test-report
 ```
 
 ## AI Configuration

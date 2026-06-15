@@ -19,7 +19,8 @@ $IncludePaths = @(
   ".env.example",
   "app-state.json",
   "team-members.json",
-  "tmp"
+  "tmp",
+  "ops"
 )
 
 if (Test-Path $ReleaseFile) {
@@ -56,17 +57,13 @@ fi
 
 '$RemoteAppDir/.venv/bin/pip' install python-docx >/dev/null
 
-if ! command -v pm2 >/dev/null 2>&1; then
-  npm install -g pm2
-fi
-
-pm2 startOrReload ecosystem.config.cjs --update-env
-pm2 save
+chmod +x '$RemoteAppDir/ops/install-systemd-service.sh'
+'$RemoteAppDir/ops/install-systemd-service.sh' '$RemoteAppDir' 'test-report'
 
 rm -f '$RemoteReleaseFile'
 
 echo 'Deploy finished.'
-pm2 status test-report
+systemctl status test-report --no-pager
 "@
 
 Write-Host "Deploying and restarting service..."
