@@ -21,6 +21,7 @@ const BUSINESS_ALIAS_MAP = {
 };
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
 const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport", "uiAutomationSettings", "uiAutomationSession"];
+const DEFAULT_AI_MODEL = "gpt-5.4";
 
 const state = loadState();
 
@@ -138,7 +139,7 @@ const els = {
 
 const settings = {
   apiKey: state.settings?.apiKey || "",
-  model: state.settings?.model || "gpt-5.4-mini",
+  model: normalizeAiModel(state.settings?.model),
   currentOperator: state.settings?.currentOperator || "",
   apiReady: false
 };
@@ -481,7 +482,7 @@ async function checkApiStatus() {
 async function saveApiSettings(options = {}) {
   const { autoCheck = false } = options;
   const previousApiKey = state.settings?.apiKey || "";
-  const previousModel = state.settings?.model || "gpt-5.4-mini";
+  const previousModel = normalizeAiModel(state.settings?.model);
   settings.apiKey = els.apiKey.value.trim();
   settings.model = els.modelSelect.value;
   state.settings = {
@@ -568,7 +569,7 @@ function toggleApiKeyVisibility() {
 async function checkAiKey(options = {}) {
   const { showFeedback = true, successMessage = "", pendingMessage = "", errorMessage = "" } = options;
   const apiKey = els.apiKey.value.trim();
-  const model = settings.model || "gpt-5.4-mini";
+  const model = normalizeAiModel(settings.model);
   const checkButton = els.checkApiKey;
   const originalButtonText = checkButton?.textContent || "检测并启用";
 
@@ -776,7 +777,7 @@ function renderApiStateBoard() {
   }
 
   if (els.apiModelState) {
-    els.apiModelState.textContent = settings.model || "gpt-5.4-mini";
+    els.apiModelState.textContent = normalizeAiModel(settings.model);
     els.apiModelState.className = "state-chip subtle";
   }
 }
@@ -2204,6 +2205,14 @@ function normalizeExecutionStatus(value) {
   if (text === "失败" || ["fail", "failed"].includes(lower)) return "失败";
   if (text === "阻塞" || ["block", "blocked"].includes(lower)) return "阻塞";
   return "未执行";
+}
+
+function normalizeAiModel(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "gpt-5.4-mini") {
+    return DEFAULT_AI_MODEL;
+  }
+  return text;
 }
 
 function sanitizeFileName(value) {
@@ -5349,7 +5358,7 @@ function loadState() {
 function normalizeLoadedState(loadedState) {
   loadedState.settings = {
     apiKey: loadedState.settings?.apiKey || "",
-    model: loadedState.settings?.model || "gpt-5.4-mini",
+    model: normalizeAiModel(loadedState.settings?.model),
     currentOperator: loadedState.settings?.currentOperator || ""
   };
   loadedState.selfTestSnapshot = normalizeSelfTestSnapshot(loadedState.selfTestSnapshot);
@@ -5380,7 +5389,7 @@ function defaultState() {
     lastGeneration: null,
     settings: {
       apiKey: "",
-      model: "gpt-5.4-mini",
+      model: DEFAULT_AI_MODEL,
       currentOperator: ""
     },
     uiMode: "guide",
@@ -5443,7 +5452,7 @@ function persist() {
   if (localState.settings) {
     localState.settings = {
       apiKey: localState.settings.apiKey || "",
-      model: localState.settings.model || "gpt-5.4-mini",
+      model: normalizeAiModel(localState.settings.model),
       currentOperator: localState.settings.currentOperator || ""
     };
   }

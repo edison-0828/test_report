@@ -88,7 +88,7 @@ Create server-side `.env` and keep it only on the server:
 
 ```env
 OPENAI_BASE_URL=https://9527code.com/v1
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.4
 PORT=4173
 CODEX_PYTHON=/opt/test-report/.venv/bin/python
 ```
@@ -171,7 +171,7 @@ Then edit `.env`:
 
 ```env
 OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.4
 OPENAI_BASE_URL=https://api.openai.com/v1
 PORT=4173
 LARK_API_BASE_URL=https://open.larksuite.com

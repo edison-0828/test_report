@@ -13,7 +13,7 @@ const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team
 const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
 const PYTHON_BIN = resolvePythonBin();
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
 const LARK_API_BASE_URL = process.env.LARK_API_BASE_URL || "https://open.larksuite.com";
 const SELF_TEST_INTERVAL_MS = 3 * 60 * 60 * 1000;
 const SELF_TEST_AUTORUN = process.env.SELF_TEST_AUTORUN !== "false";
