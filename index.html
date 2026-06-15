@@ -18,9 +18,10 @@
 
       <nav class="nav">
         <button class="nav-link active" data-tab="upload">用例生成</button>
-        <button class="nav-link" data-tab="quality">质量检查</button>
+        <button class="nav-link" data-tab="quality">用例质量检查</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
-        <button class="nav-link" data-tab="cases">测试用例</button>
+        <button class="nav-link" data-tab="cases">手动执行用例</button>
+        <button class="nav-link" data-tab="automationCases">自动化执行用例</button>
         <button class="nav-link" data-tab="bugs">BUG管理</button>
         <button class="nav-link" data-tab="report">测试报告</button>
       </nav>
@@ -265,7 +266,7 @@
             </div>
             <span id="caseQualityBadge" class="status-pill neutral">未开始</span>
           </div>
-          <p id="caseQualityStatus" class="inline-feedback neutral">这里会显示最近一次质量检查的来源和结果。</p>
+          <p id="caseQualityStatus" class="inline-feedback neutral">这里会显示最近一次用例质量检查的来源和结果。</p>
           <div id="caseQualitySummary"></div>
           <div id="caseQualityIssues" class="list-stack compact-stack"></div>
         </section>
@@ -274,13 +275,50 @@
       <section class="tab-panel" id="cases">
         <div class="panel-header">
           <div>
-            <h2>测试用例</h2>
-            <p>查看生成结果，展开用例详情，记录执行状态和备注，也可以为可复用流程配置 UI 自动执行。</p>
+            <h2>手动执行用例</h2>
+            <p>查看生成结果，展开用例详情，记录人工执行状态和备注，并按失败结果转为 BUG。</p>
           </div>
           <label class="import-button primary-import">
             <input type="file" id="caseImportInput" accept=".csv">
             <span>上传CSV</span>
           </label>
+        </div>
+
+        <section class="panel">
+          <div class="actions compact section-toolbar case-toolbar">
+            <select id="caseBatchFilter">
+              <option value="">全部版本</option>
+            </select>
+            <select id="caseTaskFilter">
+              <option value="">全部任务</option>
+            </select>
+            <select id="caseStatusFilter">
+              <option value="">全部状态</option>
+              <option value="未执行">未执行</option>
+              <option value="通过">通过</option>
+              <option value="失败">失败</option>
+              <option value="阻塞">阻塞</option>
+            </select>
+            <select id="caseBulkStatus">
+              <option value="">批量改为</option>
+              <option value="未执行">未执行</option>
+              <option value="通过">通过</option>
+              <option value="失败">失败</option>
+              <option value="阻塞">阻塞</option>
+            </select>
+            <button id="applyCaseBulkStatus" class="ghost-button" type="button">批量应用</button>
+          </div>
+          <p id="caseActionStatus" class="inline-feedback">这里会显示筛选结果和批量执行状态更新结果。</p>
+          <div id="caseList" class="list-stack"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" id="automationCases">
+        <div class="panel-header">
+          <div>
+            <h2>自动化执行用例</h2>
+            <p>集中管理自动化登录态、步骤配置和运行结果。底层仍然是同一批测试用例。</p>
+          </div>
         </div>
 
         <section class="panel">
@@ -312,31 +350,21 @@
         </section>
 
         <section class="panel">
-          <div class="actions compact section-toolbar case-toolbar">
-            <select id="caseBatchFilter">
+          <div class="actions compact section-toolbar auto-case-toolbar">
+            <select id="automationCaseBatchFilter">
               <option value="">全部版本</option>
             </select>
-            <select id="caseTaskFilter">
+            <select id="automationCaseTaskFilter">
               <option value="">全部任务</option>
             </select>
-            <select id="caseStatusFilter">
-              <option value="">全部状态</option>
-              <option value="未执行">未执行</option>
-              <option value="通过">通过</option>
-              <option value="失败">失败</option>
-              <option value="阻塞">阻塞</option>
+            <select id="automationCaseEnabledFilter">
+              <option value="">全部自动化状态</option>
+              <option value="enabled">仅看已启用</option>
+              <option value="disabled">仅看未启用</option>
             </select>
-            <select id="caseBulkStatus">
-              <option value="">批量改为</option>
-              <option value="未执行">未执行</option>
-              <option value="通过">通过</option>
-              <option value="失败">失败</option>
-              <option value="阻塞">阻塞</option>
-            </select>
-            <button id="applyCaseBulkStatus" class="ghost-button" type="button">批量应用</button>
           </div>
-          <p id="caseActionStatus" class="inline-feedback">这里会显示筛选结果和批量执行状态更新结果。</p>
-          <div id="caseList" class="list-stack"></div>
+          <p id="automationCaseStatus" class="inline-feedback">这里会显示自动化配置和运行结果。</p>
+          <div id="automationCaseList" class="list-stack"></div>
         </section>
       </section>
 
@@ -518,7 +546,9 @@
 
             <label>
               自动化步骤(JSON)
-              <textarea class="case-automation-steps" rows="5" placeholder='例如：[{"action":"click","selector":"[data-test=\'search\']"},{"action":"assertVisible","selector":".table-row"}]'></textarea>
+              <textarea class="case-automation-steps" rows="5"
+                placeholder='例如：[{"action":"click","selector":"[data-test=\'
+                search\']"},{"action":"assertVisible","selector":".table-row"}]'></textarea>
             </label>
 
             <div class="inline-actions">

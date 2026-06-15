@@ -1841,11 +1841,13 @@ textarea {
 }
 
 #cases .panel-header,
+#automationCases .panel-header,
 #bugs .panel-header {
   align-items: end;
 }
 
 #cases .section-toolbar,
+#automationCases .section-toolbar,
 #bugs .section-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1858,12 +1860,14 @@ textarea {
 }
 
 #cases .section-toolbar select,
+#automationCases .section-toolbar select,
 #bugs .section-toolbar select,
 #cases .section-toolbar input[type="search"] {
   background: rgba(255, 255, 255, 0.9);
 }
 
 #cases .section-toolbar > *,
+#automationCases .section-toolbar > *,
 #bugs .section-toolbar > * {
   flex: 0 0 auto;
 }
@@ -1888,12 +1892,14 @@ textarea {
 }
 
 #caseList .list-card,
+#automationCaseList .list-card,
 #bugList .list-card {
   position: relative;
   overflow: hidden;
 }
 
 #caseList .list-card::before,
+#automationCaseList .list-card::before,
 #bugList .list-card::before {
   content: "";
   position: absolute;
@@ -1910,8 +1916,22 @@ textarea {
   padding-left: 22px;
 }
 
+#automationCaseList .list-card {
+  padding-left: 22px;
+}
+
 #bugList .list-card {
   padding-left: 22px;
+}
+
+.auto-case-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+}
+
+.auto-case-toolbar > * {
+  min-width: 0;
 }
 
 .bug-row-card::before {

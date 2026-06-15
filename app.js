@@ -89,6 +89,11 @@ const els = {
   caseBulkStatus: document.getElementById("caseBulkStatus"),
   applyCaseBulkStatus: document.getElementById("applyCaseBulkStatus"),
   caseActionStatus: document.getElementById("caseActionStatus"),
+  automationCaseList: document.getElementById("automationCaseList"),
+  automationCaseBatchFilter: document.getElementById("automationCaseBatchFilter"),
+  automationCaseTaskFilter: document.getElementById("automationCaseTaskFilter"),
+  automationCaseEnabledFilter: document.getElementById("automationCaseEnabledFilter"),
+  automationCaseStatus: document.getElementById("automationCaseStatus"),
   automationBaseUrl: document.getElementById("automationBaseUrl"),
   automationLoginPath: document.getElementById("automationLoginPath"),
   automationSessionChip: document.getElementById("automationSessionChip"),
@@ -207,6 +212,12 @@ function bindEvents() {
   els.caseTaskFilter.addEventListener("change", renderCases);
   els.caseStatusFilter?.addEventListener("change", renderCases);
   els.applyCaseBulkStatus?.addEventListener("click", applyBulkCaseExecutionStatus);
+  els.automationCaseBatchFilter?.addEventListener("change", () => {
+    renderCaseFilters();
+    renderAutomationCases();
+  });
+  els.automationCaseTaskFilter?.addEventListener("change", renderAutomationCases);
+  els.automationCaseEnabledFilter?.addEventListener("change", renderAutomationCases);
   els.automationBaseUrl?.addEventListener("input", handleUiAutomationDraftChange);
   els.automationLoginPath?.addEventListener("input", handleUiAutomationDraftChange);
   els.startAutomationLoginSession?.addEventListener("click", startUiAutomationLoginSession);
@@ -1072,6 +1083,14 @@ function setCaseActionStatus(text, tone = "neutral") {
   }
   els.caseActionStatus.textContent = text;
   els.caseActionStatus.className = `inline-feedback ${tone}`;
+}
+
+function setAutomationCaseStatus(text, tone = "neutral") {
+  if (!els.automationCaseStatus) {
+    return;
+  }
+  els.automationCaseStatus.textContent = text;
+  els.automationCaseStatus.className = `inline-feedback ${tone}`;
 }
 
 function setCaseQualityStatus(text, tone = "neutral") {
@@ -2019,7 +2038,7 @@ function buildCaseQualityQuickTip(stats) {
 
 function buildCaseQualityStatusMessage(prefix) {
   const label = state.caseQualityReport?.label;
-  return label ? `${prefix} 质量检查：${label}。` : prefix;
+  return label ? `${prefix} 用例质量检查：${label}。` : prefix;
 }
 
 function mapCaseQualityToneToFeedbackTone(tone) {
@@ -2408,6 +2427,7 @@ function renderAll() {
   renderCaseQuality();
   renderCaseFilters();
   renderCases();
+  renderAutomationCases();
   renderBugs();
   renderReport();
 }
@@ -3428,6 +3448,24 @@ function getFilteredCasesForView() {
   });
 }
 
+function getFilteredAutomationCasesForView() {
+  const batchFilter = els.automationCaseBatchFilter?.value || "";
+  const taskFilter = els.automationCaseTaskFilter?.value || "";
+  const enabledFilter = els.automationCaseEnabledFilter?.value || "";
+
+  return state.cases.filter((item) => {
+    const byBatch = !batchFilter || item.batchId === batchFilter;
+    const byTask = !taskFilter || item.taskName === taskFilter;
+    const byAutomation = enabledFilter === "enabled"
+      ? Boolean(item.automationEnabled)
+      : enabledFilter === "disabled"
+        ? !item.automationEnabled
+        : true;
+
+    return byBatch && byTask && byAutomation;
+  });
+}
+
 function getFilteredBugs() {
   const batchFilter = els.bugBatchFilter.value;
   const taskFilter = els.bugTaskFilter.value;
@@ -3492,19 +3530,29 @@ function getReportScopeByBatch(batchId) {
 
 function renderCaseFilters() {
   fillSelectFromItems(els.caseBatchFilter, state.batches, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
+  fillSelectFromItems(els.automationCaseBatchFilter, state.batches, "全部版本", els.automationCaseBatchFilter?.value, formatTaskBatchLabel);
   fillSelectFromItems(els.bugBatchFilter, state.batches, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
 
   const caseTasks = getTasksByBatchForFilters(els.caseBatchFilter.value, "cases");
+  const automationCaseTasks = getTasksByBatchForFilters(els.automationCaseBatchFilter?.value || "", "cases");
   const bugTasks = getTasksByBatchForFilters(els.bugBatchFilter.value, "bugs");
   const caseTaskNames = caseTasks.map((item) => item.name);
+  const automationCaseTaskNames = automationCaseTasks.map((item) => item.name);
   const bugTaskNames = bugTasks.map((item) => item.name);
   const caseTaskValue = caseTaskNames.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
+  const automationCaseTaskValue = automationCaseTaskNames.includes(els.automationCaseTaskFilter?.value) ? els.automationCaseTaskFilter.value : "";
   const bugTaskValue = bugTaskNames.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
 
   els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${caseTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
+  if (els.automationCaseTaskFilter) {
+    els.automationCaseTaskFilter.innerHTML = `<option value="">全部任务</option>${automationCaseTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
+  }
   els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${bugTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
 
   els.caseTaskFilter.value = caseTaskValue;
+  if (els.automationCaseTaskFilter) {
+    els.automationCaseTaskFilter.value = automationCaseTaskValue;
+  }
   els.bugTaskFilter.value = bugTaskValue;
 }
 
@@ -3655,6 +3703,7 @@ function renderCases() {
     node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
     node.querySelector(".case-steps-full").textContent = item.steps || "无";
     node.querySelector(".case-expected-full").textContent = item.expected || "无";
+    node.querySelector(".case-automation-block")?.classList.add("hidden-field");
     automationEnabled.checked = Boolean(item.automationEnabled);
     automationTargetPath.value = item.automationTargetPath || "";
     automationSteps.value = item.automationSteps?.length ? JSON.stringify(item.automationSteps, null, 2) : "";
@@ -3684,6 +3733,73 @@ function renderCases() {
       switchTab("bugs");
     });
 
+    bindCaseCard(node, item.id);
+    els.caseList.appendChild(node);
+  });
+}
+
+function renderAutomationCases() {
+  if (!els.automationCaseList) {
+    return;
+  }
+
+  const filtered = getFilteredAutomationCasesForView();
+  if (!filtered.length) {
+    els.automationCaseList.innerHTML = `
+      <div class="empty-state empty-state-rich">
+        <strong>${state.cases.length ? "当前筛选范围里没有匹配的自动化用例" : "这里还没有测试用例"}</strong>
+        <p>${state.cases.length ? "换个筛选条件试试，或者先在这里启用自动化。" : "先去生成用例，后面再为需要的用例启用自动化执行。"}</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.automationCaseList.innerHTML = "";
+  filtered.forEach((item) => {
+    const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
+    node.querySelector(".case-title-text").textContent = item.title;
+    node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
+    node.querySelector(".case-task").textContent = item.taskName || "未分任务";
+
+    const statusBadge = node.querySelector(".case-status");
+    const priorityBadge = node.querySelector(".case-priority");
+    const executionRow = node.querySelector(".case-execution-row");
+    const executionBadge = node.querySelector(".case-execution-badge");
+    const automationEnabled = node.querySelector(".case-automation-enabled");
+    const automationTargetPath = node.querySelector(".case-automation-target-path");
+    const automationSteps = node.querySelector(".case-automation-steps");
+    const automationStatus = node.querySelector(".case-automation-status");
+    const automationFeedback = node.querySelector(".case-automation-feedback");
+    const automationSave = node.querySelector(".case-automation-save");
+    const automationRun = node.querySelector(".case-automation-run");
+
+    statusBadge.textContent = item.executionStatus || "未执行";
+    priorityBadge.textContent = item.priority;
+    applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus || "未执行"));
+    applyBadgeTone(priorityBadge, getPriorityTone(item.priority));
+    syncExecutionStatusBadge(executionBadge, item.executionStatus || "未执行");
+    if (executionRow) {
+      executionRow.classList.add("hidden-field");
+    }
+
+    node.querySelector(".case-preconditions-preview").textContent = truncateText(item.preconditions, 90);
+    node.querySelector(".case-steps-preview").textContent = truncateText(item.steps, 110);
+    node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
+    node.querySelector(".case-steps-full").textContent = item.steps || "无";
+    node.querySelector(".case-expected-full").textContent = item.expected || "无";
+
+    automationEnabled.checked = Boolean(item.automationEnabled);
+    automationTargetPath.value = item.automationTargetPath || "";
+    automationSteps.value = item.automationSteps?.length ? JSON.stringify(item.automationSteps, null, 2) : "";
+    syncAutomationStatusChip(automationStatus, item.automationLastRun?.status || "");
+    automationFeedback.textContent = getCaseAutomationFeedbackText(item);
+    automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+
+    const traceMeta = node.querySelector(".case-trace-meta");
+    if (traceMeta) {
+      traceMeta.innerHTML = renderTraceMetaHtml(item, item.taskName || "未记录");
+    }
+
     automationSave.addEventListener("click", async () => {
       const saved = saveCaseAutomationConfig(item, {
         enabled: automationEnabled.checked,
@@ -3693,12 +3809,14 @@ function renderCases() {
       if (!saved) {
         automationFeedback.textContent = getCaseAutomationFeedbackText(item);
         automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        renderAutomationCases();
         return;
       }
       flashButtonSuccess(automationSave, "保存成功");
       automationFeedback.textContent = "自动化配置已保存。";
       automationFeedback.className = "inline-feedback ok";
-      renderCases();
+      setAutomationCaseStatus(`已保存「${item.title || "未命名用例"}」自动化配置。`, "ok");
+      renderAutomationCases();
     });
 
     automationRun.addEventListener("click", async () => {
@@ -3710,6 +3828,7 @@ function renderCases() {
       if (!saved) {
         automationFeedback.textContent = getCaseAutomationFeedbackText(item);
         automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        renderAutomationCases();
         return;
       }
 
@@ -3719,23 +3838,21 @@ function renderCases() {
 
       try {
         const result = await runCaseAutomation(item);
-        statusBadge.textContent = item.executionStatus;
-        applyBadgeTone(statusBadge, getExecutionStatusTone(item.executionStatus));
-        syncExecutionStatusBadge(executionBadge, item.executionStatus);
-        caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
         syncAutomationStatusChip(automationStatus, result.status || "");
         automationFeedback.textContent = result.summary || getCaseAutomationFeedbackText(item);
         automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+        setAutomationCaseStatus(`已完成「${item.title || "未命名用例"}」自动化执行。`, result.status === "通过" ? "ok" : "warn");
         renderQuickStats();
         renderReport();
         renderCases();
+        renderAutomationCases();
       } finally {
         automationRun.disabled = false;
       }
     });
 
     bindCaseCard(node, item.id);
-    els.caseList.appendChild(node);
+    els.automationCaseList.appendChild(node);
   });
 }
 
