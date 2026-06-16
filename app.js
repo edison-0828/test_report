@@ -4928,11 +4928,13 @@ function renderBugs() {
   els.bugList.innerHTML = "";
   filteredBugs.forEach((bug) => {
     const node = els.bugTemplate.content.firstElementChild.cloneNode(true);
+    ensureBugBatchField(node);
     const detail = node.querySelector(".bug-detail");
     const detailToggle = node.querySelector(".toggle-bug-detail");
     const saveButton = node.querySelector(".save-bug");
     node.querySelector(".bug-title").value = bug.title;
-    fillCaseOptions(node.querySelector(".bug-case"), bug.caseId);
+    fillBugBatchOptions(node.querySelector(".bug-batch"), bug.batchId);
+    fillCaseOptions(node.querySelector(".bug-case"), bug.caseId, bug.batchId);
     syncBugLinkedInfo(node, bug);
     node.querySelector(".bug-severity").value = bug.severity;
     node.querySelector(".bug-status").value = bug.status;
@@ -4959,6 +4961,16 @@ function renderBugs() {
     node.querySelectorAll("input, textarea, select").forEach((control) => {
       control.addEventListener("input", () => markBugCardDirty(node));
       control.addEventListener("change", () => {
+        if (control.classList.contains("bug-batch")) {
+          const selectedBatchId = control.value || "";
+          const caseSelect = node.querySelector(".bug-case");
+          fillCaseOptions(caseSelect, "", selectedBatchId);
+          syncBugLinkedInfo(node, {
+            ...getBugDraftFromNode(node, bug),
+            batchId: selectedBatchId,
+            caseId: ""
+          });
+        }
         if (control.classList.contains("bug-case")) {
           syncBugLinkedInfo(node, getBugDraftFromNode(node, bug));
         }
@@ -5023,17 +5035,45 @@ function markBugCardSaved(node) {
   }
 }
 
-function fillCaseOptions(select, selectedId) {
+function ensureBugBatchField(node) {
+  const caseRow = node.querySelector(".bug-row-grid");
+  const caseLabel = node.querySelector(".bug-case")?.closest("label");
+  if (!caseRow || !caseLabel || caseRow.querySelector(".bug-batch")) {
+    return;
+  }
+
+  const batchLabel = document.createElement("label");
+  batchLabel.innerHTML = `
+    <span>关联版本</span>
+    <select class="bug-batch"></select>
+  `;
+  caseRow.insertBefore(batchLabel, caseLabel);
+}
+
+function fillBugBatchOptions(select, selectedBatchId) {
+  if (!select) {
+    return;
+  }
+  const options = [`<option value="">未关联</option>`]
+    .concat(state.batches.map((item) => `<option value="${item.id}">${escapeHtml(formatTaskBatchLabel(item))}</option>`));
+  select.innerHTML = options.join("");
+  select.value = selectedBatchId || "";
+}
+
+function fillCaseOptions(select, selectedId, batchId = "") {
+  const cases = state.cases.filter((item) => !batchId || item.batchId === batchId);
   select.innerHTML = [`<option value="">未关联</option>`]
-    .concat(state.cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`))
+    .concat(cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`))
     .join("");
-  select.value = selectedId || "";
+  const hasSelected = cases.some((item) => item.id === selectedId);
+  select.value = hasSelected ? selectedId : "";
 }
 
 function syncBugLinkedInfo(node, bug) {
   const caseId = node.querySelector(".bug-case")?.value || bug.caseId;
+  const batchId = node.querySelector(".bug-batch")?.value || bug.batchId;
   const linkedCase = state.cases.find((caseItem) => caseItem.id === caseId);
-  const batch = linkedCase ? getBatchById(linkedCase.batchId) : getBatchById(bug.batchId);
+  const batch = linkedCase ? getBatchById(linkedCase.batchId) : getBatchById(batchId);
   const versionText = linkedCase?.batchVersion || batch?.version || bug.batchVersion || "未关联版本";
   const taskText = linkedCase?.taskName || bug.taskName || "未关联任务";
 
@@ -5050,6 +5090,7 @@ function syncBugLinkedInfo(node, bug) {
 function getBugDraftFromNode(node, fallbackBug) {
   return {
     ...fallbackBug,
+    batchId: node.querySelector(".bug-batch")?.value || fallbackBug.batchId || "",
     caseId: node.querySelector(".bug-case")?.value || ""
   };
 }
@@ -5063,6 +5104,7 @@ function updateBugFromNode(node, bugId) {
   const previousStatus = item.status;
 
   item.title = node.querySelector(".bug-title").value.trim() || "未命名BUG";
+  item.batchId = node.querySelector(".bug-batch")?.value || item.batchId;
   item.caseId = node.querySelector(".bug-case").value;
   item.severity = node.querySelector(".bug-severity").value;
   item.status = node.querySelector(".bug-status").value;
@@ -5080,6 +5122,14 @@ function updateBugFromNode(node, bugId) {
       item.batchVersion = linkedCase.batchVersion || item.batchVersion;
       item.moduleId = linkedCase.moduleId || item.moduleId;
       item.moduleName = linkedCase.module || item.moduleName;
+    }
+  } else if (item.batchId) {
+    const batch = getBatchById(item.batchId);
+    if (batch) {
+      item.batchVersion = batch.version || item.batchVersion;
+      item.batchName = formatBatchLabel(batch);
+      item.moduleId = batch.moduleId || item.moduleId;
+      item.moduleName = batch.moduleName || item.moduleName;
     }
   }
 
