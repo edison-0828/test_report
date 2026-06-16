@@ -4,6 +4,7 @@ $ServerUser = "root"
 $ServerHost = "192.168.1.210"
 $ServerPort = 22
 $RemoteAppDir = "/opt/test-report"
+$RemoteDataDir = "/var/lib/test-report"
 $RemoteReleaseFile = "/tmp/test-report-release.tar.gz"
 $ReleaseFile = Join-Path $env:TEMP "test-report-release.tar.gz"
 
@@ -17,10 +18,7 @@ $IncludePaths = @(
   "README.md",
   "LICENSE",
   ".env.example",
-  "app-state.json",
-  "team-members.json",
   "tests",
-  "tmp",
   "ops"
 )
 
@@ -37,6 +35,7 @@ scp -P $ServerPort $ReleaseFile "${ServerUser}@${ServerHost}:${RemoteReleaseFile
 $RemoteScript = @"
 set -e
 mkdir -p '$RemoteAppDir'
+mkdir -p '$RemoteDataDir'
 
 if [ -f '$RemoteAppDir/.env' ]; then
   cp '$RemoteAppDir/.env' '/tmp/test-report.env.backup'
@@ -59,7 +58,7 @@ fi
 '$RemoteAppDir/.venv/bin/pip' install python-docx >/dev/null
 
 chmod +x '$RemoteAppDir/ops/install-systemd-service.sh'
-'$RemoteAppDir/ops/install-systemd-service.sh' '$RemoteAppDir' 'test-report'
+'$RemoteAppDir/ops/install-systemd-service.sh' '$RemoteAppDir' 'test-report' '$RemoteDataDir'
 
 rm -f '$RemoteReleaseFile'
 

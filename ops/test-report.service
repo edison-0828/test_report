@@ -6,6 +6,8 @@ After=network.target
 Type=simple
 WorkingDirectory=__APP_DIR__
 Environment=NODE_ENV=production
+Environment=APP_STATE_FILE=__DATA_DIR__/app-state.json
+Environment=TEAM_MEMBERS_FILE=__DATA_DIR__/team-members.json
 ExecStart=__NODE_BIN__ __APP_DIR__/server.js
 Restart=always
 RestartSec=3

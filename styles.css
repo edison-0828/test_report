@@ -1396,6 +1396,19 @@ textarea {
   letter-spacing: 0;
 }
 
+.case-sequence-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
 .case-card-meta {
   margin-top: 2px;
 }

@@ -1766,8 +1766,23 @@ async function requestAiCases(payload) {
     steps: normalizeMultiline(item.steps),
     expected: item.expected || "待补充",
     executionStatus: "未执行",
-    executionNote: ""
+    executionNote: "",
+    automationEnabled: Array.isArray(item.automationSteps) && item.automationSteps.length > 0,
+    automationTargetPath: inferAutomationTargetPath(item.automationSteps),
+    automationSteps: normalizeCaseAutomationSteps(item.automationSteps),
+    automationLastRun: null
   }));
+}
+
+function inferAutomationTargetPath(automationSteps) {
+  if (!Array.isArray(automationSteps) || !automationSteps.length) return "";
+  const openPageStep = automationSteps.find(
+    (step) => step && (step.stepType === "openPage" || step.action === "goto")
+  );
+  if (openPageStep) {
+    return String(openPageStep.target || openPageStep.path || openPageStep.url || "").trim();
+  }
+  return "";
 }
 
 function normalizeMultiline(value) {
@@ -2960,10 +2975,6 @@ function renderVersionManager() {
           </div>
           <div class="version-card-summary">
             <div class="version-summary-chip">
-              <span>所属业务</span>
-              <strong>${escapeHtml(batch.moduleName || batch.name || "未设置")}</strong>
-            </div>
-            <div class="version-summary-chip">
               <span>可操作状态</span>
               <strong>${escapeHtml(isCompleted ? "只读查看" : isSuspended ? "已挂起" : "可继续编辑")}</strong>
             </div>
@@ -2984,8 +2995,9 @@ function renderVersionManager() {
         <div class="version-card-detail hidden-field">
           <div class="version-card-body">
             <div class="summary-block version-owner-panel">
-              <span class="summary-label">版本范围</span>
-              <p>${escapeHtml(batch.moduleName || batch.name || "未设置")}</p>
+              <span class="summary-label">时间记录</span>
+              <p>创建时间：${escapeHtml(formatAuditTime(batch.createdAt))}</p>
+              <p>完成时间：${escapeHtml(batch.completedAt ? formatAuditTime(batch.completedAt) : "未完成")}</p>
             </div>
           </div>
           <div class="version-task-section">
@@ -3132,7 +3144,9 @@ function handleVersionAction(action, batchId) {
   if (action === "complete") {
     const taskIdsToClear = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
     state.batches = state.batches.map((item) => (
-      item.id === batch.id ? applyUpdateAuditFields({ ...item, status: "已完成" }) : item
+      item.id === batch.id
+        ? applyUpdateAuditFields({ ...item, status: "已完成", completedAt: item.completedAt || nowIsoString() })
+        : item
     ));
     state.cases = state.cases.filter((item) => item.batchId !== batch.id && !taskIdsToClear.includes(item.taskId));
     persist();
@@ -4140,10 +4154,14 @@ function renderCases() {
   }
 
   els.caseList.innerHTML = "";
-  filtered.forEach((item) => {
+  filtered.forEach((item, index) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
     ensureCaseEditFields(node);
+    const caseSequenceBadge = ensureCaseSequenceBadge(node);
     node.querySelector(".case-title-text").textContent = item.title;
+    if (caseSequenceBadge) {
+      caseSequenceBadge.textContent = `第 ${index + 1} 条`;
+    }
     node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
     node.querySelector(".case-task").textContent = item.taskName || "未分任务";
 
@@ -4283,10 +4301,14 @@ function renderAutomationCases() {
   }
 
   els.automationCaseList.innerHTML = "";
-  filtered.forEach((item) => {
+  filtered.forEach((item, index) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
     ensureCaseAutomationEditor(node);
+    const caseSequenceBadge = ensureCaseSequenceBadge(node);
     node.querySelector(".case-title-text").textContent = item.title;
+    if (caseSequenceBadge) {
+      caseSequenceBadge.textContent = `第 ${index + 1} 条`;
+    }
     node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
     node.querySelector(".case-task").textContent = item.taskName || "未分任务";
 
@@ -4716,6 +4738,26 @@ function ensureCaseEditFields(node) {
   });
 }
 
+function ensureCaseSequenceBadge(node) {
+  const caseHead = node.querySelector(".case-card-head");
+  if (!caseHead) {
+    return null;
+  }
+  let badge = caseHead.querySelector(".case-sequence-badge");
+  if (badge) {
+    return badge;
+  }
+  badge = document.createElement("span");
+  badge.className = "case-sequence-badge";
+  const titleNode = caseHead.querySelector(".case-title-text");
+  if (titleNode) {
+    caseHead.insertBefore(badge, titleNode);
+  } else {
+    caseHead.appendChild(badge);
+  }
+  return badge;
+}
+
 async function runCaseAutomation(item) {
   if (!item.automationEnabled) {
     item.automationLastRun = {
@@ -4815,7 +4857,6 @@ function createBugRecord(sourceCase) {
   const firstCase = sourceCase || getFilteredExecutionCases()[0] || state.cases[0];
   const activeBatch = getBatchById(state.activeBatchId);
   const activeTask = getTaskById(state.activeTaskId);
-  const activeModule = getModuleById(state.activeModuleId);
   const linkedBug = firstCase ? state.bugs.find((item) => item.caseId === firstCase.id && !["已修复", "已验证", "已关闭"].includes(item.status)) : null;
   const duplicateBug = firstCase ? findPotentialDuplicateBug(firstCase) : null;
 
@@ -4839,8 +4880,6 @@ function createBugRecord(sourceCase) {
     batchId: firstCase?.batchId || activeBatch?.id || "",
     batchVersion: firstCase?.batchVersion || activeBatch?.version || "",
     batchName: firstCase?.batchName || (activeBatch ? formatBatchLabel(activeBatch) : ""),
-    moduleId: firstCase?.moduleId || activeModule?.id || "",
-    moduleName: firstCase?.module || activeModule?.name || "",
     severity: "中",
     status: "新建",
     owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || "",
@@ -4861,7 +4900,6 @@ function buildBugNoteFromCase(caseItem) {
   return [
     caseItem.batchVersion ? `关联版本：${caseItem.batchVersion}` : "",
     caseItem.taskName ? `关联任务：${caseItem.taskName}` : "",
-    caseItem.module ? `所属模块：${caseItem.module}` : "",
     `关联用例：${caseItem.title || "未命名用例"}`,
     `执行状态：${caseItem.executionStatus || "未执行"}`,
     caseItem.executionNote ? `执行备注：${caseItem.executionNote}` : "",
@@ -4929,12 +4967,14 @@ function renderBugs() {
   filteredBugs.forEach((bug) => {
     const node = els.bugTemplate.content.firstElementChild.cloneNode(true);
     ensureBugBatchField(node);
+    ensureBugTaskField(node);
     const detail = node.querySelector(".bug-detail");
     const detailToggle = node.querySelector(".toggle-bug-detail");
     const saveButton = node.querySelector(".save-bug");
     node.querySelector(".bug-title").value = bug.title;
     fillBugBatchOptions(node.querySelector(".bug-batch"), bug.batchId);
-    fillCaseOptions(node.querySelector(".bug-case"), bug.caseId, bug.batchId);
+    fillBugTaskOptions(node.querySelector(".bug-task"), bug.taskId, bug.batchId);
+    fillCaseOptions(node.querySelector(".bug-case"), bug.caseId, bug.batchId, bug.taskId);
     syncBugLinkedInfo(node, bug);
     node.querySelector(".bug-severity").value = bug.severity;
     node.querySelector(".bug-status").value = bug.status;
@@ -4963,11 +5003,26 @@ function renderBugs() {
       control.addEventListener("change", () => {
         if (control.classList.contains("bug-batch")) {
           const selectedBatchId = control.value || "";
+          const taskSelect = node.querySelector(".bug-task");
           const caseSelect = node.querySelector(".bug-case");
-          fillCaseOptions(caseSelect, "", selectedBatchId);
+          fillBugTaskOptions(taskSelect, "", selectedBatchId);
+          fillCaseOptions(caseSelect, "", selectedBatchId, "");
           syncBugLinkedInfo(node, {
             ...getBugDraftFromNode(node, bug),
             batchId: selectedBatchId,
+            taskId: "",
+            caseId: ""
+          });
+        }
+        if (control.classList.contains("bug-task")) {
+          const selectedBatchId = node.querySelector(".bug-batch")?.value || "";
+          const selectedTaskId = control.value || "";
+          const caseSelect = node.querySelector(".bug-case");
+          fillCaseOptions(caseSelect, "", selectedBatchId, selectedTaskId);
+          syncBugLinkedInfo(node, {
+            ...getBugDraftFromNode(node, bug),
+            batchId: selectedBatchId,
+            taskId: selectedTaskId,
             caseId: ""
           });
         }
@@ -5038,6 +5093,7 @@ function markBugCardSaved(node) {
 function ensureBugBatchField(node) {
   const caseRow = node.querySelector(".bug-row-grid");
   const caseLabel = node.querySelector(".bug-case")?.closest("label");
+  node.querySelector(".bug-linked-info")?.remove();
   if (!caseRow || !caseLabel || caseRow.querySelector(".bug-batch")) {
     return;
   }
@@ -5050,6 +5106,21 @@ function ensureBugBatchField(node) {
   caseRow.insertBefore(batchLabel, caseLabel);
 }
 
+function ensureBugTaskField(node) {
+  const caseRow = node.querySelector(".bug-row-grid");
+  const caseLabel = node.querySelector(".bug-case")?.closest("label");
+  if (!caseRow || !caseLabel || caseRow.querySelector(".bug-task")) {
+    return;
+  }
+
+  const taskLabel = document.createElement("label");
+  taskLabel.innerHTML = `
+    <span>关联任务</span>
+    <select class="bug-task"></select>
+  `;
+  caseRow.insertBefore(taskLabel, caseLabel);
+}
+
 function fillBugBatchOptions(select, selectedBatchId) {
   if (!select) {
     return;
@@ -5060,8 +5131,20 @@ function fillBugBatchOptions(select, selectedBatchId) {
   select.value = selectedBatchId || "";
 }
 
-function fillCaseOptions(select, selectedId, batchId = "") {
-  const cases = state.cases.filter((item) => !batchId || item.batchId === batchId);
+function fillBugTaskOptions(select, selectedTaskId, batchId = "") {
+  if (!select) {
+    return;
+  }
+  const tasks = state.tasks.filter((item) => !batchId || item.batchId === batchId);
+  select.innerHTML = [`<option value="">未关联</option>`]
+    .concat(tasks.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`))
+    .join("");
+  const hasSelected = tasks.some((item) => item.id === selectedTaskId);
+  select.value = hasSelected ? selectedTaskId : "";
+}
+
+function fillCaseOptions(select, selectedId, batchId = "", taskId = "") {
+  const cases = state.cases.filter((item) => (!batchId || item.batchId === batchId) && (!taskId || item.taskId === taskId));
   select.innerHTML = [`<option value="">未关联</option>`]
     .concat(cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`))
     .join("");
@@ -5070,12 +5153,17 @@ function fillCaseOptions(select, selectedId, batchId = "") {
 }
 
 function syncBugLinkedInfo(node, bug) {
+  if (!node.querySelector(".bug-linked-version") && !node.querySelector(".bug-linked-meta")) {
+    return;
+  }
   const caseId = node.querySelector(".bug-case")?.value || bug.caseId;
   const batchId = node.querySelector(".bug-batch")?.value || bug.batchId;
+  const taskId = node.querySelector(".bug-task")?.value || bug.taskId;
   const linkedCase = state.cases.find((caseItem) => caseItem.id === caseId);
   const batch = linkedCase ? getBatchById(linkedCase.batchId) : getBatchById(batchId);
+  const task = linkedCase ? getTaskById(linkedCase.taskId) : getTaskById(taskId);
   const versionText = linkedCase?.batchVersion || batch?.version || bug.batchVersion || "未关联版本";
-  const taskText = linkedCase?.taskName || bug.taskName || "未关联任务";
+  const taskText = linkedCase?.taskName || task?.name || bug.taskName || "未关联任务";
 
   const versionNode = node.querySelector(".bug-linked-version");
   const metaNode = node.querySelector(".bug-linked-meta");
@@ -5091,6 +5179,7 @@ function getBugDraftFromNode(node, fallbackBug) {
   return {
     ...fallbackBug,
     batchId: node.querySelector(".bug-batch")?.value || fallbackBug.batchId || "",
+    taskId: node.querySelector(".bug-task")?.value || fallbackBug.taskId || "",
     caseId: node.querySelector(".bug-case")?.value || ""
   };
 }
@@ -5105,6 +5194,7 @@ function updateBugFromNode(node, bugId) {
 
   item.title = node.querySelector(".bug-title").value.trim() || "未命名BUG";
   item.batchId = node.querySelector(".bug-batch")?.value || item.batchId;
+  item.taskId = node.querySelector(".bug-task")?.value || item.taskId;
   item.caseId = node.querySelector(".bug-case").value;
   item.severity = node.querySelector(".bug-severity").value;
   item.status = node.querySelector(".bug-status").value;
@@ -5120,21 +5210,19 @@ function updateBugFromNode(node, bugId) {
       item.batchId = linkedCase.batchId || item.batchId;
       item.batchName = linkedCase.batchName || item.batchName;
       item.batchVersion = linkedCase.batchVersion || item.batchVersion;
-      item.moduleId = linkedCase.moduleId || item.moduleId;
-      item.moduleName = linkedCase.module || item.moduleName;
     }
   } else if (item.batchId) {
     const batch = getBatchById(item.batchId);
     if (batch) {
       item.batchVersion = batch.version || item.batchVersion;
       item.batchName = formatBatchLabel(batch);
-      item.moduleId = batch.moduleId || item.moduleId;
-      item.moduleName = batch.moduleName || item.moduleName;
     }
   }
 
-  if (!item.taskName && item.taskId) {
+  if (item.taskId) {
     item.taskName = getTaskNameById(item.taskId);
+  } else if (!item.caseId) {
+    item.taskName = "";
   }
   Object.assign(item, applyUpdateAuditFields(item));
 

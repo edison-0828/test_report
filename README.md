@@ -93,6 +93,12 @@ PORT=4173
 CODEX_PYTHON=/opt/test-report/.venv/bin/python
 ```
 
+The deploy script now hardens server data by default:
+
+- Version, task, case, and bug data are stored under `/var/lib/test-report`
+- Publish only replaces application code under `/opt/test-report`
+- If the server still has old data in `/opt/test-report/app-state.json` or `/opt/test-report/team-members.json`, deploy automatically migrates it once
+
 ### One-command publish from your Windows machine
 
 This repo now includes:
@@ -111,12 +117,15 @@ powershell -ExecutionPolicy Bypass -File .\deploy.ps1
 What it does:
 
 1. Packages the project files.
-2. Uploads them to `192.168.1.210`.
-3. Keeps the server `.env` file in place.
-4. Runs `npm install`.
-5. Ensures `.venv` exists and installs `python-docx`.
-6. Installs or refreshes a `systemd` service.
-7. Restarts the service and sets it to start on boot.
+2. Does not upload local runtime data such as `app-state.json`, `team-members.json`, or `tmp`.
+3. Uploads them to `192.168.1.210`.
+4. Keeps the server `.env` file in place.
+5. Ensures `/var/lib/test-report` exists for server-side project data.
+6. Migrates old server data from the app directory into `/var/lib/test-report` if needed.
+7. Runs `npm install`.
+8. Ensures `.venv` exists and installs `python-docx`.
+9. Installs or refreshes a `systemd` service with fixed data file paths.
+10. Restarts the service and sets it to start on boot.
 
 After deploy, open:
 

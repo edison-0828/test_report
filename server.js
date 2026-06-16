@@ -117,6 +117,13 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function ensureParentDir(filePath) {
+  const parentDir = path.dirname(filePath);
+  if (parentDir) {
+    ensureDir(parentDir);
+  }
+}
+
 function buildUiAutomationSessionStatusPayload() {
   const browserPath = resolveUiAutomationBrowserPath();
   return {
@@ -482,6 +489,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/team-members") {
       const body = await readJsonBody(req);
       const teamMembers = normalizeTeamMembers(body.teamMembers);
+      ensureParentDir(TEAM_MEMBERS_FILE);
       fs.writeFileSync(TEAM_MEMBERS_FILE, JSON.stringify({ teamMembers }, null, 2), "utf-8");
       return sendJson(res, 200, { ok: true, teamMembers });
     }
@@ -489,6 +497,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/app-state") {
       const body = await readJsonBody(req);
       const nextState = sanitizeSharedState(body.state);
+      ensureParentDir(APP_STATE_FILE);
       fs.writeFileSync(APP_STATE_FILE, JSON.stringify({ state: nextState }, null, 2), "utf-8");
       return sendJson(res, 200, { ok: true, state: nextState });
     }
@@ -584,6 +593,19 @@ async function handleGenerateCases(body, res) {
               "你的任务是根据需求文档或 API 文档生成高质量、可执行的中文测试用例。",
               "重点覆盖正常、异常、边界、权限、状态流转、数据校验和兼容性场景。",
               "不要编造文档中完全不存在的接口名、字段名或业务流程；若需要合理推断，请在 assumptions 中说明。",
+              "",
+              "每条测试用例必须同时包含文字步骤（steps）和对应的 UI 自动化操作步骤（automationSteps）。",
+              "automationSteps 是 Playwright 可执行的结构化指令，与文字步骤一一对应或更细化。",
+              "stepType 只允许：openPage、click、input、waitElement、assertText、assertElement、screenshot、wait。",
+              "locatorType 只允许：text、placeholder、label、css。",
+              "规则：",
+              "- 每条用例以 openPage 开始（导航到目标页面路径）。",
+              "- 用 click 模拟按钮/链接点击，用 input 模拟表单填写。",
+              "- 关键操作后用 assertText 或 assertElement 验证结果。",
+              "- 不确定的定位值用 text 定位器（如 text=登录），优先使用 placeholder 和 label。",
+              "- inputValue 对 input 是输入内容，对 assertText 是预期文本，对 wait 是毫秒数。",
+              "- 如果无法推断 UI 操作，仍要给出 minimal 步骤（openPage + assertElement），不要留空。",
+              "",
               "输出必须严格遵守 JSON Schema。"
             ].join("\n")
           }
@@ -1337,6 +1359,12 @@ function buildUserPrompt(documentName, documentType, content, sourceType, source
     "6. 需求文档要覆盖主流程、异常流、边界、权限、数据一致性。",
     "7. 如果给了测试范围提示，请把它当成硬约束，只生成该范围内的测试用例，不要扩散到无关模块。",
     "8. 如果文档内容无法精确定位到该范围，只允许在 assumptions 中说明不确定点，仍然要尽量围绕该范围输出。",
+    "9. 每条用例必须同时提供 automationSteps（UI自动化操作步骤），与文字 steps 对应。",
+    "   - stepType: openPage/click/input/waitElement/assertText/assertElement/screenshot/wait",
+    "   - locatorType: text/placeholder/label/css",
+    "   - target: 定位目标（如 text=登录、placeholder=请输入账号、css=.btn-primary）",
+    "   - inputValue: 输入值或断言文本（对 input 是填写内容，对 assertText 是预期文字，对 wait 是毫秒数）",
+    "   - 每条用例以 openPage 开头，关键操作后加断言步骤",
     "",
     "文档内容如下：",
     truncated
@@ -1378,9 +1406,29 @@ function buildResponseSchema() {
               type: "array",
               items: { type: "string" }
             },
-            expected: { type: "string" }
+            expected: { type: "string" },
+            automationSteps: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  stepType: {
+                    type: "string",
+                    enum: ["openPage", "click", "input", "waitElement", "assertText", "assertElement", "screenshot", "wait"]
+                  },
+                  locatorType: {
+                    type: "string",
+                    enum: ["text", "placeholder", "label", "css"]
+                  },
+                  target: { type: "string" },
+                  inputValue: { type: "string" }
+                },
+                required: ["stepType", "locatorType", "target", "inputValue"]
+              }
+            }
           },
-          required: ["module", "title", "type", "priority", "preconditions", "steps", "expected"]
+          required: ["module", "title", "type", "priority", "preconditions", "steps", "expected", "automationSteps"]
         }
       }
     },
@@ -1451,6 +1499,25 @@ function normalizeStructuredOutput(parsed) {
           : [];
       const expectedValue = String(item.expected || item.expectedResult || item.expect || "").trim();
 
+      const rawAutomationSteps = Array.isArray(item.automationSteps)
+        ? item.automationSteps
+        : Array.isArray(item.automation_steps)
+          ? item.automation_steps
+          : [];
+
+      const automationSteps = rawAutomationSteps
+        .map((step) => {
+          if (!step || typeof step !== "object") return null;
+          return {
+            stepType: String(step.stepType || step.type || step.action || "click").trim(),
+            locatorType: String(step.locatorType || step.by || step.locator || "text").trim(),
+            target: String(step.target || step.selector || step.path || step.url || "").trim(),
+            inputValue: String(step.inputValue || step.value || step.text || step.ms || "").trim(),
+            remark: String(step.remark || step.note || "").trim()
+          };
+        })
+        .filter(Boolean);
+
       const typeMap = {
         "正常": "正常",
         "异常": "异常",
@@ -1473,7 +1540,8 @@ function normalizeStructuredOutput(parsed) {
         priority: normalizedPriority,
         preconditions: preconditions.map((value) => String(value || "").trim()).filter(Boolean),
         steps: steps.map((value) => String(value || "").trim()).filter(Boolean),
-        expected: expectedValue
+        expected: expectedValue,
+        automationSteps
       };
     })
     .filter(Boolean);
