@@ -1432,6 +1432,16 @@ textarea {
   background: linear-gradient(180deg, #fbfcff 0%, #f6f9fd 100%);
 }
 
+.case-edit-field {
+  margin-bottom: 0;
+}
+
+.case-edit-textarea {
+  min-height: 96px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
 .summary-label {
   display: block;
   font-size: var(--text-xs);
@@ -1541,6 +1551,147 @@ textarea {
 
 .case-automation-status {
   justify-content: center;
+}
+
+.case-automation-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.case-automation-beginner-guide {
+  padding: 12px 14px;
+  border: 1px solid #d8e4f3;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f7fbff 0%, #eef5ff 100%);
+}
+
+.case-automation-beginner-guide strong {
+  display: block;
+  color: var(--heading);
+  margin-bottom: 4px;
+}
+
+.case-automation-beginner-guide p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.case-automation-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.case-automation-template-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.case-automation-template-row select {
+  min-width: 240px;
+  flex: 1 1 260px;
+}
+
+.case-automation-step-no {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.case-automation-secondary-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.case-automation-quick-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.case-automation-step-list {
+  display: grid;
+  gap: 10px;
+}
+
+.automation-step-card,
+.automation-empty-state {
+  border: 1px solid #dce6f3;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f8fd 100%);
+  padding: 14px;
+}
+
+.automation-empty-state strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--heading);
+}
+
+.automation-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.automation-step-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.automation-step-head-main {
+  display: grid;
+  gap: 4px;
+}
+
+.automation-step-summary {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.automation-step-hint {
+  margin: 0 0 12px;
+  color: var(--primary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.automation-step-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.automation-step-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.automation-step-remark {
+  grid-column: 1 / -1;
+}
+
+.case-automation-json-panel {
+  border-top: 1px dashed #dce6f3;
+  padding-top: 12px;
 }
 
 #cases .list-card {

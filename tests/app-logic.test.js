@@ -71,6 +71,56 @@ function loadFunction(functionName, additions = {}) {
 }
 
 const mergeCasesIntoState = loadFunction("mergeCasesIntoState");
+const normalizeAutomationStepType = loadFunction("normalizeAutomationStepType");
+const normalizeAutomationLocatorType = loadFunction("normalizeAutomationLocatorType");
+const inferAutomationTargetFromRawStep = loadFunction("inferAutomationTargetFromRawStep");
+const normalizeAutomationStep = loadFunction("normalizeAutomationStep", {
+  normalizeAutomationStepType,
+  normalizeAutomationLocatorType,
+  inferAutomationTargetFromRawStep
+});
+
+test("buildAutomationRuntimeSteps converts visual steps into runner actions", () => {
+  const runtimeSteps = buildAutomationRuntimeSteps([
+    { stepType: "openPage", target: "/orders/list", locatorType: "css", inputValue: "", remark: "" },
+    { stepType: "click", locatorType: "text", target: "搜索", inputValue: "", remark: "" },
+    { stepType: "input", locatorType: "placeholder", target: "请输入关键词", inputValue: "退款", remark: "" },
+    { stepType: "assertText", locatorType: "css", target: "body", inputValue: "成功", remark: "" },
+    { stepType: "wait", locatorType: "css", target: "", inputValue: "1500", remark: "" }
+  ]);
+
+  assert.deepEqual(toPlainJson(runtimeSteps), [
+    { stepType: "openPage", locatorType: "css", target: "/orders/list", inputValue: "", remark: "", action: "goto", path: "/orders/list" },
+    { stepType: "click", locatorType: "text", target: "搜索", inputValue: "", remark: "", action: "click", selector: "text=搜索" },
+    { stepType: "input", locatorType: "placeholder", target: "请输入关键词", inputValue: "退款", remark: "", action: "fill", selector: "placeholder=请输入关键词", value: "退款" },
+    { stepType: "assertText", locatorType: "css", target: "body", inputValue: "成功", remark: "", action: "assertText", selector: "body", text: "成功" },
+    { stepType: "wait", locatorType: "css", target: "", inputValue: "1500", remark: "", action: "waitForTimeout", ms: 1500 }
+  ]);
+});
+
+test("parseAutomationStepsJson normalizes legacy runner JSON into visual steps", () => {
+  const steps = parseAutomationStepsJson(JSON.stringify([
+    { action: "goto", path: "/login" },
+    { action: "fill", selector: "placeholder=请输入账号", value: "qa" },
+    { action: "click", selector: "text=登录" },
+    { action: "assertVisible", selector: ".dashboard" }
+  ]));
+
+  assert.deepEqual(toPlainJson(steps), [
+    { stepType: "openPage", locatorType: "css", target: "/login", inputValue: "", remark: "" },
+    { stepType: "input", locatorType: "css", target: "placeholder=请输入账号", inputValue: "qa", remark: "" },
+    { stepType: "click", locatorType: "css", target: "text=登录", inputValue: "", remark: "" },
+    { stepType: "assertElement", locatorType: "css", target: ".dashboard", inputValue: "", remark: "" }
+  ]);
+});
+const buildAutomationSelector = loadFunction("buildAutomationSelector");
+const buildAutomationRuntimeSteps = loadFunction("buildAutomationRuntimeSteps", {
+  normalizeAutomationStep,
+  buildAutomationSelector
+});
+const parseAutomationStepsJson = loadFunction("parseAutomationStepsJson", {
+  normalizeAutomationStep
+});
 
 function toPlainJson(value) {
   return JSON.parse(JSON.stringify(value));

@@ -22,6 +22,79 @@ const BUSINESS_ALIAS_MAP = {
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
 const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport", "uiAutomationSettings", "uiAutomationSession"];
 const DEFAULT_AI_MODEL = "gpt-5.4";
+const AUTOMATION_STEP_TYPES = [
+  { value: "openPage", label: "打开页面", action: "goto" },
+  { value: "click", label: "点击", action: "click" },
+  { value: "input", label: "输入", action: "fill" },
+  { value: "waitElement", label: "等待元素", action: "waitFor" },
+  { value: "assertText", label: "校验文本", action: "assertText" },
+  { value: "assertElement", label: "校验元素存在", action: "assertVisible" },
+  { value: "screenshot", label: "截图", action: "screenshot" },
+  { value: "wait", label: "等待", action: "waitForTimeout" }
+];
+const AUTOMATION_LOCATOR_TYPES = [
+  { value: "css", label: "CSS" },
+  { value: "text", label: "文本" },
+  { value: "placeholder", label: "placeholder" },
+  { value: "label", label: "label" }
+];
+const AUTOMATION_STEP_TEMPLATES = [
+  {
+    value: "login",
+    label: "登录流程",
+    steps: [
+      { stepType: "input", locatorType: "placeholder", target: "请输入账号", inputValue: "", remark: "账号输入框提示词" },
+      { stepType: "input", locatorType: "placeholder", target: "请输入密码", inputValue: "", remark: "密码输入框提示词" },
+      { stepType: "click", locatorType: "text", target: "登录", inputValue: "", remark: "登录按钮文案" },
+      { stepType: "assertElement", locatorType: "text", target: "首页", inputValue: "", remark: "登录成功后的页面标识" }
+    ]
+  },
+  {
+    value: "search",
+    label: "搜索流程",
+    steps: [
+      { stepType: "input", locatorType: "placeholder", target: "请输入搜索关键词", inputValue: "", remark: "搜索框提示词" },
+      { stepType: "click", locatorType: "text", target: "搜索", inputValue: "", remark: "搜索按钮文案" },
+      { stepType: "assertElement", locatorType: "css", target: ".table-row", inputValue: "", remark: "结果列表行" }
+    ]
+  },
+  {
+    value: "newForm",
+    label: "新增表单",
+    steps: [
+      { stepType: "click", locatorType: "text", target: "新增", inputValue: "", remark: "打开新增表单" },
+      { stepType: "input", locatorType: "label", target: "名称", inputValue: "", remark: "填写主字段" },
+      { stepType: "click", locatorType: "text", target: "保存", inputValue: "", remark: "提交表单" },
+      { stepType: "assertText", locatorType: "css", target: "body", inputValue: "成功", remark: "校验保存结果" }
+    ]
+  },
+  {
+    value: "submit",
+    label: "提交流程",
+    steps: [
+      { stepType: "click", locatorType: "text", target: "提交", inputValue: "", remark: "提交按钮文案" },
+      { stepType: "assertText", locatorType: "css", target: "body", inputValue: "成功", remark: "提交成功提示" }
+    ]
+  },
+  {
+    value: "listCheck",
+    label: "列表校验",
+    steps: [
+      { stepType: "waitElement", locatorType: "css", target: ".table-row", inputValue: "", remark: "等待列表加载完成" },
+      { stepType: "assertElement", locatorType: "css", target: ".table-row", inputValue: "", remark: "列表至少存在一行" }
+    ]
+  },
+  {
+    value: "detailCheck",
+    label: "详情页校验",
+    steps: [
+      { stepType: "click", locatorType: "css", target: ".table-row:first-child", inputValue: "", remark: "进入详情页" },
+      { stepType: "assertElement", locatorType: "text", target: "详情", inputValue: "", remark: "详情页标题" },
+      { stepType: "screenshot", locatorType: "css", target: "body", inputValue: "detail-page", remark: "留存详情页截图" }
+    ]
+  }
+];
+const AUTOMATION_QUICK_ADD_TYPES = ["openPage", "click", "input", "assertElement"];
 
 const state = loadState();
 
@@ -89,6 +162,7 @@ const els = {
   caseStatusFilter: document.getElementById("caseStatusFilter"),
   caseBulkStatus: document.getElementById("caseBulkStatus"),
   applyCaseBulkStatus: document.getElementById("applyCaseBulkStatus"),
+  exportCasesBtn: document.getElementById("exportCasesBtn"),
   caseActionStatus: document.getElementById("caseActionStatus"),
   automationCaseList: document.getElementById("automationCaseList"),
   automationCaseBatchFilter: document.getElementById("automationCaseBatchFilter"),
@@ -177,6 +251,7 @@ initTextSourceUi();
 initOwnerUi();
 bindEvents();
 renderAll();
+ensureCasesToolbarEnhancements();
 loadTeamMembersConfig();
 loadSharedState();
 loadSelfTestStatus();
@@ -214,6 +289,7 @@ function bindEvents() {
   els.caseTaskFilter.addEventListener("change", renderCases);
   els.caseStatusFilter?.addEventListener("change", renderCases);
   els.applyCaseBulkStatus?.addEventListener("click", applyBulkCaseExecutionStatus);
+  els.exportCasesBtn?.addEventListener("click", exportFilteredCases);
   els.automationCaseBatchFilter?.addEventListener("change", () => {
     renderCaseFilters();
     renderAutomationCases();
@@ -1205,7 +1281,7 @@ function renderUiAutomationPanel() {
   }
 
   if (!uiAutomationState.available) {
-    setUiAutomationFeedback("当前机器没有找到可用 Chrome / Edge，请先配置浏览器路径后再使用。", "warn");
+    setUiAutomationFeedback("当前机器没有找到可用的谷歌浏览器，请先配置浏览器路径后再使用。", "warn");
     return;
   }
 
@@ -1819,6 +1895,20 @@ function handleCaseImport(event) {
   reader.readAsText(file, "utf-8");
 }
 
+function ensureCasesToolbarEnhancements() {
+  const caseToolbar = document.querySelector("#cases .case-toolbar");
+  if (caseToolbar && !els.exportCasesBtn) {
+    const button = document.createElement("button");
+    button.id = "exportCasesBtn";
+    button.type = "button";
+    button.className = "ghost-button";
+    button.textContent = "导出当前用例";
+    caseToolbar.appendChild(button);
+    els.exportCasesBtn = button;
+    els.exportCasesBtn.addEventListener("click", exportFilteredCases);
+  }
+}
+
 function handleQualityImport(event) {
   const [file] = event.target.files;
   if (!file) {
@@ -2150,6 +2240,21 @@ function downloadCasesCsv(cases, activeBatch, activeTask, documentName) {
   anchor.download = `${sanitizeFileName(fileBaseName)}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function exportFilteredCases() {
+  const filteredCases = getFilteredCasesForView();
+  if (!filteredCases.length) {
+    setCaseActionStatus("当前筛选范围里没有可导出的测试用例。", "warn");
+    return;
+  }
+
+  const batchFilter = els.caseBatchFilter?.value || "";
+  const taskFilter = els.caseTaskFilter?.value || "";
+  const activeBatch = getBatchById(batchFilter) || getBatchById(state.activeBatchId);
+  const activeTask = state.tasks.find((item) => item.name === taskFilter) || getTaskById(state.activeTaskId);
+  downloadCasesCsv(filteredCases, activeBatch, activeTask, state.lastGeneration?.documentName || "测试用例");
+  setCaseActionStatus(`已导出 ${filteredCases.length} 条当前筛选结果里的测试用例。`, "ok");
 }
 
 function downloadCaseTemplateCsv() {
@@ -3370,19 +3475,367 @@ function normalizeCaseItem(item) {
 
 function normalizeCaseAutomationSteps(value) {
   if (Array.isArray(value)) {
-    return value;
+    return value.map((item) => normalizeAutomationStep(item)).filter(Boolean);
   }
 
   if (typeof value === "string" && value.trim()) {
     try {
       const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.map((item) => normalizeAutomationStep(item)).filter(Boolean) : [];
     } catch (_error) {
       return [];
     }
   }
 
   return [];
+}
+
+function createDefaultAutomationStep() {
+  return {
+    stepType: "click",
+    locatorType: "text",
+    target: "",
+    inputValue: "",
+    remark: ""
+  };
+}
+
+function normalizeAutomationStep(rawStep) {
+  if (!rawStep || typeof rawStep !== "object") {
+    return null;
+  }
+
+  const stepType = normalizeAutomationStepType(rawStep.stepType || rawStep.type, rawStep.action);
+  const locatorType = normalizeAutomationLocatorType(rawStep.locatorType || rawStep.by);
+  const normalized = {
+    stepType,
+    locatorType,
+    target: "",
+    inputValue: "",
+    remark: String(rawStep.remark || rawStep.note || "").trim()
+  };
+
+  if (stepType === "openPage") {
+    normalized.target = String(rawStep.target || rawStep.path || rawStep.url || "").trim();
+    return normalized;
+  }
+
+  if (stepType === "wait") {
+    normalized.inputValue = String(rawStep.inputValue || rawStep.ms || "").trim();
+    normalized.target = String(rawStep.target || "").trim();
+    return normalized;
+  }
+
+  if (stepType === "assertText") {
+    normalized.target = inferAutomationTargetFromRawStep(rawStep, locatorType);
+    normalized.inputValue = String(rawStep.inputValue || rawStep.text || "").trim();
+    return normalized;
+  }
+
+  if (stepType === "input") {
+    normalized.target = inferAutomationTargetFromRawStep(rawStep, locatorType);
+    normalized.inputValue = String(rawStep.inputValue || rawStep.value || "").trim();
+    return normalized;
+  }
+
+  if (stepType === "screenshot") {
+    normalized.target = inferAutomationTargetFromRawStep(rawStep, locatorType) || "body";
+    normalized.inputValue = String(rawStep.inputValue || rawStep.name || rawStep.fileName || "").trim();
+    return normalized;
+  }
+
+  normalized.target = inferAutomationTargetFromRawStep(rawStep, locatorType);
+  return normalized;
+}
+
+function normalizeAutomationStepType(stepType, action) {
+  const raw = String(stepType || action || "").trim().toLowerCase();
+  if (["openpage", "goto", "open", "打开页面"].includes(raw)) return "openPage";
+  if (["click", "点击"].includes(raw)) return "click";
+  if (["input", "fill", "输入"].includes(raw)) return "input";
+  if (["waitelement", "waitfor", "等待元素"].includes(raw)) return "waitElement";
+  if (["asserttext", "校验文本", "断言文本"].includes(raw)) return "assertText";
+  if (["assertelement", "assertvisible", "校验元素", "校验元素存在", "断言元素"].includes(raw)) return "assertElement";
+  if (["screenshot", "截图"].includes(raw)) return "screenshot";
+  if (["wait", "waitfortimeout", "等待"].includes(raw)) return "wait";
+  return "click";
+}
+
+function normalizeAutomationLocatorType(locatorType) {
+  const raw = String(locatorType || "").trim().toLowerCase();
+  if (["text", "文本"].includes(raw)) return "text";
+  if (["placeholder"].includes(raw)) return "placeholder";
+  if (["label"].includes(raw)) return "label";
+  return "css";
+}
+
+function inferAutomationTargetFromRawStep(step, locatorType) {
+  if (step.target) return String(step.target).trim();
+  if (step.selector) {
+    if (locatorType === "text") {
+      const textMatch = String(step.selector).match(/text=(.+)$/);
+      if (textMatch) return textMatch[1].trim();
+    }
+    if (locatorType === "placeholder") {
+      const placeholderMatch = String(step.selector).match(/placeholder=(.+)$/);
+      if (placeholderMatch) return placeholderMatch[1].trim();
+    }
+    if (locatorType === "label") {
+      const labelMatch = String(step.selector).match(/label=(.+)$/);
+      if (labelMatch) return labelMatch[1].trim();
+    }
+    return String(step.selector).trim();
+  }
+  return "";
+}
+
+function buildAutomationSelector(locatorType, target) {
+  const normalizedTarget = String(target || "").trim();
+  if (!normalizedTarget) {
+    return "";
+  }
+  if (locatorType === "text") {
+    return `text=${normalizedTarget}`;
+  }
+  if (locatorType === "placeholder") {
+    return `placeholder=${normalizedTarget}`;
+  }
+  if (locatorType === "label") {
+    return `label=${normalizedTarget}`;
+  }
+  return normalizedTarget;
+}
+
+function buildAutomationRuntimeSteps(stepDrafts) {
+  return (stepDrafts || []).map((rawStep) => normalizeAutomationStep(rawStep)).filter(Boolean).map((step) => {
+    if (step.stepType === "openPage") {
+      return {
+        stepType: step.stepType,
+        locatorType: step.locatorType,
+        target: step.target,
+        inputValue: step.inputValue,
+        remark: step.remark,
+        action: "goto",
+        path: step.target
+      };
+    }
+
+    if (step.stepType === "wait") {
+      return {
+        stepType: step.stepType,
+        locatorType: step.locatorType,
+        target: step.target,
+        inputValue: step.inputValue,
+        remark: step.remark,
+        action: "waitForTimeout",
+        ms: Number(step.inputValue) > 0 ? Number(step.inputValue) : 1000
+      };
+    }
+
+    if (step.stepType === "click") {
+      return {
+        ...step,
+        action: "click",
+        selector: buildAutomationSelector(step.locatorType, step.target)
+      };
+    }
+
+    if (step.stepType === "input") {
+      return {
+        ...step,
+        action: "fill",
+        selector: buildAutomationSelector(step.locatorType, step.target),
+        value: step.inputValue
+      };
+    }
+
+    if (step.stepType === "waitElement") {
+      return {
+        ...step,
+        action: "waitFor",
+        selector: buildAutomationSelector(step.locatorType, step.target),
+        state: "visible"
+      };
+    }
+
+    if (step.stepType === "assertText") {
+      return {
+        ...step,
+        action: "assertText",
+        selector: buildAutomationSelector(step.locatorType, step.target || "body"),
+        text: step.inputValue
+      };
+    }
+
+    if (step.stepType === "assertElement") {
+      return {
+        ...step,
+        action: "assertVisible",
+        selector: buildAutomationSelector(step.locatorType, step.target)
+      };
+    }
+
+    if (step.stepType === "screenshot") {
+      return {
+        ...step,
+        action: "screenshot",
+        selector: buildAutomationSelector(step.locatorType, step.target || "body"),
+        name: step.inputValue
+      };
+    }
+
+    return step;
+  });
+}
+
+function formatAutomationStepsJson(steps) {
+  return JSON.stringify(buildAutomationRuntimeSteps(steps), null, 2);
+}
+
+function parseAutomationStepsJson(stepsText) {
+  const text = String(stepsText || "").trim();
+  if (!text) {
+    return [];
+  }
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed)) {
+    throw new Error("自动化步骤必须是 JSON 数组。");
+  }
+  return parsed.map((item) => normalizeAutomationStep(item)).filter(Boolean);
+}
+
+function getAutomationStepTypeLabel(stepType) {
+  return AUTOMATION_STEP_TYPES.find((item) => item.value === stepType)?.label || "步骤";
+}
+
+function getAutomationQuickHint(stepType) {
+  if (stepType === "openPage") return "填页面路径，例如：/orders/list";
+  if (stepType === "click") return "填按钮文字，通常直接写“查询”或“保存”";
+  if (stepType === "input") return "目标填输入框提示词，输入值填你要输入的内容";
+  if (stepType === "waitElement") return "通常等表格、按钮或结果区出现";
+  if (stepType === "assertText") return "目标通常填 body，输入值填你期望看到的文字";
+  if (stepType === "assertElement") return "直接填页面上应该出现的文字或元素";
+  if (stepType === "screenshot") return "一般不用改，留作执行留痕";
+  if (stepType === "wait") return "只在页面确实有明显延迟时再填毫秒数";
+  return "";
+}
+
+function getAutomationSimplePlaceholder(stepType) {
+  if (stepType === "openPage") return "例如：/orders/list";
+  if (stepType === "click") return "例如：登录 / 保存 / 查询";
+  if (stepType === "input") return "例如：请输入账号";
+  if (stepType === "waitElement") return "例如：结果列表 / 提交按钮";
+  if (stepType === "assertText") return "例如：body";
+  if (stepType === "assertElement") return "例如：首页 / 提交成功";
+  if (stepType === "screenshot") return "例如：body";
+  if (stepType === "wait") return "可不填";
+  return "请输入";
+}
+
+function getAutomationStepSummary(step) {
+  const stepLabel = getAutomationStepTypeLabel(step.stepType);
+  const target = String(step.target || "").trim() || "未填写";
+  const inputValue = String(step.inputValue || "").trim();
+  if (step.stepType === "input") {
+    return `${stepLabel}：在「${target}」里输入「${inputValue || "未填写"}」`;
+  }
+  if (step.stepType === "assertText") {
+    return `${stepLabel}：检查页面里出现「${inputValue || "未填写"}」`;
+  }
+  if (step.stepType === "wait") {
+    return `${stepLabel}：等待 ${inputValue || "1000"} ms`;
+  }
+  if (step.stepType === "openPage") {
+    return `${stepLabel}：进入「${target}」`;
+  }
+  return `${stepLabel}：${target}`;
+}
+
+function shouldShowAutomationLocator(stepType) {
+  return !["openPage", "wait"].includes(stepType);
+}
+
+function shouldShowAutomationTarget(stepType) {
+  return true;
+}
+
+function getAutomationTargetLabel(stepType) {
+  if (stepType === "openPage") return "目标值（页面路径）";
+  if (stepType === "wait") return "目标值（可选备注）";
+  return "目标值";
+}
+
+function getAutomationInputLabel(stepType) {
+  if (stepType === "input") return "输入值";
+  if (stepType === "assertText") return "断言文本";
+  if (stepType === "wait") return "输入值（毫秒）";
+  if (stepType === "screenshot") return "输入值（截图名）";
+  return "输入值";
+}
+
+function shouldShowAutomationInput(stepType) {
+  return ["input", "assertText", "wait", "screenshot"].includes(stepType);
+}
+
+function ensureCaseAutomationEditor(node) {
+  const automationBlock = node.querySelector(".case-automation-block");
+  if (!automationBlock) {
+    return;
+  }
+
+  const legacyLabel = automationBlock.querySelector("label:not(.case-execution-note-wrap):has(.case-automation-steps)");
+  if (automationBlock.querySelector(".case-automation-editor")) {
+    return;
+  }
+
+  const editor = document.createElement("div");
+  editor.className = "case-automation-editor";
+  editor.innerHTML = `
+    <div class="case-automation-beginner-guide">
+      <strong>只要 3 步：1 选模板，2 改文字，3 点运行。</strong>
+      <p>新人建议先从模板开始，绝大多数场景都不用自己从零搭步骤。</p>
+    </div>
+    <div class="case-automation-toolbar">
+      <div class="case-automation-template-row">
+        <span class="case-automation-step-no">第 1 步</span>
+        <select class="case-automation-template-select">
+          <option value="">请选择一个常用模板</option>
+        </select>
+        <button type="button" class="primary-button tiny-button case-automation-apply-template">套用这个模板</button>
+      </div>
+    </div>
+    <div class="case-automation-secondary-tools">
+      <div class="case-automation-quick-add"></div>
+      <button type="button" class="ghost-button tiny-button case-automation-add-step">从空白步骤开始</button>
+      <button type="button" class="ghost-button tiny-button case-automation-json-toggle">查看/编辑 JSON</button>
+    </div>
+    <div class="case-automation-step-list"></div>
+    <div class="case-automation-json-panel hidden-field"></div>
+  `;
+
+  const jsonPanel = editor.querySelector(".case-automation-json-panel");
+  const textarea = automationBlock.querySelector(".case-automation-steps");
+  if (textarea) {
+    const jsonLabel = document.createElement("label");
+    jsonLabel.innerHTML = `
+      <span>高级模式（JSON）</span>
+    `;
+    jsonLabel.appendChild(textarea);
+    textarea.rows = 7;
+    textarea.placeholder = '例如：[{"action":"click","selector":"text=搜索"},{"action":"assertVisible","selector":".table-row"}]';
+    jsonPanel.appendChild(jsonLabel);
+  }
+
+  if (legacyLabel) {
+    legacyLabel.remove();
+  }
+
+  const actionBar = automationBlock.querySelector(".inline-actions");
+  if (actionBar) {
+    automationBlock.insertBefore(editor, actionBar);
+  } else {
+    automationBlock.appendChild(editor);
+  }
 }
 
 function normalizeCaseAutomationLastRun(value) {
@@ -3689,6 +4142,7 @@ function renderCases() {
   els.caseList.innerHTML = "";
   filtered.forEach((item) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
+    ensureCaseEditFields(node);
     node.querySelector(".case-title-text").textContent = item.title;
     node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
     node.querySelector(".case-task").textContent = item.taskName || "未分任务";
@@ -3698,6 +4152,12 @@ function renderCases() {
     const executionBadge = node.querySelector(".case-execution-badge");
     const executionSelect = node.querySelector(".case-execution-select");
     const executionNote = node.querySelector(".case-execution-note");
+    const titleInput = node.querySelector(".case-title-input");
+    const typeInput = node.querySelector(".case-type-input");
+    const prioritySelect = node.querySelector(".case-priority-select");
+    const preconditionsInput = node.querySelector(".case-preconditions-full");
+    const stepsInput = node.querySelector(".case-steps-full");
+    const expectedInput = node.querySelector(".case-expected-full");
     const caseToBug = node.querySelector(".case-to-bug");
     const automationEnabled = node.querySelector(".case-automation-enabled");
     const automationTargetPath = node.querySelector(".case-automation-target-path");
@@ -3713,13 +4173,16 @@ function renderCases() {
     executionSelect.value = item.executionStatus || "未执行";
     syncExecutionStatusBadge(executionBadge, item.executionStatus || "未执行");
     executionNote.value = item.executionNote || "";
+    if (titleInput) titleInput.value = item.title || "";
+    if (typeInput) typeInput.value = item.type || "";
+    if (prioritySelect) prioritySelect.value = item.priority || "P2";
+    if (preconditionsInput) preconditionsInput.value = item.preconditions || "";
+    if (stepsInput) stepsInput.value = item.steps || "";
+    if (expectedInput) expectedInput.value = item.expected || "";
     caseToBug.classList.toggle("hidden-field", item.executionStatus !== "失败");
 
     node.querySelector(".case-preconditions-preview").textContent = truncateText(item.preconditions, 90);
     node.querySelector(".case-steps-preview").textContent = truncateText(item.steps, 110);
-    node.querySelector(".case-preconditions-full").textContent = item.preconditions || "无";
-    node.querySelector(".case-steps-full").textContent = item.steps || "无";
-    node.querySelector(".case-expected-full").textContent = item.expected || "无";
     node.querySelector(".case-automation-block")?.classList.add("hidden-field");
     automationEnabled.checked = Boolean(item.automationEnabled);
     automationTargetPath.value = item.automationTargetPath || "";
@@ -3741,6 +4204,54 @@ function renderCases() {
 
     executionNote.addEventListener("input", (event) => {
       item.executionNote = event.target.value.trim();
+      Object.assign(item, applyUpdateAuditFields(item));
+      persist();
+    });
+
+    const syncCaseCardPreview = () => {
+      node.querySelector(".case-title-text").textContent = item.title || "未命名用例";
+      node.querySelector(".case-preconditions-preview").textContent = truncateText(item.preconditions, 90);
+      node.querySelector(".case-steps-preview").textContent = truncateText(item.steps, 110);
+      priorityBadge.textContent = item.priority || "P2";
+      applyBadgeTone(priorityBadge, getPriorityTone(item.priority || "P2"));
+    };
+
+    titleInput?.addEventListener("input", (event) => {
+      item.title = event.target.value.trim() || "未命名用例";
+      Object.assign(item, applyUpdateAuditFields(item));
+      syncCaseCardPreview();
+      persist();
+    });
+
+    typeInput?.addEventListener("input", (event) => {
+      item.type = event.target.value.trim();
+      Object.assign(item, applyUpdateAuditFields(item));
+      persist();
+    });
+
+    prioritySelect?.addEventListener("change", (event) => {
+      item.priority = event.target.value || "P2";
+      Object.assign(item, applyUpdateAuditFields(item));
+      syncCaseCardPreview();
+      persist();
+    });
+
+    preconditionsInput?.addEventListener("input", (event) => {
+      item.preconditions = event.target.value.trim();
+      Object.assign(item, applyUpdateAuditFields(item));
+      syncCaseCardPreview();
+      persist();
+    });
+
+    stepsInput?.addEventListener("input", (event) => {
+      item.steps = event.target.value.trim();
+      Object.assign(item, applyUpdateAuditFields(item));
+      syncCaseCardPreview();
+      persist();
+    });
+
+    expectedInput?.addEventListener("input", (event) => {
+      item.expected = event.target.value.trim();
       Object.assign(item, applyUpdateAuditFields(item));
       persist();
     });
@@ -3774,6 +4285,7 @@ function renderAutomationCases() {
   els.automationCaseList.innerHTML = "";
   filtered.forEach((item) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
+    ensureCaseAutomationEditor(node);
     node.querySelector(".case-title-text").textContent = item.title;
     node.querySelector(".case-version").textContent = item.batchVersion || "未带版本";
     node.querySelector(".case-task").textContent = item.taskName || "未分任务";
@@ -3785,6 +4297,13 @@ function renderAutomationCases() {
     const automationEnabled = node.querySelector(".case-automation-enabled");
     const automationTargetPath = node.querySelector(".case-automation-target-path");
     const automationSteps = node.querySelector(".case-automation-steps");
+    const automationStepList = node.querySelector(".case-automation-step-list");
+    const automationAddStep = node.querySelector(".case-automation-add-step");
+    const automationQuickAdd = node.querySelector(".case-automation-quick-add");
+    const automationTemplateSelect = node.querySelector(".case-automation-template-select");
+    const automationApplyTemplate = node.querySelector(".case-automation-apply-template");
+    const automationJsonToggle = node.querySelector(".case-automation-json-toggle");
+    const automationJsonPanel = node.querySelector(".case-automation-json-panel");
     const automationStatus = node.querySelector(".case-automation-status");
     const automationFeedback = node.querySelector(".case-automation-feedback");
     const automationSave = node.querySelector(".case-automation-save");
@@ -3807,10 +4326,225 @@ function renderAutomationCases() {
 
     automationEnabled.checked = Boolean(item.automationEnabled);
     automationTargetPath.value = item.automationTargetPath || "";
-    automationSteps.value = item.automationSteps?.length ? JSON.stringify(item.automationSteps, null, 2) : "";
     syncAutomationStatusChip(automationStatus, item.automationLastRun?.status || "");
     automationFeedback.textContent = getCaseAutomationFeedbackText(item);
     automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+    automationTemplateSelect.innerHTML = `<option value="">请选择一个常用模板</option>${AUTOMATION_STEP_TEMPLATES.map((template) => `<option value="${escapeHtml(template.value)}">${escapeHtml(template.label)}</option>`).join("")}`;
+    if (automationQuickAdd) {
+      automationQuickAdd.innerHTML = AUTOMATION_QUICK_ADD_TYPES.map((stepType) => `
+        <button type="button" class="ghost-button tiny-button" data-quick-step="${escapeHtml(stepType)}">补一步：${escapeHtml(getAutomationStepTypeLabel(stepType))}</button>
+      `).join("");
+    }
+
+    const editorState = {
+      steps: (item.automationSteps || []).map((step) => normalizeAutomationStep(step)).filter(Boolean)
+    };
+    if (!editorState.steps.length) {
+      editorState.steps = [];
+    }
+
+    const syncEditorJson = () => {
+      automationSteps.value = editorState.steps.length ? formatAutomationStepsJson(editorState.steps) : "";
+    };
+
+    const renderStepList = () => {
+      if (!automationStepList) {
+        return;
+      }
+      if (!editorState.steps.length) {
+        automationStepList.innerHTML = `
+          <div class="automation-empty-state">
+            <strong>先从模板开始会更快</strong>
+            <p>先在上面选一个模板，系统会自动带出常用步骤，你只需要改几个字。</p>
+          </div>
+        `;
+        syncEditorJson();
+        return;
+      }
+
+      automationStepList.innerHTML = editorState.steps.map((step, index) => {
+        const showLocator = shouldShowAutomationLocator(step.stepType);
+        const showInput = shouldShowAutomationInput(step.stepType);
+        return `
+          <div class="automation-step-card" data-step-index="${index}">
+            <div class="automation-step-card-head">
+              <div class="automation-step-head-main">
+                <strong>第 ${index + 1} 步 · ${escapeHtml(getAutomationStepTypeLabel(step.stepType))}</strong>
+                <span class="automation-step-summary">${escapeHtml(getAutomationStepSummary(step))}</span>
+              </div>
+              <div class="automation-step-actions">
+                <button type="button" class="ghost-button tiny-button" data-step-action="move-up">上移</button>
+                <button type="button" class="ghost-button tiny-button" data-step-action="move-down">下移</button>
+                <button type="button" class="ghost-button tiny-button" data-step-action="delete">删除</button>
+              </div>
+            </div>
+            <p class="automation-step-hint">${escapeHtml(getAutomationQuickHint(step.stepType))}</p>
+            <div class="automation-step-grid">
+              <label class="automation-advanced-field hidden-field">
+                步骤类型
+                <select data-step-field="stepType">
+                  ${AUTOMATION_STEP_TYPES.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === step.stepType ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+                </select>
+              </label>
+              <label class="automation-advanced-field hidden-field" data-advanced-visible="${showLocator ? "true" : "false"}">
+                定位方式
+                <select data-step-field="locatorType">
+                  ${AUTOMATION_LOCATOR_TYPES.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === step.locatorType ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+                </select>
+              </label>
+              <label>
+                ${escapeHtml(step.stepType === "input" ? "你要操作哪个输入框" : step.stepType === "assertText" ? "去哪里检查文字" : step.stepType === "assertElement" ? "页面上应该出现什么" : getAutomationTargetLabel(step.stepType))}
+                <input type="text" data-step-field="target" value="${escapeHtml(step.target || "")}" placeholder="${escapeHtml(getAutomationSimplePlaceholder(step.stepType))}">
+              </label>
+              <label class="${showInput ? "" : "hidden-field"}">
+                ${escapeHtml(step.stepType === "input" ? "要输入什么" : step.stepType === "assertText" ? "期望看到的文字" : getAutomationInputLabel(step.stepType))}
+                <input type="text" data-step-field="inputValue" value="${escapeHtml(step.inputValue || "")}" placeholder="${step.stepType === "wait" ? "例如：1000" : step.stepType === "input" ? "例如：admin" : ""}">
+              </label>
+              <label class="automation-step-remark automation-advanced-field hidden-field">
+                备注
+                <input type="text" data-step-field="remark" value="${escapeHtml(step.remark || "")}" placeholder="可选，帮助团队理解这一步">
+              </label>
+            </div>
+          </div>
+        `;
+      }).join("");
+      syncEditorJson();
+    };
+
+    const rerenderEditor = () => {
+      renderStepList();
+      automationFeedback.textContent = getCaseAutomationFeedbackText(item);
+      automationFeedback.className = `inline-feedback ${getCaseAutomationFeedbackTone(item)}`;
+    };
+
+    renderStepList();
+
+    automationStepList?.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const field = target.dataset.stepField;
+      const card = target.closest(".automation-step-card");
+      const index = Number(card?.dataset.stepIndex);
+      if (!field || Number.isNaN(index) || !editorState.steps[index]) {
+        return;
+      }
+      editorState.steps[index][field] = target.value;
+      syncEditorJson();
+    });
+
+    automationStepList?.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const field = target.dataset.stepField;
+      const card = target.closest(".automation-step-card");
+      const index = Number(card?.dataset.stepIndex);
+      if (!field || Number.isNaN(index) || !editorState.steps[index]) {
+        return;
+      }
+      editorState.steps[index][field] = target.value;
+      if (field === "stepType") {
+        editorState.steps[index] = normalizeAutomationStep({
+          ...editorState.steps[index],
+          stepType: target.value
+        }) || createDefaultAutomationStep();
+        renderStepList();
+        return;
+      }
+      syncEditorJson();
+    });
+
+    automationStepList?.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const action = target.dataset.stepAction;
+      const card = target.closest(".automation-step-card");
+      const index = Number(card?.dataset.stepIndex);
+      if (!action || Number.isNaN(index) || !editorState.steps[index]) {
+        return;
+      }
+      if (action === "delete") {
+        editorState.steps.splice(index, 1);
+        renderStepList();
+        return;
+      }
+      if (action === "move-up" && index > 0) {
+        const [step] = editorState.steps.splice(index, 1);
+        editorState.steps.splice(index - 1, 0, step);
+        renderStepList();
+        return;
+      }
+      if (action === "move-down" && index < editorState.steps.length - 1) {
+        const [step] = editorState.steps.splice(index, 1);
+        editorState.steps.splice(index + 1, 0, step);
+        renderStepList();
+      }
+    });
+
+    automationAddStep?.addEventListener("click", () => {
+      editorState.steps.push(createDefaultAutomationStep());
+      renderStepList();
+    });
+
+    automationQuickAdd?.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const stepType = target.dataset.quickStep;
+      if (!stepType) {
+        return;
+      }
+      editorState.steps.push(normalizeAutomationStep({
+        stepType,
+        locatorType: stepType === "input" ? "placeholder" : "text",
+        target: "",
+        inputValue: "",
+        remark: ""
+      }) || createDefaultAutomationStep());
+      renderStepList();
+    });
+
+    automationApplyTemplate?.addEventListener("click", () => {
+      const template = AUTOMATION_STEP_TEMPLATES.find((itemTemplate) => itemTemplate.value === automationTemplateSelect.value);
+      if (!template) {
+        automationFeedback.textContent = "先选一个模板，再点“套用这个模板”。";
+        automationFeedback.className = "inline-feedback warn";
+        return;
+      }
+      editorState.steps = template.steps.map((step) => normalizeAutomationStep(step)).filter(Boolean);
+      renderStepList();
+      automationFeedback.textContent = `已套用「${template.label}」模板。下一步只要把步骤里的文字改成你的页面内容，再点运行。`;
+      automationFeedback.className = "inline-feedback ok";
+    });
+
+    automationJsonToggle?.addEventListener("click", () => {
+      const isHidden = automationJsonPanel?.classList.contains("hidden-field");
+      automationJsonPanel?.classList.toggle("hidden-field", !isHidden);
+      automationJsonToggle.textContent = isHidden ? "收起 JSON" : "查看/编辑 JSON";
+      node.querySelectorAll(".automation-advanced-field").forEach((field) => {
+        const canShow = field.dataset.advancedVisible !== "false";
+        field.classList.toggle("hidden-field", !isHidden || !canShow);
+      });
+      if (isHidden) {
+        syncEditorJson();
+      }
+    });
+
+    automationSteps.addEventListener("input", () => {
+      try {
+        editorState.steps = parseAutomationStepsJson(automationSteps.value);
+        renderStepList();
+      } catch (_error) {
+        automationFeedback.textContent = "JSON 还没写完整，先继续编辑，保存时会再校验。";
+        automationFeedback.className = "inline-feedback neutral";
+      }
+    });
 
     const traceMeta = node.querySelector(".case-trace-meta");
     if (traceMeta) {
@@ -3837,6 +4571,7 @@ function renderAutomationCases() {
     });
 
     automationRun.addEventListener("click", async () => {
+      syncEditorJson();
       const saved = saveCaseAutomationConfig(item, {
         enabled: automationEnabled.checked,
         targetPath: automationTargetPath.value,
@@ -3898,22 +4633,11 @@ function saveCaseAutomationConfig(item, payload) {
 
   if (stepsText) {
     try {
-      parsedSteps = JSON.parse(stepsText);
-    } catch (_error) {
+      parsedSteps = parseAutomationStepsJson(stepsText);
+    } catch (error) {
       item.automationLastRun = {
         status: "失败",
-        summary: "自动化步骤不是合法 JSON，请先修正后再保存。",
-        startedAt: "",
-        finishedAt: new Date().toISOString()
-      };
-      persist();
-      return false;
-    }
-
-    if (!Array.isArray(parsedSteps)) {
-      item.automationLastRun = {
-        status: "失败",
-        summary: "自动化步骤必须是 JSON 数组。",
+        summary: error.message || "自动化步骤不是合法 JSON，请先修正后再保存。",
         startedAt: "",
         finishedAt: new Date().toISOString()
       };
@@ -3924,10 +4648,72 @@ function saveCaseAutomationConfig(item, payload) {
 
   item.automationEnabled = enabled;
   item.automationTargetPath = targetPath;
-  item.automationSteps = parsedSteps;
+  item.automationSteps = parsedSteps.map((step) => normalizeAutomationStep(step)).filter(Boolean);
   Object.assign(item, applyUpdateAuditFields(item));
   persist();
   return true;
+}
+
+function ensureCaseEditFields(node) {
+  const detailGrid = node.querySelector(".case-detail-grid");
+  if (!detailGrid || detailGrid.querySelector(".case-title-input")) {
+    return;
+  }
+
+  const preconditionsBlock = node.querySelector(".case-preconditions-full")?.closest(".detail-block");
+  if (!preconditionsBlock) {
+    return;
+  }
+
+  const titleBlock = document.createElement("div");
+  titleBlock.className = "detail-block";
+  titleBlock.innerHTML = `
+    <label class="case-edit-field">
+      <span class="summary-label">用例标题</span>
+      <input class="case-title-input" type="text">
+    </label>
+  `;
+
+  const typeBlock = document.createElement("div");
+  typeBlock.className = "detail-block";
+  typeBlock.innerHTML = `
+    <label class="case-edit-field">
+      <span class="summary-label">用例类型</span>
+      <input class="case-type-input" type="text">
+    </label>
+  `;
+
+  const priorityBlock = document.createElement("div");
+  priorityBlock.className = "detail-block";
+  priorityBlock.innerHTML = `
+    <label class="case-edit-field">
+      <span class="summary-label">优先级</span>
+      <select class="case-priority-select">
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+        <option value="P3">P3</option>
+      </select>
+    </label>
+  `;
+
+  detailGrid.insertBefore(priorityBlock, preconditionsBlock);
+  detailGrid.insertBefore(typeBlock, priorityBlock);
+  detailGrid.insertBefore(titleBlock, typeBlock);
+
+  const preconditionsField = node.querySelector(".case-preconditions-full");
+  const stepsField = node.querySelector(".case-steps-full");
+  const expectedField = node.querySelector(".case-expected-full");
+  [preconditionsField, stepsField, expectedField].forEach((field, index) => {
+    if (!field) {
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.className = `${field.className} case-edit-textarea`;
+    textarea.rows = index === 1 ? 6 : 4;
+    textarea.value = field.textContent === "无" ? "" : field.textContent || "";
+    field.replaceWith(textarea);
+  });
 }
 
 async function runCaseAutomation(item) {
@@ -3960,7 +4746,7 @@ async function runCaseAutomation(item) {
       caseTitle: item.title,
       baseUrl: state.uiAutomationSettings.baseUrl,
       targetPath: item.automationTargetPath,
-      steps: item.automationSteps
+      steps: buildAutomationRuntimeSteps(item.automationSteps)
     })
   });
   const data = await response.json();

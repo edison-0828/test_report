@@ -138,13 +138,9 @@ function resolveUiAutomationBrowserPath() {
     process.env.UI_AUTOMATION_BROWSER_PATH,
     process.env.CHROME_PATH,
     process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "",
-    process.platform === "darwin" ? "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" : "",
     process.platform === "linux" ? "/usr/bin/google-chrome" : "",
-    process.platform === "linux" ? "/usr/bin/chromium-browser" : "",
-    process.platform === "linux" ? "/usr/bin/chromium" : "",
     process.platform === "win32" ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" : "",
-    process.platform === "win32" ? "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" : "",
-    process.platform === "win32" ? "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" : ""
+    process.platform === "win32" ? "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" : ""
   ].filter(Boolean);
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
@@ -203,7 +199,7 @@ async function handleStartUiAutomationLoginSession(body, res) {
   const browserPath = resolveUiAutomationBrowserPath();
   if (!browserPath) {
     return sendJson(res, 400, {
-      error: "没有找到可用浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Chrome。"
+      error: "没有找到可用的谷歌浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Google Chrome。"
     });
   }
 
@@ -290,7 +286,7 @@ async function handleRunUiAutomationCase(body, res) {
   const browserPath = resolveUiAutomationBrowserPath();
   if (!browserPath) {
     return sendJson(res, 400, {
-      error: "没有找到可用浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Chrome。"
+      error: "没有找到可用的谷歌浏览器，请先配置 UI_AUTOMATION_BROWSER_PATH 或安装 Google Chrome。"
     });
   }
 
@@ -423,6 +419,11 @@ async function executeUiAutomationSteps(page, steps, baseUrl) {
       if (!String(actualText || "").includes(expectedText)) {
         throw new Error(`断言文本失败：预期包含“${expectedText}”。`);
       }
+      continue;
+    }
+
+    if (action === "screenshot") {
+      await page.screenshot({ fullPage: true, timeout });
       continue;
     }
 
