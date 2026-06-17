@@ -1472,8 +1472,9 @@ function ensureSeedMetadata() {
     state.activeTaskId = state.tasks.find((item) => item.batchId === state.generationBatchId)?.id || state.tasks[0]?.id || "";
   }
 
-  if (!state.activeReportBatchId || !state.batches.some((item) => item.id === state.activeReportBatchId)) {
-    state.activeReportBatchId = state.activeBatchId || state.generationBatchId || state.batches[0]?.id || "";
+  const reportBatchIds = buildReportBatchOptions().map((item) => item.id);
+  if (!state.activeReportBatchId || !reportBatchIds.includes(state.activeReportBatchId)) {
+    state.activeReportBatchId = state.activeBatchId || state.generationBatchId || reportBatchIds[0] || "";
   }
 }
 
@@ -3901,23 +3902,126 @@ function getCaseTasks() {
   return [...new Set(state.cases.map((item) => item.taskName).filter(Boolean))];
 }
 
+function buildCaseBatchFilterOptions(source = "cases") {
+  const sourceItems = source === "bugs" ? state.bugs : state.cases;
+  const items = [];
+  const seen = new Set();
+
+  state.batches.forEach((batch) => {
+    if (!batch?.id || seen.has(batch.id)) {
+      return;
+    }
+    seen.add(batch.id);
+    items.push({
+      id: batch.id,
+      version: batch.version || "",
+      name: batch.name || "",
+      moduleName: batch.moduleName || ""
+    });
+  });
+
+  sourceItems.forEach((item) => {
+    const batchId = String(item.batchId || "").trim();
+    const batchVersion = String(item.batchVersion || "").trim();
+    if (batchId && seen.has(batchId)) {
+      return;
+    }
+    const fallbackId = batchId || (batchVersion ? `legacy-version:${batchVersion}` : "");
+    if (!fallbackId || seen.has(fallbackId)) {
+      return;
+    }
+    seen.add(fallbackId);
+    items.push({
+      id: fallbackId,
+      version: batchVersion || "未命名版本",
+      name: "",
+      moduleName: ""
+    });
+  });
+
+  return items;
+}
+
+function buildReportBatchOptions() {
+  const items = [];
+  const seen = new Set();
+  const sourceItems = [...state.cases, ...state.bugs];
+
+  state.batches.forEach((batch) => {
+    if (!batch?.id || seen.has(batch.id)) {
+      return;
+    }
+    seen.add(batch.id);
+    items.push(batch);
+  });
+
+  sourceItems.forEach((item) => {
+    const batchId = String(item.batchId || "").trim();
+    const batchVersion = String(item.batchVersion || "").trim();
+    if (batchId && seen.has(batchId)) {
+      return;
+    }
+    const fallbackId = batchId || (batchVersion ? `legacy-version:${batchVersion}` : "");
+    if (!fallbackId || seen.has(fallbackId)) {
+      return;
+    }
+    seen.add(fallbackId);
+    items.push({
+      id: fallbackId,
+      version: batchVersion || "未命名版本",
+      name: item.batchName || "",
+      moduleId: item.moduleId || "",
+      moduleName: item.moduleName || item.module || "",
+      status: ""
+    });
+  });
+
+  return items;
+}
+
+function matchesBatchFilter(item, batchFilter) {
+  if (!batchFilter) {
+    return true;
+  }
+
+  const itemBatchId = String(item?.batchId || "").trim();
+  if (itemBatchId && itemBatchId === batchFilter) {
+    return true;
+  }
+
+  if (batchFilter.startsWith("legacy-version:")) {
+    const legacyVersion = batchFilter.slice("legacy-version:".length);
+    return String(item?.batchVersion || "").trim() === legacyVersion;
+  }
+
+  return false;
+}
+
 function getTasksByBatchForFilters(batchId, source = "all") {
   const taskPool = state.tasks.map((item) => ({
     id: item.id || item.name,
     name: item.name,
-    batchId: item.batchId
+    batchId: item.batchId,
+    batchVersion: item.batchVersion || getBatchVersionById(item.batchId)
   }));
   const fallbackPool = source === "bugs"
-    ? state.bugs.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId }))
-    : state.cases.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId }));
+    ? state.bugs.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId, batchVersion: item.batchVersion }))
+    : state.cases.map((item) => ({ id: item.taskId || item.taskName, name: item.taskName, batchId: item.batchId, batchVersion: item.batchVersion }));
   const baseTasks = [...taskPool, ...fallbackPool];
 
   return [...new Map(
     baseTasks
       .filter((item) => item.name)
-      .filter((item) => !batchId || item.batchId === batchId)
+      .filter((item) => matchesBatchFilter(item, batchId))
       .map((item) => [item.name, item])
   ).values()];
+}
+
+function getTaskOptionsByBatchForEditor(batchId, source = "bugs") {
+  return getTasksByBatchForFilters(batchId, source).map((item) => ({
+    id: item.id || item.name,
+    name: item.name || ""
+  }));
 }
 
 function getFilteredCasesForView() {
@@ -3926,7 +4030,7 @@ function getFilteredCasesForView() {
   const statusFilter = els.caseStatusFilter?.value || "";
 
   return state.cases.filter((item) => {
-    return (!batchFilter || item.batchId === batchFilter)
+    return matchesBatchFilter(item, batchFilter)
       && (!taskFilter || item.taskName === taskFilter)
       && (!statusFilter || (item.executionStatus || "未执行") === statusFilter);
   });
@@ -3938,7 +4042,7 @@ function getFilteredAutomationCasesForView() {
   const enabledFilter = els.automationCaseEnabledFilter?.value || "";
 
   return state.cases.filter((item) => {
-    const byBatch = !batchFilter || item.batchId === batchFilter;
+    const byBatch = matchesBatchFilter(item, batchFilter);
     const byTask = !taskFilter || item.taskName === taskFilter;
     const byAutomation = enabledFilter === "enabled"
       ? Boolean(item.automationEnabled)
@@ -3955,7 +4059,7 @@ function getFilteredBugs() {
   const taskFilter = els.bugTaskFilter.value;
 
   return state.bugs.filter((bug) => {
-    const byBatch = !batchFilter || bug.batchId === batchFilter;
+    const byBatch = matchesBatchFilter(bug, batchFilter);
     const byTask = !taskFilter || bug.taskName === taskFilter;
     return byBatch && byTask;
   });
@@ -3991,13 +4095,13 @@ function getReportScope() {
 }
 
 function getReportScopeByBatch(batchId) {
-  const batch = getBatchById(batchId);
-  const tasks = state.tasks.filter((item) => item.batchId === batchId);
+  const batch = buildReportBatchOptions().find((item) => item.id === batchId) || getBatchById(batchId);
+  const tasks = state.tasks.filter((item) => matchesBatchFilter(item, batchId));
   const taskIds = new Set(tasks.map((item) => item.id));
-  const cases = state.cases.filter((item) => item.batchId === batchId || taskIds.has(item.taskId));
+  const cases = state.cases.filter((item) => matchesBatchFilter(item, batchId) || taskIds.has(item.taskId));
   const caseIds = new Set(cases.map((item) => item.id));
   const bugs = state.bugs.filter((item) => {
-    const byBatch = item.batchId === batchId || taskIds.has(item.taskId);
+    const byBatch = matchesBatchFilter(item, batchId) || taskIds.has(item.taskId);
     const byCase = !item.caseId || caseIds.has(item.caseId) || !cases.length;
     return byBatch && byCase;
   });
@@ -4013,9 +4117,11 @@ function getReportScopeByBatch(batchId) {
 }
 
 function renderCaseFilters() {
-  fillSelectFromItems(els.caseBatchFilter, state.batches, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
-  fillSelectFromItems(els.automationCaseBatchFilter, state.batches, "全部版本", els.automationCaseBatchFilter?.value, formatTaskBatchLabel);
-  fillSelectFromItems(els.bugBatchFilter, state.batches, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
+  const caseBatchOptions = buildCaseBatchFilterOptions("cases");
+  const bugBatchOptions = buildCaseBatchFilterOptions("bugs");
+  fillSelectFromItems(els.caseBatchFilter, caseBatchOptions, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
+  fillSelectFromItems(els.automationCaseBatchFilter, caseBatchOptions, "全部版本", els.automationCaseBatchFilter?.value, formatTaskBatchLabel);
+  fillSelectFromItems(els.bugBatchFilter, bugBatchOptions, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
 
   const caseTasks = getTasksByBatchForFilters(els.caseBatchFilter.value, "cases");
   const automationCaseTasks = getTasksByBatchForFilters(els.automationCaseBatchFilter?.value || "", "cases");
@@ -4086,7 +4192,7 @@ function setReportConclusionForBatch(batchId, value) {
 }
 
 function getReportBatchCards() {
-  return state.batches.map((batch) => {
+  return buildReportBatchOptions().map((batch) => {
     const scope = getReportScopeByBatch(batch.id);
     const report = buildReportViewModel(scope);
     return {
@@ -5126,16 +5232,17 @@ function fillBugBatchOptions(select, selectedBatchId) {
     return;
   }
   const options = [`<option value="">未关联</option>`]
-    .concat(state.batches.map((item) => `<option value="${item.id}">${escapeHtml(formatTaskBatchLabel(item))}</option>`));
+    .concat(buildCaseBatchFilterOptions("bugs").map((item) => `<option value="${item.id}">${escapeHtml(formatTaskBatchLabel(item))}</option>`));
   select.innerHTML = options.join("");
-  select.value = selectedBatchId || "";
+  const availableIds = buildCaseBatchFilterOptions("bugs").map((item) => item.id);
+  select.value = selectedBatchId && availableIds.includes(selectedBatchId) ? selectedBatchId : "";
 }
 
 function fillBugTaskOptions(select, selectedTaskId, batchId = "") {
   if (!select) {
     return;
   }
-  const tasks = state.tasks.filter((item) => !batchId || item.batchId === batchId);
+  const tasks = getTaskOptionsByBatchForEditor(batchId, "bugs");
   select.innerHTML = [`<option value="">未关联</option>`]
     .concat(tasks.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`))
     .join("");
@@ -5144,7 +5251,7 @@ function fillBugTaskOptions(select, selectedTaskId, batchId = "") {
 }
 
 function fillCaseOptions(select, selectedId, batchId = "", taskId = "") {
-  const cases = state.cases.filter((item) => (!batchId || item.batchId === batchId) && (!taskId || item.taskId === taskId));
+  const cases = state.cases.filter((item) => matchesBatchFilter(item, batchId) && (!taskId || item.taskId === taskId || item.taskName === taskId));
   select.innerHTML = [`<option value="">未关联</option>`]
     .concat(cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`))
     .join("");
@@ -5220,7 +5327,7 @@ function updateBugFromNode(node, bugId) {
   }
 
   if (item.taskId) {
-    item.taskName = getTaskNameById(item.taskId);
+    item.taskName = getTaskNameById(item.taskId) || node.querySelector(".bug-task")?.selectedOptions?.[0]?.textContent?.trim() || item.taskName;
   } else if (!item.caseId) {
     item.taskName = "";
   }
