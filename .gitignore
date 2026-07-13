@@ -3,3 +3,9 @@ server.err.log
 app-state.json
 .env
 .env.local
+node_modules/
+npm-debug.log*
+tmp/__pycache__/
+tmp/exports/
+tmp/ui-automation/
+tmp_zand_*.html

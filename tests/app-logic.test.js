@@ -282,3 +282,27 @@ test("ensureAiReadyForGeneration blocks generation when no API key is saved", as
     "renderApiStateBoard"
   ]);
 });
+
+test("case quality reports are isolated by selected business", () => {
+  const state = { caseQualityReports: {} };
+  const normalizeCaseQualityReport = loadFunction("normalizeCaseQualityReport");
+  const normalizeCaseQualityBusiness = loadFunction("normalizeCaseQualityBusiness", {
+    CASE_QUALITY_BUSINESSES: ["VA业务", "卡收单业务"],
+    normalizeBusinessName: (value) => String(value || "").trim()
+  });
+  const setCaseQualityReportForBusiness = loadFunction("setCaseQualityReportForBusiness", {
+    state,
+    normalizeCaseQualityBusiness,
+    normalizeCaseQualityReport
+  });
+  const getCaseQualityReportForBusiness = loadFunction("getCaseQualityReportForBusiness", {
+    state,
+    normalizeCaseQualityBusiness
+  });
+
+  setCaseQualityReportForBusiness({ label: "VA通过", tone: "ok" }, "VA业务");
+  setCaseQualityReportForBusiness({ label: "卡收单需关注", tone: "warn" }, "卡收单业务");
+
+  assert.equal(getCaseQualityReportForBusiness("VA业务").label, "VA通过");
+  assert.equal(getCaseQualityReportForBusiness("卡收单业务").label, "卡收单需关注");
+});

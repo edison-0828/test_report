@@ -20,8 +20,9 @@ const BUSINESS_ALIAS_MAP = {
   "本地收单业务": "本地收单业务"
 };
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
-const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReport", "uiAutomationSettings", "uiAutomationSession"];
+const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReports", "caseQualityCasesByBusiness", "caseQualityBusiness", "uiAutomationSettings", "uiAutomationSession"];
 const DEFAULT_AI_MODEL = "gpt-5.4";
+const CASE_QUALITY_BUSINESSES = ["VA业务", "卡收单业务"];
 const AUTOMATION_STEP_TYPES = [
   { value: "openPage", label: "打开页面", action: "goto" },
   { value: "click", label: "点击", action: "click" },
@@ -118,7 +119,8 @@ const els = {
   generateCasesLocal: document.getElementById("generateCasesLocal"),
   saveDocument: document.getElementById("saveDocument"),
   generationStatus: document.getElementById("generationStatus"),
-  qualityImportInput: document.getElementById("qualityImportInput"),
+  qualityBusinessTabs: [...document.querySelectorAll(".quality-business-tab")],
+  qualityBusinessModules: document.getElementById("qualityBusinessModules"),
   caseQualityBadge: document.getElementById("caseQualityBadge"),
   caseQualitySource: document.getElementById("caseQualitySource"),
   caseQualityStatus: document.getElementById("caseQualityStatus"),
@@ -281,7 +283,9 @@ function bindEvents() {
   els.createTaskBtn.addEventListener("click", createTask);
   els.caseImportInput.addEventListener("change", handleCaseImport);
   els.automationCaseImportInput?.addEventListener("change", handleCaseImport);
-  els.qualityImportInput?.addEventListener("change", handleQualityImport);
+  els.qualityBusinessTabs.forEach((button) => {
+    button.addEventListener("click", () => setCaseQualityBusiness(button.dataset.qualityBusiness));
+  });
   els.caseBatchFilter.addEventListener("change", () => {
     renderCaseFilters();
     renderCases();
@@ -1190,6 +1194,76 @@ function setCaseQualityStatus(text, tone = "neutral") {
   els.caseQualityStatus.className = `inline-feedback ${tone}`;
 }
 
+function setCaseQualityBusiness(value) {
+  const nextBusiness = normalizeCaseQualityBusiness(value);
+  if (state.caseQualityBusiness === nextBusiness) {
+    renderCaseQuality();
+    return;
+  }
+
+  state.caseQualityBusiness = nextBusiness;
+  persist();
+  renderCaseQuality();
+  setCaseQualityStatus(`已切换到 ${nextBusiness} 规则分类。`, "neutral");
+}
+
+function normalizeCaseQualityBusiness(value) {
+  const normalized = normalizeBusinessName(value);
+  return CASE_QUALITY_BUSINESSES.includes(normalized) ? normalized : CASE_QUALITY_BUSINESSES[0];
+}
+
+function inferCaseQualityBusiness(cases = []) {
+  const activeTask = getTaskById(state.activeTaskId);
+  const activeBatch = getBatchById(activeTask?.batchId || state.activeBatchId || state.generationBatchId);
+  const activeModule = getModuleById(activeTask?.moduleId || activeBatch?.moduleId || state.activeModuleId);
+  const explicitBusiness = normalizeBusinessName(activeModule?.name || "");
+  if (CASE_QUALITY_BUSINESSES.includes(explicitBusiness)) {
+    return explicitBusiness;
+  }
+
+  const text = (Array.isArray(cases) ? cases : [])
+    .flatMap((item) => [item.module, item.moduleId, item.taskName, item.batchName, item.title])
+    .join("\n");
+  if (/VA|虚拟账户|Virtual Account/i.test(text)) {
+    return "VA业务";
+  }
+  if (/卡收单|CARD收单|Card Acquiring|3DS|BANKCARD/i.test(text)) {
+    return "卡收单业务";
+  }
+  return normalizeCaseQualityBusiness(state.caseQualityBusiness);
+}
+
+function getCurrentQualityCases() {
+  return getCaseQualityCasesForBusiness(state.caseQualityBusiness);
+}
+
+function getCaseQualityReportForBusiness(businessName = state.caseQualityBusiness) {
+  const key = normalizeCaseQualityBusiness(businessName);
+  return state.caseQualityReports?.[key] || null;
+}
+
+function setCaseQualityReportForBusiness(report, businessName = state.caseQualityBusiness) {
+  const key = normalizeCaseQualityBusiness(businessName);
+  state.caseQualityReports = {
+    ...(state.caseQualityReports || {}),
+    [key]: normalizeCaseQualityReport(report)
+  };
+}
+
+function getCaseQualityCasesForBusiness(businessName = state.caseQualityBusiness) {
+  const key = normalizeCaseQualityBusiness(businessName);
+  const cases = state.caseQualityCasesByBusiness?.[key];
+  return Array.isArray(cases) ? cases : [];
+}
+
+function setCaseQualityCasesForBusiness(cases, businessName = state.caseQualityBusiness) {
+  const key = normalizeCaseQualityBusiness(businessName);
+  state.caseQualityCasesByBusiness = {
+    ...(state.caseQualityCasesByBusiness || {}),
+    [key]: structuredCloneSafe(Array.isArray(cases) ? cases : [])
+  };
+}
+
 function setUiAutomationFeedback(text, tone = "neutral") {
   if (!els.automationSessionFeedback) {
     return;
@@ -1698,7 +1772,8 @@ async function handleGenerateCases(mode) {
         documentType: type
       });
       downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
-      setGenerationStatus(buildCaseQualityStatusMessage(`AI 已生成 ${generated.length} 条用例，并已导出 CSV。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
+      const qualityReport = getCaseQualityReportForBusiness(inferCaseQualityBusiness(generatedCases));
+      setGenerationStatus(buildCaseQualityStatusMessage(`AI 已生成 ${generated.length} 条用例，并已导出 CSV。`, inferCaseQualityBusiness(generatedCases)), mapCaseQualityToneToFeedbackTone(qualityReport?.tone));
       return;
     } catch (error) {
       setGenerationStatus(`AI 生成失败：${error.message}`, "error");
@@ -1728,7 +1803,8 @@ async function handleGenerateCases(mode) {
     documentType: type
   });
   downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
-  setGenerationStatus(buildCaseQualityStatusMessage(`规则生成完成，共 ${generated.length} 条用例，并已导出 CSV。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
+  const qualityReport = getCaseQualityReportForBusiness(inferCaseQualityBusiness(generatedCases));
+  setGenerationStatus(buildCaseQualityStatusMessage(`规则生成完成，共 ${generated.length} 条用例，并已导出 CSV。`, inferCaseQualityBusiness(generatedCases)), mapCaseQualityToneToFeedbackTone(qualityReport?.tone));
 }
 
 function toggleGenerateButtons(loading) {
@@ -1855,7 +1931,9 @@ function appendGeneratedCases(cases, meta) {
     mode: meta.mode,
     createdAt: new Date().toLocaleString("zh-CN")
   };
-  state.caseQualityReport = analyzeCaseQuality(generatedCases, meta.mode);
+  const qualityBusinessName = inferCaseQualityBusiness(generatedCases);
+  setCaseQualityCasesForBusiness(generatedCases, qualityBusinessName);
+  setCaseQualityReportForBusiness(analyzeCaseQuality(generatedCases, meta.mode, "", qualityBusinessName), qualityBusinessName);
 
   persist();
   renderAll();
@@ -1894,12 +1972,15 @@ function handleCaseImport(event) {
         taskId: state.activeTaskId || "",
         batchId: state.activeBatchId || ""
       });
-      state.caseQualityReport = analyzeCaseQuality(normalizedImportedCases, "导入", file.name);
+      const qualityBusinessName = inferCaseQualityBusiness(normalizedImportedCases);
+      setCaseQualityCasesForBusiness(normalizedImportedCases, qualityBusinessName);
+      setCaseQualityReportForBusiness(analyzeCaseQuality(normalizedImportedCases, "导入", file.name, qualityBusinessName), qualityBusinessName);
+      const qualityReport = getCaseQualityReportForBusiness(qualityBusinessName);
 
       persist();
       renderAll();
       switchTab("cases");
-      setGenerationStatus(buildCaseQualityStatusMessage(`已导入 ${importedCases.length} 条用例。`), mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
+      setGenerationStatus(buildCaseQualityStatusMessage(`已导入 ${importedCases.length} 条用例。`, qualityBusinessName), mapCaseQualityToneToFeedbackTone(qualityReport?.tone));
     } catch (error) {
       setGenerationStatus(`CSV 导入失败：${error.message}`, "error");
     } finally {
@@ -1925,7 +2006,7 @@ function ensureCasesToolbarEnhancements() {
   }
 }
 
-function handleQualityImport(event) {
+function handleQualityImport(event, businessName = state.caseQualityBusiness) {
   const [file] = event.target.files;
   if (!file) {
     return;
@@ -1940,15 +2021,16 @@ function handleQualityImport(event) {
         return;
       }
 
-      state.caseQualityReport = analyzeCaseQuality(importedCases, "手动导入检测", file.name);
+      const normalizedBusinessName = normalizeCaseQualityBusiness(businessName);
+      setCaseQualityCasesForBusiness(importedCases, normalizedBusinessName);
+      setCaseQualityReportForBusiness(analyzeCaseQuality(importedCases, "手动导入检测", file.name, normalizedBusinessName), normalizedBusinessName);
       persist();
       renderCaseQuality();
       switchTab("quality");
-      setCaseQualityStatus(`已基于上传的 CSV 检测 ${importedCases.length} 条用例。`, mapCaseQualityToneToFeedbackTone(state.caseQualityReport?.tone));
     } catch (error) {
-      setCaseQualityStatus(`CSV 检测失败：${error.message}`, "error");
+      alert(`CSV 检测失败：${error.message}`);
     } finally {
-      els.qualityImportInput.value = "";
+      event.target.value = "";
     }
   };
   reader.readAsText(file, "utf-8");
@@ -1990,11 +2072,12 @@ function parseCasesCsv(csvText) {
     }));
 }
 
-function analyzeCaseQuality(cases, sourceLabel, fileName = "") {
+function analyzeCaseQuality(cases, sourceLabel, fileName = "", businessName = state.caseQualityBusiness) {
   const list = Array.isArray(cases) ? cases : [];
   if (!list.length) {
     return null;
   }
+  const ruleContext = resolveCaseQualityRuleContext(list, businessName);
 
   const missingTitle = list.filter((item) => !String(item.title || "").trim() || /^未命名/.test(String(item.title || "").trim())).length;
   const missingSteps = list.filter((item) => !String(item.steps || "").trim()).length;
@@ -2117,6 +2200,7 @@ function analyzeCaseQuality(cases, sourceLabel, fileName = "") {
     sourceLabel,
     fileName: String(fileName || "").trim(),
     checkedAt: new Date().toLocaleString("zh-CN"),
+    ruleContext,
     quickTip: buildCaseQualityQuickTip({
       missingSteps,
       missingExpected,
@@ -2127,6 +2211,8 @@ function analyzeCaseQuality(cases, sourceLabel, fileName = "") {
       requiredParamCount
     }),
     metrics: [
+      ["规则分类", ruleContext.businessName],
+      ["启用规则", ruleContext.activeRuleCount],
       ["用例总数", list.length],
       ["异常场景", abnormalCount],
       ["权限/鉴权", permissionCount],
@@ -2135,6 +2221,47 @@ function analyzeCaseQuality(cases, sourceLabel, fileName = "") {
       ["缺步骤/预期", missingSteps + missingExpected]
     ],
     issues
+  };
+}
+
+function resolveCaseQualityRuleContext(cases, businessName = state.caseQualityBusiness) {
+  const rulesets = window.CASE_QUALITY_RULESETS || {};
+  const commonRules = Array.isArray(rulesets.common?.rules) ? rulesets.common.rules : [];
+  const businesses = rulesets.businesses && typeof rulesets.businesses === "object" ? rulesets.businesses : {};
+  const activeModule = getModuleById(state.activeModuleId);
+  const candidateText = [
+    activeModule?.name || "",
+    ...cases.flatMap((item) => [
+      item.module,
+      item.moduleId,
+      item.taskName,
+      item.batchName,
+      item.title
+    ])
+  ].join("\n");
+
+  const selectedBusinessName = normalizeCaseQualityBusiness(businessName);
+  const selectedBusiness = businesses[selectedBusinessName] || null;
+  const detectedBusiness = Object.values(businesses).find((item) => {
+    const names = [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])]
+      .filter(Boolean)
+      .map((value) => String(value).trim());
+    return names.some((name) => name && candidateText.includes(name));
+  }) || null;
+  const business = selectedBusiness || detectedBusiness;
+  const businessRules = Array.isArray(business?.rules) ? business.rules : [];
+  const activeRuleCount = [...commonRules, ...businessRules]
+    .filter((rule) => rule?.status !== "draft")
+    .length;
+
+  return {
+    commonName: rulesets.common?.name || "通用规则",
+    businessName: business?.name || "未匹配业务分类",
+    businessId: business?.id || "",
+    selectedBusinessName,
+    businessDescription: business?.description || "当前用例未命中 VA业务 或 卡收单业务，暂时只执行通用检查。",
+    activeRuleCount,
+    businessRuleCount: businessRules.length
   };
 }
 
@@ -2157,8 +2284,8 @@ function buildCaseQualityQuickTip(stats) {
   return "这批用例的基础质量已经不错，可以进入执行阶段，边测边补细节。";
 }
 
-function buildCaseQualityStatusMessage(prefix) {
-  const label = state.caseQualityReport?.label;
+function buildCaseQualityStatusMessage(prefix, businessName = state.caseQualityBusiness) {
+  const label = getCaseQualityReportForBusiness(businessName)?.label;
   return label ? `${prefix} 用例质量检查：${label}。` : prefix;
 }
 
@@ -2571,67 +2698,118 @@ function renderAll() {
 }
 
 function renderCaseQuality() {
-  if (!els.caseQualityBadge || !els.caseQualitySummary || !els.caseQualityIssues || !els.caseQualitySource) {
+  if (!els.qualityBusinessModules) {
     return;
   }
 
-  const report = state.caseQualityReport;
-  if (!report) {
-    els.caseQualityBadge.textContent = "未开始";
-    els.caseQualityBadge.className = "status-pill neutral";
-    els.caseQualitySource.textContent = "还没有开始检测，先上传 CSV，或者先去用 AI 生成一批用例。";
-    setCaseQualityStatus("等待检测中。", "neutral");
-    els.caseQualitySummary.innerHTML = `
-      <div class="empty-state empty-state-rich compact-empty-state">
-        <strong>还没有开始检测</strong>
-        <p>这个模块支持独立上传测试用例 CSV 检测，也会在 AI 生成用例后自动刷新结果。</p>
-      </div>
+  const businessName = normalizeCaseQualityBusiness(state.caseQualityBusiness);
+  const report = getCaseQualityReportForBusiness(businessName);
+  const cases = getCaseQualityCasesForBusiness(businessName);
+  const label = report?.label || "未开始";
+  const tone = report?.tone || "neutral";
+  const fileName = report?.fileName || "未上传";
+  const checkedAt = report?.checkedAt || "暂无";
+  const ruleCount = report?.ruleContext?.activeRuleCount ?? 0;
+  const issueCount = report?.issues?.length || 0;
+  const quickTip = report?.quickTip || "当前业务还没有检测记录，先上传对应业务的 CSV。";
+
+  els.qualityBusinessTabs.forEach((button) => {
+    const tabBusinessName = normalizeCaseQualityBusiness(button.dataset.qualityBusiness);
+    const isActive = tabBusinessName === businessName;
+    const tabCases = getCaseQualityCasesForBusiness(tabBusinessName);
+    const tabReport = getCaseQualityReportForBusiness(tabBusinessName);
+    const shortLabel = tabBusinessName === "卡收单业务" ? "卡收单" : "VA";
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.innerHTML = `
+      <span>${escapeHtml(shortLabel)}</span>
+      <small>${escapeHtml(String(tabCases.length))} 条 · ${escapeHtml(tabReport?.label || "未检查")}</small>
     `;
-    els.caseQualityIssues.innerHTML = "";
-    return;
-  }
+  });
 
-  els.caseQualityBadge.textContent = report.label;
-  els.caseQualityBadge.className = `status-pill ${report.tone}`;
-  const qualityMetaParts = [];
-  if (report.fileName) {
-    qualityMetaParts.push(`最近一次检测文件：${report.fileName}`);
-  }
-  if (report.checkedAt) {
-    qualityMetaParts.push(`最近一次检测时间：${report.checkedAt}`);
-  }
-  els.caseQualitySource.textContent = qualityMetaParts.join(" | ") || "最近一次检测信息未记录";
-  setCaseQualityStatus(report.checkedAt ? `检测完成于 ${report.checkedAt}` : "检测已完成。", "neutral");
-  els.caseQualitySummary.innerHTML = `
-    ${report.quickTip ? `
-    <div class="quality-callout ${report.tone}">
-      <strong>快速建议</strong>
-      <p>${escapeHtml(report.quickTip)}</p>
-    </div>
-    ` : ""}
-    <div class="report-simple-grid quality-summary-grid">
-      ${report.metrics.map(([label, value]) => `
-        <article class="report-simple-item">
-          <span>${escapeHtml(label)}</span>
-          <strong>${escapeHtml(String(value))}</strong>
+  els.qualityBusinessModules.innerHTML = `
+    <section class="panel quality-module-panel quality-business-module" data-quality-module="${escapeHtml(businessName)}">
+      <div class="section-head quality-panel-head">
+        <div>
+          <span class="summary-label">当前业务</span>
+          <h3>${escapeHtml(businessName)}</h3>
+          <p class="section-note">仅展示和检查 ${escapeHtml(businessName)} 的用例，不会混入其他业务。</p>
+        </div>
+        <span class="status-pill ${escapeHtml(tone)}">${escapeHtml(label)}</span>
+      </div>
+
+      <div class="quality-module-actions">
+        <label class="import-button primary-import">
+          <input type="file" accept=".csv" data-quality-upload="${escapeHtml(businessName)}">
+          <span>上传${escapeHtml(businessName)} CSV</span>
+        </label>
+        <span class="quality-upload-hint">上传后只更新 ${escapeHtml(businessName)}，不会影响另一个业务。</span>
+      </div>
+
+      <div class="quality-business-overview single-business">
+        <article class="quality-business-card active">
+          <div>
+            <span class="summary-label">上传文件</span>
+            <strong>${escapeHtml(fileName)}</strong>
+          </div>
+          <div class="quality-business-card-meta">
+            <span>用例数</span>
+            <strong>${escapeHtml(String(cases.length))}</strong>
+          </div>
+          <div class="quality-business-card-meta">
+            <span>规则数</span>
+            <strong>${escapeHtml(String(ruleCount))}</strong>
+          </div>
+          <div class="quality-business-card-meta">
+            <span>问题数</span>
+            <strong>${escapeHtml(String(issueCount))}</strong>
+          </div>
+          <div class="quality-business-card-meta">
+            <span>最后检查</span>
+            <strong>${escapeHtml(checkedAt)}</strong>
+          </div>
         </article>
-      `).join("")}
-    </div>
-  `;
-  els.caseQualityIssues.innerHTML = report.issues.length
-    ? report.issues.map((item) => `
-      <article class="highlight-card">
-        <span class="badge ${item.tone}">${escapeHtml(item.level)}</span>
-        <strong>${escapeHtml(item.title)}</strong>
-        <p>${escapeHtml(item.detail)}</p>
-      </article>
-    `).join("")
-    : `
-      <div class="empty-state empty-state-rich compact-empty-state">
-        <strong>这批用例的基础质量看起来不错</strong>
-        <p>标题、步骤、预期结果和基础覆盖项都没有发现明显问题。</p>
       </div>
-    `;
+
+      ${report ? `
+        <div class="quality-callout ${escapeHtml(tone)}">
+          <strong>快速建议</strong>
+          <p>${escapeHtml(quickTip)}</p>
+        </div>
+        <div class="report-simple-grid quality-summary-grid">
+          ${report.metrics.map(([metricLabel, value]) => `
+            <article class="report-simple-item">
+              <span>${escapeHtml(metricLabel)}</span>
+              <strong>${escapeHtml(String(value))}</strong>
+            </article>
+          `).join("")}
+        </div>
+        <div class="list-stack compact-stack">
+          ${report.issues.length ? report.issues.map((item) => `
+            <article class="highlight-card">
+              <span class="badge ${escapeHtml(item.tone)}">${escapeHtml(item.level)}</span>
+              <strong>${escapeHtml(item.title)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </article>
+          `).join("") : `
+            <div class="empty-state empty-state-rich compact-empty-state">
+              <strong>这批用例的基础质量看起来不错</strong>
+              <p>标题、步骤、预期结果和基础覆盖项都没有发现明显问题。</p>
+            </div>
+          `}
+        </div>
+      ` : `
+        <div class="empty-state empty-state-rich compact-empty-state">
+          <strong>${escapeHtml(businessName)} 还没有检测记录</strong>
+          <p>请上传 ${escapeHtml(businessName)} 的 CSV，系统会把结果保存在这个业务模块里。</p>
+        </div>
+      `}
+    </section>
+  `;
+
+  els.qualityBusinessModules.querySelectorAll("[data-quality-upload]").forEach((input) => {
+    input.addEventListener("change", (event) => handleQualityImport(event, input.dataset.qualityUpload));
+  });
 }
 
 function renderOnboarding() {
@@ -6393,7 +6571,13 @@ function normalizeLoadedState(loadedState) {
     currentOperator: loadedState.settings?.currentOperator || ""
   };
   loadedState.selfTestSnapshot = normalizeSelfTestSnapshot(loadedState.selfTestSnapshot);
-  loadedState.caseQualityReport = normalizeCaseQualityReport(loadedState.caseQualityReport);
+  loadedState.caseQualityBusiness = normalizeCaseQualityBusiness(loadedState.caseQualityBusiness);
+  loadedState.caseQualityReports = normalizeCaseQualityReports(loadedState.caseQualityReports);
+  const legacyQualityReport = normalizeCaseQualityReport(loadedState.caseQualityReport);
+  if (legacyQualityReport && !loadedState.caseQualityReports[loadedState.caseQualityBusiness]) {
+    loadedState.caseQualityReports[loadedState.caseQualityBusiness] = legacyQualityReport;
+  }
+  loadedState.caseQualityCasesByBusiness = normalizeCaseQualityCasesByBusiness(loadedState.caseQualityCasesByBusiness);
   loadedState.uiAutomationSettings = normalizeUiAutomationSettings(loadedState.uiAutomationSettings);
   loadedState.uiAutomationSession = normalizeUiAutomationSession(loadedState.uiAutomationSession);
   return loadedState;
@@ -6428,7 +6612,9 @@ function defaultState() {
       result: null,
       error: ""
     },
-    caseQualityReport: null,
+    caseQualityReports: {},
+    caseQualityCasesByBusiness: {},
+    caseQualityBusiness: "VA业务",
     uiAutomationSettings: {
       baseUrl: "",
       loginPath: ""
@@ -6472,10 +6658,40 @@ function normalizeCaseQualityReport(report) {
     sourceLabel: typeof report.sourceLabel === "string" ? report.sourceLabel : "",
     fileName: typeof report.fileName === "string" ? report.fileName : "",
     checkedAt: typeof report.checkedAt === "string" ? report.checkedAt : "",
+    ruleContext: report.ruleContext && typeof report.ruleContext === "object" ? report.ruleContext : null,
     quickTip: typeof report.quickTip === "string" ? report.quickTip : "",
     metrics: Array.isArray(report.metrics) ? report.metrics : [],
     issues: Array.isArray(report.issues) ? report.issues : []
   };
+}
+
+function normalizeCaseQualityReports(reports) {
+  const normalized = {};
+  if (!reports || typeof reports !== "object") {
+    return normalized;
+  }
+
+  CASE_QUALITY_BUSINESSES.forEach((businessName) => {
+    const report = normalizeCaseQualityReport(reports[businessName]);
+    if (report) {
+      normalized[businessName] = report;
+    }
+  });
+  return normalized;
+}
+
+function normalizeCaseQualityCasesByBusiness(value) {
+  const normalized = {};
+  if (!value || typeof value !== "object") {
+    return normalized;
+  }
+
+  CASE_QUALITY_BUSINESSES.forEach((businessName) => {
+    normalized[businessName] = Array.isArray(value[businessName])
+      ? value[businessName].map((item) => normalizeCaseItem(item))
+      : [];
+  });
+  return normalized;
 }
 
 function persist() {

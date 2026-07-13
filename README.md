@@ -33,6 +33,13 @@ Start the local server:
 npm start
 ```
 
+For local development, use the quieter dev command. It starts the same app but
+disables the scheduled self-test loop by default:
+
+```bash
+npm run dev
+```
+
 Open the app:
 
 ```text

@@ -21,6 +21,7 @@ const STATIC_FILE_ALLOWLIST = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
   ["/styles.css", "styles.css"],
+  ["/quality-rules.js", "quality-rules.js"],
   ["/app.js", "app.js"]
 ]);
 const selfTestRuntime = {

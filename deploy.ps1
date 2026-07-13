@@ -12,6 +12,7 @@ $IncludePaths = @(
   "app.js",
   "index.html",
   "styles.css",
+  "quality-rules.js",
   "server.js",
   "package.json",
   "package-lock.json",

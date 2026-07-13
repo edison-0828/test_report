@@ -250,24 +250,13 @@
             <h2>用例质量检查</h2>
             <p>独立检查一批测试用例的完整性、重复项和基础覆盖情况。AI 生成后也会自动刷新这里的结果。</p>
           </div>
-          <label class="import-button primary-import">
-            <input type="file" id="qualityImportInput" accept=".csv">
-            <span>上传CSV检测</span>
-          </label>
         </div>
 
-        <section class="panel quality-module-panel">
-          <div class="section-head quality-panel-head">
-            <div>
-              <h3>当前检测结果</h3>
-              <p class="section-note" id="caseQualitySource">还没有开始检测，先上传 CSV，或者先去用 AI 生成一批用例。</p>
-            </div>
-            <span id="caseQualityBadge" class="status-pill neutral">未开始</span>
-          </div>
-          <p id="caseQualityStatus" class="inline-feedback neutral">这里会显示最近一次用例质量检查的来源和结果。</p>
-          <div id="caseQualitySummary"></div>
-          <div id="caseQualityIssues" class="list-stack compact-stack"></div>
-        </section>
+        <div class="quality-business-tabs" role="tablist" aria-label="选择用例质量检查业务">
+          <button class="quality-business-tab active" type="button" data-quality-business="VA业务">VA</button>
+          <button class="quality-business-tab" type="button" data-quality-business="卡收单业务">卡收单</button>
+        </div>
+        <div id="qualityBusinessModules" class="quality-business-modules"></div>
       </section>
 
       <section class="tab-panel" id="cases">
@@ -676,6 +665,7 @@
     </article>
   </template>
 
+  <script src="quality-rules.js"></script>
   <script src="app.js"></script>
 </body>
 

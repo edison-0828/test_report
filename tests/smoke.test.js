@@ -67,7 +67,21 @@ test("serves the app shell", async () => {
   assert.equal(response.status, 200);
   assert.match(html, /<!DOCTYPE html>/i);
   assert.match(html, /<script src="app\.js"><\/script>/);
+  assert.match(html, /<script src="quality-rules\.js"><\/script>/);
   assert.match(html, /data-tab="report"/);
+  assert.match(html, /data-quality-business="VA业务"/);
+  assert.match(html, /data-quality-business="卡收单业务"/);
+  assert.match(html, /id="qualityBusinessModules"/);
+});
+
+test("serves quality rule configuration", async () => {
+  const response = await fetch(`${BASE_URL}/quality-rules.js`);
+  const source = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(source, /CASE_QUALITY_RULESETS/);
+  assert.match(source, /VA业务/);
+  assert.match(source, /卡收单业务/);
 });
 
 test("reports healthy server metadata", async () => {
