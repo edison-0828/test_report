@@ -21,7 +21,7 @@
         <button class="nav-link" data-tab="quality">用例质量检查</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
         <button class="nav-link" data-tab="cases">手动执行用例</button>
-        <button class="nav-link" data-tab="automationCases">自动化执行用例</button>
+        <button class="nav-link" data-tab="automationCases">接口自动化</button>
         <button class="nav-link" data-tab="bugs">BUG管理</button>
         <button class="nav-link" data-tab="report">测试报告</button>
       </nav>
@@ -45,7 +45,7 @@
           <div class="section-head">
             <div>
               <h3>操作流程</h3>
-              <p class="section-note">当前步骤会自动高亮，按提示补齐信息即可继续。</p>
+              <p class="section-note">第一次使用时按下面卡片从左到右走；当前该做哪一步会自动高亮。</p>
             </div>
             <div class="onboarding-self-test">
               <span class="badge subtle">每3个小时执行一次自检</span>
@@ -60,7 +60,7 @@
         </section>
 
         <div class="panel-grid upload-grid">
-          <section class="panel">
+          <section class="panel ai-config-panel">
             <div class="section-head">
               <div>
                 <h3>1. AI 配置</h3>
@@ -84,21 +84,8 @@
                 </select>
               </label>
             </div>
+            <p class="field-hint">&#23448;&#26041; Key &#33719;&#21462;&#22320;&#22336;&#65306;<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">https://platform.openai.com/api-keys</a></p>
             <p class="security-note">当前浏览器会保留你的个人 Key 和模型设置，刷新页面后无需重新输入。</p>
-            <div class="api-state-board">
-              <div class="api-state-item">
-                <span>Key状态</span>
-                <strong id="apiSavedState" class="state-chip neutral">未填写</strong>
-              </div>
-              <div class="api-state-item">
-                <span>启用状态</span>
-                <strong id="apiEnabledState" class="state-chip neutral">未启用</strong>
-              </div>
-              <div class="api-state-item">
-                <span>当前模型</span>
-                <strong id="apiModelState" class="state-chip subtle">gpt-5.4</strong>
-              </div>
-            </div>
             <div class="form-row">
               <label>
                 当前操作人
@@ -303,8 +290,8 @@
       <section class="tab-panel" id="automationCases">
         <div class="panel-header">
           <div>
-            <h2>自动化执行用例</h2>
-            <p>集中管理自动化登录态、步骤配置和运行结果。底层仍然是同一批测试用例。</p>
+            <h2>接口自动化</h2>
+            <p>面向 pytest 的接口用例资产、执行配置和运行结果。第一版先完成页面结构，后续接入真实 pytest 执行。</p>
           </div>
           <label class="import-button primary-import">
             <input type="file" id="automationCaseImportInput" accept=".csv">
@@ -312,35 +299,53 @@
           </label>
         </div>
 
-        <section class="panel">
-          <div class="section-head">
+        <section class="panel api-runtime-panel api-workbench-panel">
+          <div class="section-head api-workbench-head">
             <div>
-              <h3>自动化登录态</h3>
-              <p>针对有滑块验证的后台，先人工登录一次并保存登录态，后续自动执行会直接复用。</p>
+              <h3>&#25509;&#21475;&#33258;&#21160;&#21270;&#24037;&#20316;&#21488;</h3>
+              <p class="section-note">&#20808;&#27785;&#28196;&#25509;&#21475;&#36335;&#24452;&#12289;&#35831;&#27714;&#21442;&#25968;&#21644;&#26029;&#35328;&#65292;&#21518;&#32493;&#25509;&#20837; pytest &#21518;&#30452;&#25509;&#36305; test / sandbox &#22238;&#24402;&#12290;</p>
             </div>
-            <span id="automationSessionChip" class="state-chip neutral">未准备</span>
+            <div class="api-workbench-badges">
+              <span class="state-chip subtle">pytest</span>
+              <span class="state-chip neutral">test / sandbox</span>
+            </div>
           </div>
 
-          <div class="form-row">
+          <div class="api-workbench-grid">
             <label>
-              站点地址
-              <input type="url" id="automationBaseUrl" placeholder="例如：https://admin.example.com">
+              &#25191;&#34892;&#29615;&#22659;
+              <select id="apiAutomationEnv">
+                <option value="test">test</option>
+                <option value="sandbox">sandbox</option>
+              </select>
             </label>
             <label>
-              登录页路径
-              <input type="text" id="automationLoginPath" placeholder="例如：/login">
+              Base URL
+              <input type="text" id="apiAutomationBaseUrl" readonly placeholder="&#35835;&#21462;&#37197;&#32622;&#25991;&#20214;">
             </label>
+            <label>
+              &#25968;&#25454;&#38598;
+              <input type="text" id="apiAutomationDataset" placeholder="&#20363;&#22914;&#65306;default / smoke / payout">
+            </label>
+            <label>
+              pytest marker
+              <input type="text" id="apiAutomationMarker" placeholder="&#20363;&#22914;&#65306;smoke and api">
+            </label>
+            <div class="api-workbench-actions">
+              <button type="button" class="ghost-button" disabled>&#25209;&#37327;&#25191;&#34892;</button>
+              <button type="button" class="ghost-button" disabled>&#26597;&#30475;&#36816;&#34892;&#35760;&#24405;</button>
+            </div>
           </div>
-
-          <div class="inline-actions">
-            <button id="startAutomationLoginSession" type="button">打开登录窗口</button>
-            <button id="confirmAutomationLoginSession" class="ghost-button" type="button">确认已登录</button>
-            <button id="refreshAutomationSession" class="ghost-button" type="button">刷新状态</button>
-          </div>
-          <p id="automationSessionFeedback" class="inline-feedback">先填写站点地址，打开浏览器完成人工登录，再回来确认保存登录态。</p>
+          <p id="apiAutomationConfigStatus" class="inline-feedback neutral">&#35835;&#21462; api-automation.config.json &#21518;&#65292;&#20250;&#26174;&#31034;&#24403;&#21069;&#29615;&#22659;&#30340; Base URL &#21644; KlicklPay-Key &#37197;&#32622;&#29366;&#24577;&#12290;</p>
         </section>
 
-        <section class="panel">
+        <section class="panel api-case-library-panel">
+          <div class="section-head compact-section-head">
+            <div>
+              <h3>&#25509;&#21475;&#29992;&#20363;&#24211;</h3>
+              <p class="section-note">&#20174;&#24050;&#29983;&#25104;&#30340;&#27979;&#35797;&#29992;&#20363;&#20013;&#36873;&#25321;&#31283;&#23450;&#22330;&#26223;&#65292;&#36880;&#26465;&#27785;&#28196;&#25509;&#21475;&#37197;&#32622;&#12290;</p>
+            </div>
+          </div>
           <div class="actions compact section-toolbar auto-case-toolbar">
             <select id="automationCaseBatchFilter">
               <option value="">全部版本</option>
@@ -349,12 +354,12 @@
               <option value="">全部任务</option>
             </select>
             <select id="automationCaseEnabledFilter">
-              <option value="">全部自动化状态</option>
-              <option value="enabled">仅看已启用</option>
-              <option value="disabled">仅看未启用</option>
+              <option value="">全部接口自动化状态</option>
+              <option value="enabled">仅看已配置</option>
+              <option value="disabled">仅看未配置</option>
             </select>
           </div>
-          <p id="automationCaseStatus" class="inline-feedback">这里会显示自动化配置和运行结果。</p>
+          <p id="automationCaseStatus" class="inline-feedback">这里会显示接口自动化配置和运行结果。</p>
           <div id="automationCaseList" class="list-stack"></div>
         </section>
       </section>
@@ -512,41 +517,55 @@
             </label>
           </div>
 
-          <div class="case-automation-block">
+          <div class="case-automation-block api-case-config-block">
             <div class="case-automation-head">
               <div>
-                <span class="summary-label">UI 自动执行</span>
-                <p class="case-automation-copy">适合后台稳定、步骤可复用的用例。登录态来自上面的人工登录保存。</p>
+                <span class="summary-label">&#25509;&#21475;&#33258;&#21160;&#21270;</span>
+                <p class="case-automation-copy">&#36866;&#21512;&#31283;&#23450;&#25509;&#21475;&#21644;&#39640;&#39057;&#22238;&#24402;&#22330;&#26223;&#65292;&#31532;&#19968;&#29256;&#20808;&#27785;&#28196;&#35831;&#27714;&#23450;&#20041;&#21644;&#26029;&#35328;&#33609;&#31295;&#12290;</p>
               </div>
               <label class="case-automation-toggle">
                 <input type="checkbox" class="case-automation-enabled">
-                <span>启用</span>
+                <span>&#32435;&#20837;&#25509;&#21475;&#33258;&#21160;&#21270;</span>
               </label>
             </div>
 
-            <div class="case-automation-grid">
+            <div class="case-automation-grid api-request-grid">
               <label>
-                目标页面路径
-                <input type="text" class="case-automation-target-path" placeholder="例如：/orders/list">
+                &#25509;&#21475;&#36335;&#24452;
+                <input type="text" class="case-automation-target-path" placeholder="&#20363;&#22914;&#65306;/api/v1/orders">
+              </label>
+              <label>
+                &#35831;&#27714;&#26041;&#27861;
+                <select class="case-api-method">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="DELETE">DELETE</option>
+                </select>
               </label>
               <div class="case-automation-status-wrap">
-                <span class="summary-label">最近状态</span>
-                <span class="case-automation-status state-chip neutral">未运行</span>
+                <span class="summary-label">&#26368;&#36817;&#36816;&#34892;</span>
+                <span class="case-automation-status state-chip neutral">&#26410;&#36816;&#34892;</span>
               </div>
             </div>
 
-            <label>
-              自动化步骤(JSON)
-              <textarea class="case-automation-steps" rows="5"
-                placeholder='例如：[{"action":"click","selector":"[data-test=\'
-                search\']"},{"action":"assertVisible","selector":".table-row"}]'></textarea>
-            </label>
+            <div class="api-config-grid">
+              <label>
+                Headers / Query / Body
+                <textarea class="case-automation-steps" rows="5" placeholder='&#20363;&#22914;&#65306;{"headers":{"Content-Type":"application/json"},"query":{},"body":{}}'></textarea>
+              </label>
+              <label>
+                &#26029;&#35328;&#33609;&#31295;
+                <textarea class="case-api-assertions" rows="5" placeholder='&#20363;&#22914;&#65306;[{"type":"status_code","expected":200},{"type":"json_exists","path":"data.id"}]'></textarea>
+              </label>
+            </div>
 
             <div class="inline-actions">
-              <button type="button" class="ghost-button case-automation-save">保存自动化配置</button>
-              <button type="button" class="case-automation-run">运行自动化</button>
+              <button type="button" class="ghost-button case-automation-save" disabled>&#20445;&#23384;&#25509;&#21475;&#37197;&#32622;</button>
+              <button type="button" class="case-automation-run" disabled>&#35797;&#36816;&#34892;&#25509;&#21475;</button>
             </div>
-            <p class="case-automation-feedback inline-feedback">启用后，可为这条用例单独保存页面路径和执行步骤。</p>
+            <p class="case-automation-feedback inline-feedback">&#21551;&#29992;&#21518;&#65292;&#21487;&#20026;&#36825;&#26465;&#29992;&#20363;&#20445;&#23384;&#25509;&#21475;&#36335;&#24452;&#12289;&#35831;&#27714;&#21442;&#25968;&#21644;&#26029;&#35328;&#33609;&#31295;&#12290;</p>
           </div>
         </div>
       </div>

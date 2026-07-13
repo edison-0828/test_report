@@ -11,6 +11,8 @@ const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
 const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team-members.json");
 const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
+const API_AUTOMATION_CONFIG_FILE = process.env.API_AUTOMATION_CONFIG_FILE || path.join(ROOT, "api-automation.config.json");
+const API_AUTOMATION_CONFIG_EXAMPLE_FILE = path.join(ROOT, "api-automation.config.example.json");
 const PYTHON_BIN = resolvePythonBin();
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
@@ -123,6 +125,74 @@ function ensureParentDir(filePath) {
   if (parentDir) {
     ensureDir(parentDir);
   }
+}
+
+function readApiAutomationConfig() {
+  const filePath = fs.existsSync(API_AUTOMATION_CONFIG_FILE)
+    ? API_AUTOMATION_CONFIG_FILE
+    : API_AUTOMATION_CONFIG_EXAMPLE_FILE;
+
+  if (!fs.existsSync(filePath)) {
+    return normalizeApiAutomationConfig({});
+  }
+
+  try {
+    return normalizeApiAutomationConfig(JSON.parse(fs.readFileSync(filePath, "utf-8")));
+  } catch (error) {
+    return {
+      ...normalizeApiAutomationConfig({}),
+      error: `接口自动化配置读取失败：${error.message}`
+    };
+  }
+}
+
+function normalizeApiAutomationConfig(rawConfig) {
+  const environments = rawConfig && typeof rawConfig.environments === "object" ? rawConfig.environments : {};
+  const normalizedEnvironments = {};
+  for (const envName of ["test", "sandbox"]) {
+    const envConfig = environments[envName] && typeof environments[envName] === "object" ? environments[envName] : {};
+    const headers = envConfig.headers && typeof envConfig.headers === "object" ? envConfig.headers : {};
+    normalizedEnvironments[envName] = {
+      baseUrl: String(envConfig.baseUrl || "").replace(/\/+$/, ""),
+      headers: {
+        "KlicklPay-Key": String(headers["KlicklPay-Key"] || "")
+      }
+    };
+  }
+
+  const signature = rawConfig && typeof rawConfig.signature === "object" ? rawConfig.signature : {};
+  return {
+    environments: normalizedEnvironments,
+    signature: {
+      enabled: Boolean(signature.enabled),
+      status: String(signature.status || "pending-docs"),
+      note: String(signature.note || ""),
+      algorithm: String(signature.algorithm || ""),
+      signatureHeader: String(signature.signatureHeader || ""),
+      timestampHeader: String(signature.timestampHeader || ""),
+      nonceHeader: String(signature.nonceHeader || "")
+    }
+  };
+}
+
+function buildApiAutomationConfigPayload() {
+  const config = readApiAutomationConfig();
+  const environments = Object.fromEntries(Object.entries(config.environments).map(([name, envConfig]) => [
+    name,
+    {
+      baseUrl: envConfig.baseUrl,
+      headers: {
+        "KlicklPay-Key": Boolean(envConfig.headers?.["KlicklPay-Key"])
+      }
+    }
+  ]));
+
+  return {
+    ok: !config.error,
+    error: config.error || "",
+    environments,
+    signature: config.signature
+  };
 }
 
 function buildUiAutomationSessionStatusPayload() {
@@ -466,6 +536,10 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         state: readAppState()
       });
+    }
+
+    if (req.method === "GET" && req.url === "/api/api-automation/config") {
+      return sendJson(res, 200, buildApiAutomationConfigPayload());
     }
 
     if (req.method === "POST" && req.url === "/api/generate-cases") {

@@ -3,6 +3,7 @@ server.err.log
 app-state.json
 .env
 .env.local
+api-automation.config.json
 node_modules/
 npm-debug.log*
 tmp/__pycache__/

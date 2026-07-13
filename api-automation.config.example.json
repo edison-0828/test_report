@@ -1,0 +1,26 @@
+{
+  "environments": {
+    "test": {
+      "baseUrl": "https://test-oapi.klicklpay.com",
+      "headers": {
+        "KlicklPay-Key": "your_test_klicklpay_key"
+      }
+    },
+    "sandbox": {
+      "baseUrl": "https://sandbox-oapi.klicklpay.com",
+      "headers": {
+        "KlicklPay-Key": "your_sandbox_klicklpay_key"
+      }
+    }
+  },
+  "signature": {
+    "enabled": true,
+    "status": "pending-docs",
+    "note": "The PayIn URL currently returns 403 from this workspace. Paste the accessible API documentation or signing rule here before enabling real pytest execution.",
+    "algorithm": "",
+    "signatureHeader": "",
+    "timestampHeader": "",
+    "nonceHeader": "",
+    "secret": ""
+  }
+}

@@ -153,9 +153,6 @@ const els = {
   clearApiKey: document.getElementById("clearApiKey"),
   modelSelect: document.getElementById("modelSelect"),
   apiFeedback: document.getElementById("apiFeedback"),
-  apiSavedState: document.getElementById("apiSavedState"),
-  apiEnabledState: document.getElementById("apiEnabledState"),
-  apiModelState: document.getElementById("apiModelState"),
   caseList: document.getElementById("caseList"),
   caseImportInput: document.getElementById("caseImportInput"),
   automationCaseImportInput: document.getElementById("automationCaseImportInput"),
@@ -171,6 +168,9 @@ const els = {
   automationCaseTaskFilter: document.getElementById("automationCaseTaskFilter"),
   automationCaseEnabledFilter: document.getElementById("automationCaseEnabledFilter"),
   automationCaseStatus: document.getElementById("automationCaseStatus"),
+  apiAutomationEnv: document.getElementById("apiAutomationEnv"),
+  apiAutomationBaseUrl: document.getElementById("apiAutomationBaseUrl"),
+  apiAutomationConfigStatus: document.getElementById("apiAutomationConfigStatus"),
   automationBaseUrl: document.getElementById("automationBaseUrl"),
   automationLoginPath: document.getElementById("automationLoginPath"),
   automationSessionChip: document.getElementById("automationSessionChip"),
@@ -231,6 +231,11 @@ const selfTestState = {
   error: state.selfTestSnapshot?.error || ""
 };
 const uiAutomationState = normalizeUiAutomationSession(state.uiAutomationSession);
+const apiAutomationConfigState = {
+  environments: {},
+  signature: {},
+  error: ""
+};
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
@@ -256,10 +261,10 @@ renderAll();
 ensureCasesToolbarEnhancements();
 loadTeamMembersConfig();
 loadSharedState();
+loadApiAutomationConfig();
 loadSelfTestStatus();
 loadUiAutomationStatus();
 checkApiStatus();
-renderApiStateBoard();
 renderSourceMode();
 renderSelfTestPanel();
 renderUiAutomationPanel();
@@ -300,6 +305,7 @@ function bindEvents() {
   });
   els.automationCaseTaskFilter?.addEventListener("change", renderAutomationCases);
   els.automationCaseEnabledFilter?.addEventListener("change", renderAutomationCases);
+  els.apiAutomationEnv?.addEventListener("change", renderApiAutomationConfigPanel);
   els.automationBaseUrl?.addEventListener("input", handleUiAutomationDraftChange);
   els.automationLoginPath?.addEventListener("input", handleUiAutomationDraftChange);
   els.startAutomationLoginSession?.addEventListener("click", startUiAutomationLoginSession);
@@ -550,12 +556,10 @@ async function checkApiStatus() {
       setApiStatus("需要填写 API Key", "warn");
       setApiFeedback("请先填写你自己的 API Key。", "warn");
     }
-    renderApiStateBoard();
   } catch (_error) {
     settings.apiReady = false;
     setApiStatus("本地服务未启动", "error");
     setApiFeedback("本地服务未启动，请先启动项目后再检测个人 Key。", "error");
-    renderApiStateBoard();
   }
 }
 
@@ -579,7 +583,6 @@ async function saveApiSettings(options = {}) {
   if (!settings.apiKey) {
     setApiStatus("需要填写 API Key", "warn");
     setApiFeedback(autoCheck ? "请先填写你的个人 Key，再检测并启用。" : "已清空个人 Key。", "warn");
-    renderApiStateBoard();
     return;
   }
 
@@ -590,8 +593,6 @@ async function saveApiSettings(options = {}) {
     setApiStatus("待检测", "neutral");
     setApiFeedback("当前 Key 和模型已保存，如需使用请点“检测并启用”。", "neutral");
   }
-  renderApiStateBoard();
-
   if (!autoCheck) {
     return;
   }
@@ -616,14 +617,12 @@ function clearApiSettings() {
   persist();
   setApiStatus("需要填写 API Key", "warn");
   setApiFeedback("已清空当前浏览器保存的个人 Key。", "warn");
-  renderApiStateBoard();
 }
 
 function handleApiDraftChange() {
   settings.apiKey = els.apiKey.value.trim();
   settings.apiReady = false;
   setApiStatus(settings.apiKey ? "待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
-  renderApiStateBoard();
 }
 
 function handleCurrentOperatorChange() {
@@ -694,14 +693,12 @@ async function checkAiKey(options = {}) {
     persist();
     setApiStatus("个人 Key 可调用 AI", "ok");
     setApiFeedback(successMessage || `检测通过：你的个人 Key 可以调用 ${data.model || model}，后续生成用例将直接使用它。`, "ok");
-    renderApiStateBoard();
   } catch (error) {
     settings.apiReady = false;
     setApiStatus("Key 检测失败", "error");
     if (showFeedback || errorMessage) {
       setApiFeedback(errorMessage || error.message || "AI Key 检测失败，请检查 Key、模型或网络。", "error");
     }
-    renderApiStateBoard();
   } finally {
     if (checkButton) {
       checkButton.disabled = false;
@@ -714,7 +711,6 @@ async function ensureAiReadyForGeneration() {
   if (!settings.apiKey) {
     setApiStatus("需要填写 API Key", "warn");
     setApiFeedback("请先填写你的个人 API Key，再点“检测并启用”。", "warn");
-    renderApiStateBoard();
     return false;
   }
 
@@ -833,33 +829,6 @@ function renderTraceMetaHtml(item, creatorFallback = "未记录") {
     <div class="trace-meta-item"><span>最后修改人</span><strong>${escapeHtml(updatedBy)}</strong></div>
     <div class="trace-meta-item"><span>更新时间</span><strong>${escapeHtml(formatAuditTime(item.updatedAt))}</strong></div>
   `;
-}
-
-function renderApiStateBoard() {
-  if (els.apiSavedState) {
-    const savedTone = settings.apiKey ? "ok" : "neutral";
-    els.apiSavedState.textContent = settings.apiKey ? "已保存" : "未填写";
-    els.apiSavedState.className = `state-chip ${savedTone}`;
-  }
-
-  if (els.apiEnabledState) {
-    let enabledTone = "neutral";
-    let enabledText = "未启用";
-    if (settings.apiReady && settings.apiKey) {
-      enabledTone = "ok";
-      enabledText = "已启用";
-    } else if (settings.apiKey) {
-      enabledTone = "warn";
-      enabledText = "待检测";
-    }
-    els.apiEnabledState.textContent = enabledText;
-    els.apiEnabledState.className = `state-chip ${enabledTone}`;
-  }
-
-  if (els.apiModelState) {
-    els.apiModelState.textContent = normalizeAiModel(settings.model);
-    els.apiModelState.className = "state-chip subtle";
-  }
 }
 
 function setLarkStatus(text, tone) {
@@ -1184,6 +1153,67 @@ function setAutomationCaseStatus(text, tone = "neutral") {
   }
   els.automationCaseStatus.textContent = text;
   els.automationCaseStatus.className = `inline-feedback ${tone}`;
+}
+
+async function loadApiAutomationConfig() {
+  if (!els.apiAutomationEnv) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/api-automation/config");
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || "接口自动化配置读取失败");
+    }
+
+    apiAutomationConfigState.environments = data.environments || {};
+    apiAutomationConfigState.signature = data.signature || {};
+    apiAutomationConfigState.error = "";
+  } catch (error) {
+    apiAutomationConfigState.environments = {};
+    apiAutomationConfigState.signature = {};
+    apiAutomationConfigState.error = error.message || "接口自动化配置读取失败";
+  }
+
+  renderApiAutomationConfigPanel();
+}
+
+function renderApiAutomationConfigPanel() {
+  if (!els.apiAutomationEnv) {
+    return;
+  }
+
+  const environmentNames = Object.keys(apiAutomationConfigState.environments || {}).filter((name) => ["test", "sandbox"].includes(name));
+  if (environmentNames.length) {
+    const currentValue = environmentNames.includes(els.apiAutomationEnv.value) ? els.apiAutomationEnv.value : environmentNames[0];
+    els.apiAutomationEnv.innerHTML = environmentNames
+      .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+      .join("");
+    els.apiAutomationEnv.value = currentValue;
+  }
+
+  const selectedEnv = apiAutomationConfigState.environments?.[els.apiAutomationEnv.value] || {};
+  if (els.apiAutomationBaseUrl) {
+    els.apiAutomationBaseUrl.value = selectedEnv.baseUrl || "";
+  }
+
+  if (!els.apiAutomationConfigStatus) {
+    return;
+  }
+
+  if (apiAutomationConfigState.error) {
+    els.apiAutomationConfigStatus.textContent = apiAutomationConfigState.error;
+    els.apiAutomationConfigStatus.className = "inline-feedback error";
+    return;
+  }
+
+  const keyReady = Boolean(selectedEnv.headers?.["KlicklPay-Key"]);
+  const signatureStatus = apiAutomationConfigState.signature?.status || "pending-docs";
+  els.apiAutomationConfigStatus.textContent = keyReady
+    ? `已读取 ${els.apiAutomationEnv.value} 环境：${selectedEnv.baseUrl || "未配置 Base URL"}。KlicklPay-Key 已配置；验签规则状态：${signatureStatus}。`
+    : `已读取 ${els.apiAutomationEnv.value} 环境：${selectedEnv.baseUrl || "未配置 Base URL"}。请在 api-automation.config.json 中填写 KlicklPay-Key；验签规则状态：${signatureStatus}。`;
+  els.apiAutomationConfigStatus.className = `inline-feedback ${keyReady ? "ok" : "warn"}`;
 }
 
 function setCaseQualityStatus(text, tone = "neutral") {
@@ -2817,50 +2847,50 @@ function renderOnboarding() {
   const steps = [
     {
       key: "bot",
-      title: "配置 AI",
-      desc: "填写你自己的 Key，检测通过后即可生成用例，当前浏览器会自动保留。",
+      title: "先启用 AI",
+      desc: "填入 OpenAI Key，点检测并启用。通过后，后面的用例生成才会走官方模型。",
       done: flow.hasBotConfig,
       current: flow.nextAction === "configure-bot"
     },
     {
       key: "meta",
-      title: "创建版本",
-      desc: "填写本次测试对应的版本号，并建立当前测试范围。",
+      title: "建一个测试版本",
+      desc: "把本次测试归到一个版本里，例如 2026.07 回归或某个需求版本。",
       done: flow.hasMeta,
       current: flow.nextAction === "create-meta"
     },
     {
       key: "task",
-      title: "创建任务",
-      desc: "说明这次要测什么，便于后续汇总报告。",
+      title: "写清楚这次测什么",
+      desc: "创建测试任务，简单说明范围。新人只要按一个需求点建一个任务即可。",
       done: flow.hasTask,
       current: flow.nextAction === "create-task"
     },
     {
       key: "source",
-      title: "上传需求/API文档",
-      desc: "上传本地文件或填写文档网址，并补充测试范围。",
+      title: "放入需求或接口文档",
+      desc: "上传文件或填写文档链接，再补一句重点范围，例如只测登录、下单或退款。",
       done: flow.hasSource || flow.hasCases,
       current: flow.nextAction === "prepare-source"
     },
     {
       key: "cases",
-      title: "生成用例",
-      desc: "使用 AI 生成测试用例，再进入用例列表执行。",
+      title: "生成并检查用例",
+      desc: "先生成测试用例，再到用例质量检查里看是否缺少边界、异常和权限场景。",
       done: flow.hasCases,
       current: flow.nextAction === "generate-cases"
     },
     {
       key: "execution",
-      title: "执行与 BUG",
-      desc: "更新执行结果，发现问题后记录 BUG。",
+      title: "执行用例并记录问题",
+      desc: "手工执行时改状态、写备注。失败的问题可以直接转成 BUG。",
       done: flow.hasExecutionOrBug,
       current: flow.nextAction === "execute-cases"
     },
     {
       key: "report",
-      title: "导出报告",
-      desc: "按版本查看汇总结果，并导出测试报告。",
+      title: "看报告，准备自动化",
+      desc: "报告页看整体结果；稳定的接口场景再进入接口自动化，后续接 pytest 回归。",
       done: flow.hasExecutionOrBug,
       current: flow.nextAction === "export-report"
     }
@@ -5099,9 +5129,9 @@ function getCaseAutomationFeedbackText(item) {
     return item.automationLastRun.summary;
   }
   if (item.automationEnabled) {
-    return "自动化已启用，可保存配置后直接运行。";
+    return "接口自动化已纳入规划，后续接入 pytest 后可保存配置并运行。";
   }
-  return "启用后，可为这条用例单独保存页面路径和执行步骤。";
+  return "启用后，可为这条用例沉淀接口路径、请求参数和断言草稿。";
 }
 
 function getCaseAutomationFeedbackTone(item) {

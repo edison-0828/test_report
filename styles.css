@@ -704,6 +704,40 @@ textarea {
   line-height: 1.6;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.field-hint a {
+  color: var(--primary);
+  word-break: break-all;
+}
+
+.ai-config-panel .form-row:first-of-type {
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.ai-config-panel .form-row:last-of-type {
+  margin-bottom: 10px;
+}
+
+.ai-config-panel .field-hint {
+  margin: 0 0 14px;
+}
+
+.ai-config-panel .inline-actions {
+  margin-top: 2px;
+}
+
+.ai-config-panel #apiFeedback {
+  margin-top: 12px;
+}
+
 .security-note code {
   color: var(--heading);
   font-family: var(--font-mono);
@@ -721,39 +755,18 @@ textarea {
   min-width: 0;
 }
 
-.api-state-board {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin: 0 0 14px;
-}
-
-.api-state-item {
-  padding: 12px 14px;
-  border: 1px solid #dfe8f4;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #fbfdff 0%, #f5f8fd 100%);
-  box-shadow: var(--shadow-soft);
-}
-
-.api-state-item span {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
 .state-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 30px;
   padding: 0 10px;
-  border-radius: 999px;
-  font-size: var(--text-sm);
-  font-weight: 700;
   border: 1px solid #dfe6f0;
+  border-radius: 999px;
   background: #f6f8fb;
   color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 .state-chip.ok {
@@ -1528,9 +1541,12 @@ textarea {
 
 .case-automation-block {
   display: grid;
-  gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid #e3eaf4;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dfe8f4;
+  border-radius: var(--radius-soft);
+  background: #fbfdff;
 }
 
 .case-automation-head {
@@ -1541,10 +1557,11 @@ textarea {
 }
 
 .case-automation-copy {
-  margin: 6px 0 0;
+  max-width: 680px;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: var(--text-sm);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .case-automation-toggle {
@@ -1552,7 +1569,12 @@ textarea {
   align-items: center;
   gap: 8px;
   margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #dfe8f4;
+  border-radius: var(--radius-soft);
+  background: #ffffff;
   color: var(--heading);
+  white-space: nowrap;
 }
 
 .case-automation-toggle input {
@@ -1571,10 +1593,28 @@ textarea {
   display: grid;
   gap: 8px;
   align-content: start;
+  min-width: 0;
 }
 
 .case-automation-status {
   justify-content: center;
+}
+
+.api-request-grid {
+  grid-template-columns: minmax(240px, 1fr) 150px 136px;
+}
+
+.api-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.api-config-grid textarea {
+  min-height: 150px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.55;
 }
 
 .case-automation-editor {
@@ -2019,6 +2059,65 @@ textarea {
 #automationCases .panel-header,
 #bugs .panel-header {
   align-items: end;
+}
+
+.api-runtime-panel {
+  margin-bottom: 16px;
+}
+
+.api-runtime-panel .inline-actions button:disabled {
+  cursor: not-allowed;
+}
+
+.api-workbench-panel {
+  padding: 18px;
+}
+
+.api-workbench-head {
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.api-workbench-head h3 {
+  font-size: var(--title-sm);
+}
+
+.api-workbench-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.api-workbench-grid {
+  display: grid;
+  grid-template-columns: 130px minmax(240px, 1.4fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.api-workbench-grid label {
+  margin-bottom: 0;
+}
+
+.api-workbench-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.api-workbench-actions button {
+  min-width: 108px;
+}
+
+.api-case-library-panel {
+  padding: 18px;
+}
+
+.compact-section-head {
+  margin-bottom: 12px;
 }
 
 #cases .section-toolbar,
@@ -2965,6 +3064,20 @@ textarea:focus {
   .case-detail-grid {
     grid-template-columns: 1fr;
   }
+
+  .api-workbench-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .api-workbench-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .api-request-grid,
+  .api-config-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -3008,8 +3121,16 @@ textarea:focus {
 
   .report-metrics,
   .report-hero-meta,
+  .api-workbench-grid,
+  .api-request-grid,
+  .api-config-grid,
   .bug-detail-list {
     grid-template-columns: 1fr;
+  }
+
+  .api-workbench-badges,
+  .api-workbench-actions {
+    justify-content: flex-start;
   }
 
   .onboarding-steps {

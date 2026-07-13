@@ -94,7 +94,7 @@ pip install python-docx
 Create server-side `.env` and keep it only on the server:
 
 ```env
-OPENAI_BASE_URL=https://9527code.com/v1
+OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.4
 PORT=4173
 CODEX_PYTHON=/opt/test-report/.venv/bin/python
@@ -211,6 +211,38 @@ OPENAI_API_KEY=your_api_key npm start
 The AI configuration panel includes a `检测Key` button. Use it to confirm that
 the current key and model can successfully call the AI service before generating
 test cases.
+
+## API Automation Configuration
+
+Interface automation reads local environment settings from
+`api-automation.config.json`. This file is ignored by Git, so put private
+values such as `KlicklPay-Key` there.
+
+Create it from `api-automation.config.example.json`, then fill the key for each
+environment:
+
+```json
+{
+  "environments": {
+    "test": {
+      "baseUrl": "https://test-oapi.klicklpay.com",
+      "headers": {
+        "KlicklPay-Key": "your_test_key"
+      }
+    },
+    "sandbox": {
+      "baseUrl": "https://sandbox-oapi.klicklpay.com",
+      "headers": {
+        "KlicklPay-Key": "your_sandbox_key"
+      }
+    }
+  }
+}
+```
+
+The signing rules are still marked as `pending-docs` because the PayIn URL was
+not accessible from this workspace. Paste the official signing rule into the
+`signature` section before enabling real pytest execution.
 
 ## Optional Lark Integration
 

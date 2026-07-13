@@ -190,7 +190,6 @@ test("saveApiSettings auto-enables a saved API key", async () => {
     persist: () => calls.push("persist"),
     setApiStatus: (text, tone) => calls.push(["setApiStatus", text, tone]),
     setApiFeedback: (text, tone) => calls.push(["setApiFeedback", text, tone]),
-    renderApiStateBoard: () => calls.push("renderApiStateBoard"),
     checkAiKey: async (options) => {
       calls.push(["checkAiKey", options]);
       settings.apiReady = true;
@@ -211,7 +210,6 @@ test("saveApiSettings auto-enables a saved API key", async () => {
     "persist",
     ["setApiStatus", "已保存，正在检测", "neutral"],
     ["setApiFeedback", "个人 Key 已保存，正在自动检测并启用。", "neutral"],
-    "renderApiStateBoard",
     ["checkAiKey", {
       showFeedback: false,
       successMessage: "个人 Key 已保存并启用，接下来可以直接生成用例。",
@@ -233,7 +231,6 @@ test("ensureAiReadyForGeneration auto-checks saved key before generating", async
     settings,
     setApiStatus: (text, tone) => calls.push(["setApiStatus", text, tone]),
     setApiFeedback: (text, tone) => calls.push(["setApiFeedback", text, tone]),
-    renderApiStateBoard: () => calls.push("renderApiStateBoard"),
     setGenerationStatus: (text, tone) => calls.push(["setGenerationStatus", text, tone]),
     checkAiKey: async (options) => {
       calls.push(["checkAiKey", options]);
@@ -268,7 +265,6 @@ test("ensureAiReadyForGeneration blocks generation when no API key is saved", as
     settings,
     setApiStatus: (text, tone) => calls.push(["setApiStatus", text, tone]),
     setApiFeedback: (text, tone) => calls.push(["setApiFeedback", text, tone]),
-    renderApiStateBoard: () => calls.push("renderApiStateBoard"),
     setGenerationStatus: (text, tone) => calls.push(["setGenerationStatus", text, tone]),
     checkAiKey: async () => calls.push("unexpected-check")
   });
@@ -279,7 +275,6 @@ test("ensureAiReadyForGeneration blocks generation when no API key is saved", as
   assert.deepEqual(toPlainJson(calls), [
     ["setApiStatus", "需要填写 API Key", "warn"],
     ["setApiFeedback", "请先填写你的个人 API Key，再点“检测并启用”。", "warn"],
-    "renderApiStateBoard"
   ]);
 });
 
