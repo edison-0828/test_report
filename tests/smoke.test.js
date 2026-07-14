@@ -13,6 +13,7 @@ const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-report-smoke-"));
 const appStateFile = path.join(tempDir, "app-state.json");
 const teamMembersFile = path.join(tempDir, "team-members.json");
+const bugAttachmentsRoot = path.join(tempDir, "bug-attachments");
 const exportDir = path.join(ROOT, "tmp", "exports");
 const exportPrefix = `smoke-${Date.now()}`;
 
@@ -26,6 +27,7 @@ test.before(async () => {
       PORT: String(TEST_PORT),
       APP_STATE_FILE: appStateFile,
       TEAM_MEMBERS_FILE: teamMembersFile,
+      BUG_ATTACHMENTS_ROOT: bugAttachmentsRoot,
       SELF_TEST_AUTORUN: "false"
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -72,6 +74,161 @@ test("serves the app shell", async () => {
   assert.match(html, /data-quality-business="VA业务"/);
   assert.match(html, /data-quality-business="卡收单业务"/);
   assert.match(html, /id="qualityBusinessModules"/);
+});
+
+test("serves the responsive light workspace shell", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.equal(htmlResponse.status, 200);
+  assert.equal(appResponse.status, 200);
+  assert.equal(stylesResponse.status, 200);
+  assert.match(html, /id="topbarTitle"/);
+  assert.match(html, /id="topbarMenuBtn"/);
+  assert.match(html, /id="sidebarBackdrop"/);
+  assert.match(appSource, /function hydrateNavigationChrome\(\)/);
+  assert.match(appSource, /function toggleMobileNavigation\(open\)/);
+  assert.match(styles, /--ui-primary:\s*#0798a6;/);
+  assert.match(styles, /\.topbar\s*\{/);
+  assert.match(styles, /@media \(max-width:\s*980px\)/);
+});
+
+test("simplifies case generation to AI setup, task, and source steps", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /upload-stage-panel-version hidden-field/);
+  assert.match(html, /<h3>2\. 新建任务<\/h3>/);
+  assert.match(html, /<div class="form-row hidden-field" aria-hidden="true">\s*<label>\s*关联版本/s);
+  assert.match(appSource, /const DEFAULT_WORKSPACE_VERSION = "默认工作区";/);
+  assert.match(appSource, /function ensureDefaultTaskBatch\(\)/);
+  assert.doesNotMatch(appSource, /nextAction: "create-meta"/);
+  assert.match(styles, /"ai task"\s*"generate generate"/);
+});
+
+test("serves version table, creation dialog, and task assignment controls", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /id="addVersionBtn"/);
+  assert.match(html, /id="versionSearchInput"/);
+  assert.match(html, /id="versionStatusFilter"/);
+  assert.match(html, /id="versionModal"/);
+  assert.match(html, /id="versionTaskOptions"/);
+  assert.match(appSource, /function saveVersionFromManager\(event\)/);
+  assert.match(appSource, /function moveTaskToBatch\(taskId, batch\)/);
+  assert.match(appSource, /data-version-action="link-tasks"/);
+  assert.match(styles, /\.version-table\s*\{/);
+  assert.match(styles, /\.version-task-option:has\(input:checked\)/);
+});
+
+test("serves task management navigation and table controls", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /data-tab="tasks">任务管理/);
+  assert.match(html, /<section class="tab-panel" id="tasks">/);
+  assert.match(html, /id="taskSearchInput"/);
+  assert.match(html, /id="taskVersionFilter"/);
+  assert.match(html, /id="taskManagerList"/);
+  assert.match(appSource, /function renderTaskTableRow\(task\)/);
+  assert.match(appSource, /tasks: '<path/);
+  assert.match(styles, /\.task-table\s*\{/);
+  assert.match(styles, /button\.version-link-task-button/);
+});
+
+test("keeps completed versions and tasks read only", async () => {
+  const [appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(appSource, /function isTaskReadonly\(task\)/);
+  assert.match(appSource, /!isActive && !isReadonly/);
+  assert.match(appSource, /!isCompleted && !isActive && !isSuspended/);
+  assert.match(appSource, /data-task-detail-toggle/);
+  assert.match(appSource, /data-task-readonly-detail/);
+  assert.match(styles, /\.completed-task-detail\s*\{/);
+});
+
+test("serves the focused two-column manual execution workspace", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /id="caseProgressPercent"/);
+  assert.match(html, /class="manual-execution-layout"/);
+  assert.match(html, /id="caseExecutionWorkspace"/);
+  assert.match(appSource, /function renderManualExecutionProgress\(cases\)/);
+  assert.match(appSource, /function renderActiveCaseExecution\(item, filteredCases\)/);
+  assert.match(appSource, /data-case-result="通过"/);
+  assert.match(appSource, /data-case-result="失败"/);
+  assert.match(styles, /\.manual-execution-layout\s*\{/);
+  assert.match(styles, /button\.execution-result-button\.result-pass/);
+  assert.match(styles, /button\.execution-result-button\.result-fail/);
+});
+
+test("serves the ZenTao-style bug title list and modal details", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /class="panel bug-filter-panel"/);
+  assert.match(html, /id="bugSearchInput"/);
+  assert.match(html, /id="bugSeverityFilter"/);
+  assert.match(html, /id="bugWorkflowStatusFilter"/);
+  assert.match(html, /class="bug-editor-section"/);
+  assert.match(html, /class="bug-title-list"/);
+  assert.match(html, /id="bugModal"/);
+  assert.match(html, /id="bugModalName"/);
+  assert.match(html, /id="bugModalBatch"/);
+  assert.match(html, /id="bugModalTask"/);
+  assert.match(html, /id="bugModalCase"/);
+  assert.match(html, /id="bugModalImagePreview"/);
+  assert.match(appSource, /function openBugModal\(bugId = "", mode = bugId \? "view" : "create", sourceCase = null\)/);
+  assert.match(appSource, /async function saveBugFromModal\(event\)/);
+  assert.match(appSource, /function handleBugNotePaste\(event\)/);
+  assert.match(appSource, /\/api\/bug-images/);
+  assert.match(appSource, /data-view-bug-id/);
+  assert.match(styles, /\.bug-title-row\s*\{/);
+  assert.match(styles, /\.bug-dialog\s*\{/);
+  assert.match(styles, /#bugModal\[data-mode="view"\]/);
 });
 
 test("keeps decorative header layers from blocking controls", async () => {
@@ -182,6 +339,33 @@ test("blocks direct access to private server files", async () => {
 
   assert.equal(serverFileResponse.status, 404);
   assert.equal(stateFileResponse.status, 404);
+});
+
+test("stores, serves, and deletes pasted BUG images", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  const uploadResponse = await fetch(`${BASE_URL}/api/bug-images?bugId=bug-smoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png",
+      "X-File-Name": encodeURIComponent("粘贴截图.png")
+    },
+    body: png
+  });
+  const uploaded = await uploadResponse.json();
+
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploaded.image.mimeType, "image/png");
+  assert.equal(uploaded.image.fileName, "粘贴截图.png");
+
+  const imageResponse = await fetch(`${BASE_URL}${uploaded.image.url}`);
+  assert.equal(imageResponse.status, 200);
+  assert.equal(imageResponse.headers.get("content-type"), "image/png");
+  assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()), png);
+
+  const deleteResponse = await fetch(`${BASE_URL}${uploaded.image.url}`, { method: "DELETE" });
+  const missingResponse = await fetch(`${BASE_URL}${uploaded.image.url}`);
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(missingResponse.status, 404);
 });
 
 test("persists and reloads shared app state", async () => {

@@ -9,4 +9,5 @@ npm-debug.log*
 tmp/__pycache__/
 tmp/exports/
 tmp/ui-automation/
+data/bug-attachments/
 tmp_zand_*.html

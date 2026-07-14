@@ -80,6 +80,70 @@ const normalizeAutomationStep = loadFunction("normalizeAutomationStep", {
   inferAutomationTargetFromRawStep
 });
 
+test("ensureDefaultTaskBatch creates and reuses a hidden workspace batch", () => {
+  const state = { batches: [], activeBatchId: "", generationBatchId: "" };
+  const getBatchById = (batchId) => state.batches.find((item) => item.id === batchId);
+  const getOrCreateDefaultWorkspaceBatch = loadFunction("getOrCreateDefaultWorkspaceBatch", {
+    state,
+    DEFAULT_WORKSPACE_VERSION: "默认工作区",
+    applyCreateAuditFields: (item) => ({ ...item, createdAt: "now" })
+  });
+  const ensureDefaultTaskBatch = loadFunction("ensureDefaultTaskBatch", {
+    state,
+    editingTaskId: "",
+    getTaskById: () => null,
+    getBatchById,
+    getOrCreateDefaultWorkspaceBatch
+  });
+
+  const created = ensureDefaultTaskBatch();
+  const reused = ensureDefaultTaskBatch();
+
+  assert.equal(created.id, "batch-default-workspace");
+  assert.equal(created.systemManaged, true);
+  assert.equal(state.batches.length, 1);
+  assert.equal(reused, created);
+  assert.equal(state.activeBatchId, created.id);
+  assert.equal(state.generationBatchId, created.id);
+});
+
+test("moveTaskToBatch synchronizes task, case, and bug version metadata", () => {
+  const state = {
+    tasks: [{ id: "task-1", name: "登录测试", batchId: "batch-default" }],
+    cases: [{ id: "case-1", taskId: "task-1", batchId: "batch-default" }],
+    bugs: [{ id: "bug-1", taskId: "task-1", batchId: "batch-default" }]
+  };
+  const moveTaskToBatch = loadFunction("moveTaskToBatch", {
+    state,
+    getTaskById: (taskId) => state.tasks.find((item) => item.id === taskId),
+    formatBatchLabel: (batch) => batch.version,
+    applyUpdateAuditFields: (item) => ({ ...item, updatedAt: "now" })
+  });
+
+  moveTaskToBatch("task-1", { id: "batch-v2", version: "V2.0", moduleId: "", moduleName: "", name: "" });
+
+  assert.equal(state.tasks[0].batchId, "batch-v2");
+  assert.equal(state.tasks[0].batchVersion, "V2.0");
+  assert.equal(state.cases[0].batchId, "batch-v2");
+  assert.equal(state.cases[0].batchVersion, "V2.0");
+  assert.equal(state.bugs[0].batchId, "batch-v2");
+  assert.equal(state.bugs[0].batchVersion, "V2.0");
+});
+
+test("isTaskReadonly locks completed tasks and tasks under completed versions", () => {
+  const batches = [
+    { id: "batch-active", status: "进行中" },
+    { id: "batch-complete", status: "已完成" }
+  ];
+  const isTaskReadonly = loadFunction("isTaskReadonly", {
+    getBatchById: (batchId) => batches.find((item) => item.id === batchId)
+  });
+
+  assert.equal(isTaskReadonly({ status: "已完成", batchId: "batch-active" }), true);
+  assert.equal(isTaskReadonly({ status: "进行中", batchId: "batch-complete" }), true);
+  assert.equal(isTaskReadonly({ status: "进行中", batchId: "batch-active" }), false);
+});
+
 test("buildAutomationRuntimeSteps converts visual steps into runner actions", () => {
   const runtimeSteps = buildAutomationRuntimeSteps([
     { stepType: "openPage", target: "/orders/list", locatorType: "css", inputValue: "", remark: "" },

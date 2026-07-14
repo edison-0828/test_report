@@ -19,6 +19,7 @@
       <nav class="nav">
         <button class="nav-link active" data-tab="upload">用例生成</button>
         <button class="nav-link" data-tab="quality">用例质量检查</button>
+        <button class="nav-link" data-tab="tasks">任务管理</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
         <button class="nav-link" data-tab="cases">手动执行用例</button>
         <button class="nav-link" data-tab="automationCases">接口自动化</button>
@@ -31,6 +32,34 @@
         <span class="sidebar-back-text">点击我回到顶部</span>
       </button>
     </aside>
+
+    <header class="topbar">
+      <div class="topbar-leading">
+        <button id="topbarMenuBtn" class="topbar-icon-button topbar-menu-button" type="button" aria-label="打开导航菜单" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <div class="topbar-breadcrumb">
+          <span>测试工作台</span>
+          <strong id="topbarTitle">用例生成</strong>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="topbarSelfTest" class="topbar-utility-button" type="button">
+          <span class="topbar-status-dot" aria-hidden="true"></span>
+          系统自检
+        </button>
+        <button id="topbarSettings" class="topbar-icon-button" type="button" aria-label="打开 AI 配置" title="打开 AI 配置">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.9 1.9-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V20h-2.7v-.01a1.7 1.7 0 0 0-1.03-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-1.9-1.9.06-.06A1.7 1.7 0 0 0 7.76 15a1.7 1.7 0 0 0-1.55-1.03H6v-2.7h.21a1.7 1.7 0 0 0 1.55-1.03 1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.9-1.9.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.55V5h2.7v.25a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.9 1.9-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.55 1.03H21v2.7h-.05A1.7 1.7 0 0 0 19.4 15Z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="关闭导航菜单"></button>
 
     <main class="content">
       <section class="tab-panel active upload-workspace" id="upload">
@@ -93,7 +122,7 @@
             <p id="apiFeedback" class="inline-feedback">这里会显示你当前个人 Key 的检测结果和使用状态。</p>
           </section>
 
-          <section class="panel upload-stage-panel upload-stage-panel-version">
+          <section class="panel upload-stage-panel upload-stage-panel-version hidden-field" aria-hidden="true">
             <div class="section-head">
               <div>
                 <h3>2. 新建版本</h3>
@@ -135,11 +164,11 @@
           <section class="panel upload-stage-panel upload-stage-panel-task">
             <div class="section-head">
               <div>
-                <h3>3. 新建任务</h3>
+                <h3>2. 新建任务</h3>
               </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row hidden-field" aria-hidden="true">
               <label>
                 关联版本
                 <select id="taskBatchSelect">
@@ -250,33 +279,65 @@
           </label>
         </div>
 
-        <section class="panel">
-          <div class="actions compact section-toolbar case-toolbar">
-            <select id="caseBatchFilter">
-              <option value="">全部版本</option>
-            </select>
-            <select id="caseTaskFilter">
-              <option value="">全部任务</option>
-            </select>
-            <select id="caseStatusFilter">
-              <option value="">全部状态</option>
-              <option value="未执行">未执行</option>
-              <option value="通过">通过</option>
-              <option value="失败">失败</option>
-              <option value="阻塞">阻塞</option>
-            </select>
-            <select id="caseBulkStatus">
-              <option value="">批量改为</option>
-              <option value="未执行">未执行</option>
-              <option value="通过">通过</option>
-              <option value="失败">失败</option>
-              <option value="阻塞">阻塞</option>
-            </select>
-            <button id="applyCaseBulkStatus" class="ghost-button" type="button">批量应用</button>
+        <section class="panel execution-progress-panel">
+          <div class="execution-progress-copy">
+            <span class="execution-progress-kicker">执行进度</span>
+            <div class="execution-progress-title">
+              <strong id="caseProgressPercent">0%</strong>
+              <span id="caseProgressSummary">已完成 0 / 0 条</span>
+            </div>
           </div>
-          <p id="caseActionStatus" class="inline-feedback">这里会显示筛选结果和批量执行状态更新结果。</p>
-          <div id="caseList" class="list-stack"></div>
+          <div class="execution-progress-track" aria-hidden="true">
+            <span id="caseProgressBar"></span>
+          </div>
+          <div id="caseProgressStats" class="execution-progress-stats"></div>
         </section>
+
+        <div class="manual-execution-layout">
+          <aside class="panel case-browser-panel">
+            <div class="case-browser-head">
+              <div>
+                <span class="execution-progress-kicker">用例目录</span>
+                <h3>选择要执行的用例</h3>
+              </div>
+              <span id="caseBrowserCount" class="badge subtle">0 条</span>
+            </div>
+            <div class="case-browser-filters">
+              <select id="caseBatchFilter" aria-label="筛选版本">
+                <option value="">全部版本</option>
+              </select>
+              <select id="caseTaskFilter" aria-label="筛选任务">
+                <option value="">全部任务</option>
+              </select>
+              <select id="caseStatusFilter" aria-label="筛选执行状态">
+                <option value="">全部状态</option>
+                <option value="未执行">未执行</option>
+                <option value="通过">通过</option>
+                <option value="失败">失败</option>
+                <option value="阻塞">阻塞</option>
+              </select>
+            </div>
+            <details class="case-bulk-tools">
+              <summary>批量修改当前筛选结果</summary>
+              <div>
+                <select id="caseBulkStatus">
+                  <option value="">批量改为</option>
+                  <option value="未执行">未执行</option>
+                  <option value="通过">通过</option>
+                  <option value="失败">失败</option>
+                  <option value="阻塞">阻塞</option>
+                </select>
+                <button id="applyCaseBulkStatus" class="ghost-button" type="button">应用</button>
+              </div>
+            </details>
+            <div id="caseList" class="case-browser-list"></div>
+          </aside>
+
+          <section class="panel case-runner-panel">
+            <p id="caseActionStatus" class="inline-feedback">从左侧选择一条用例开始执行。</p>
+            <div id="caseExecutionWorkspace" class="case-execution-workspace"></div>
+          </section>
+        </div>
       </section>
 
       <section class="tab-panel" id="automationCases">
@@ -355,22 +416,66 @@
         </section>
       </section>
 
+      <section class="tab-panel" id="tasks">
+        <div class="panel-header">
+          <div>
+            <h2>任务管理</h2>
+            <p>集中查看用户在用例生成页创建的测试任务，并跟踪任务的版本归属。</p>
+          </div>
+          <button id="goCreateTaskBtn" class="primary-button" type="button">新建任务</button>
+        </div>
+
+        <section class="panel task-table-panel">
+          <div class="task-table-toolbar">
+            <div class="task-table-heading">
+              <h3>任务列表</h3>
+              <span id="taskManagerCount" class="badge subtle">0 个任务</span>
+            </div>
+            <div class="task-table-filters">
+              <label class="task-search-field">
+                <span class="visually-hidden">搜索任务</span>
+                <input id="taskSearchInput" type="search" placeholder="搜索任务名称或测试范围">
+              </label>
+              <select id="taskVersionFilter" aria-label="筛选任务版本归属">
+                <option value="">全部任务</option>
+                <option value="unlinked">待关联版本</option>
+                <option value="linked">已关联版本</option>
+              </select>
+            </div>
+          </div>
+          <div id="taskManagerList" class="task-table-wrap"></div>
+        </section>
+      </section>
+
       <section class="tab-panel" id="versions">
         <div class="panel-header">
           <div>
             <h2>版本管理</h2>
-            <p>按版本查看测试任务、范围和操作入口。</p>
+            <p>集中维护测试版本，并把新建任务归入对应版本。</p>
           </div>
+          <button id="addVersionBtn" class="primary-button" type="button">新增版本</button>
         </div>
 
-        <section class="panel">
-          <div class="section-head">
-            <div>
-              <h3>版本卡片</h3>
-              <p class="section-note">点击展开详情后，可查看该版本下的测试任务、范围和操作入口。</p>
+        <section class="panel version-table-panel">
+          <div class="version-table-toolbar">
+            <div class="version-table-heading">
+              <h3>版本列表</h3>
+              <span id="versionManagerCount" class="badge subtle">0 个版本</span>
+            </div>
+            <div class="version-table-filters">
+              <label class="version-search-field">
+                <span class="visually-hidden">搜索版本或任务</span>
+                <input id="versionSearchInput" type="search" placeholder="搜索版本号或任务名称">
+              </label>
+              <select id="versionStatusFilter" aria-label="筛选版本状态">
+                <option value="">全部状态</option>
+                <option value="进行中">进行中</option>
+                <option value="已完成">已完成</option>
+                <option value="已挂起">已挂起</option>
+              </select>
             </div>
           </div>
-          <div id="versionManagerList" class="list-stack"></div>
+          <div id="versionManagerList" class="version-table-wrap"></div>
         </section>
       </section>
 
@@ -383,17 +488,65 @@
           <button id="addBug" class="primary-button">新增BUG</button>
         </div>
 
-        <section class="panel">
-          <div class="actions compact section-toolbar">
-            <select id="bugBatchFilter">
-              <option value="">全部版本</option>
-            </select>
-            <select id="bugTaskFilter">
-              <option value="">全部任务</option>
-            </select>
+        <section class="panel bug-filter-panel">
+          <div class="bug-filter-head">
+            <div>
+              <span class="bug-section-kicker">筛选范围</span>
+              <h3>快速定位 BUG</h3>
+            </div>
+            <span id="bugManagerCount" class="badge subtle">0 个 BUG</span>
+          </div>
+          <div class="bug-filter-grid">
+            <label class="bug-search-field">
+              <span>搜索</span>
+              <input id="bugSearchInput" type="search" placeholder="搜索 BUG 名称或备注">
+            </label>
+            <label>
+              <span>版本</span>
+              <select id="bugBatchFilter">
+                <option value="">全部版本</option>
+              </select>
+            </label>
+            <label>
+              <span>任务</span>
+              <select id="bugTaskFilter">
+                <option value="">全部任务</option>
+              </select>
+            </label>
+            <label>
+              <span>严重级别</span>
+              <select id="bugSeverityFilter">
+                <option value="">全部级别</option>
+                <option value="严重">严重</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
+              </select>
+            </label>
+            <label>
+              <span>状态</span>
+              <select id="bugWorkflowStatusFilter">
+                <option value="">全部状态</option>
+                <option value="新建">新建</option>
+                <option value="已提交">已提交</option>
+                <option value="已修复">已修复</option>
+                <option value="待回归">待回归</option>
+                <option value="已验证">已验证</option>
+                <option value="已关闭">已关闭</option>
+              </select>
+            </label>
           </div>
           <p id="bugStatus" class="inline-feedback">这里会显示 BUG 新增、保存、删除和回归状态。</p>
-          <div id="bugList" class="list-stack"></div>
+        </section>
+
+        <section class="bug-editor-section">
+          <div class="bug-editor-section-head">
+            <div>
+              <span class="bug-section-kicker">BUG 列表</span>
+              <h3>问题标题</h3>
+            </div>
+            <p>页面仅展示 BUG 标题，点击“查看详情”进入完整明细。</p>
+          </div>
+          <div id="bugList" class="bug-title-list"></div>
         </section>
       </section>
 
@@ -441,6 +594,132 @@
         </section>
       </section>
     </main>
+  </div>
+
+  <div id="versionModal" class="dialog-backdrop hidden-field" role="presentation">
+    <section class="dialog-card version-dialog" role="dialog" aria-modal="true" aria-labelledby="versionModalTitle">
+      <div class="dialog-head">
+        <div>
+          <span class="dialog-kicker">版本管理</span>
+          <h3 id="versionModalTitle">新增版本</h3>
+        </div>
+        <button id="closeVersionModal" class="dialog-close" type="button" aria-label="关闭新增版本弹窗">×</button>
+      </div>
+
+      <form id="versionForm">
+        <label class="version-dialog-field">
+          <span>版本号 <strong class="required-mark">*</strong></span>
+          <input id="versionNumberInput" type="text" placeholder="例如：V2026.07.14" autocomplete="off">
+          <small>版本号用于后续用例、BUG 和测试报告的统一归档。</small>
+        </label>
+
+        <div class="version-task-picker">
+          <div class="version-task-picker-head">
+            <div>
+              <strong>关联新建任务</strong>
+              <p>可多选尚未归入正式版本的任务，保存后自动完成关联。</p>
+            </div>
+            <span id="versionTaskSelectionCount" class="badge subtle">已选 0 项</span>
+          </div>
+          <div id="versionTaskOptions" class="version-task-options"></div>
+        </div>
+
+        <p id="versionFormFeedback" class="inline-feedback">填写版本号，可选择需要关联的任务。</p>
+        <div class="dialog-actions">
+          <button id="cancelVersionModal" class="ghost-button" type="button">取消</button>
+          <button id="saveVersionBtn" class="primary-button" type="submit">保存版本</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="bugModal" class="dialog-backdrop hidden-field" role="presentation">
+    <section class="dialog-card bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bugModalTitle">
+      <div class="dialog-head bug-dialog-head">
+        <div>
+          <span class="dialog-kicker">BUG 管理</span>
+          <h3 id="bugModalTitle">新增 BUG</h3>
+          <div id="bugModalBadges" class="bug-modal-badges"></div>
+        </div>
+        <button id="closeBugModal" class="dialog-close" type="button" aria-label="关闭 BUG 弹窗">×</button>
+      </div>
+
+      <form id="bugForm" class="bug-dialog-form">
+        <label class="bug-dialog-title-field">
+          <span>BUG 名称 <strong class="required-mark">*</strong></span>
+          <input id="bugModalName" type="text" placeholder="简明描述问题现象" autocomplete="off">
+        </label>
+
+        <div class="bug-dialog-grid bug-dialog-status-grid">
+          <label>
+            <span>严重级别</span>
+            <select id="bugModalSeverity">
+              <option value="严重">严重</option>
+              <option value="中">中</option>
+              <option value="低">低</option>
+            </select>
+          </label>
+          <label>
+            <span>状态</span>
+            <select id="bugModalStatus">
+              <option value="新建">新建</option>
+              <option value="已提交">已提交</option>
+              <option value="已修复">已修复</option>
+              <option value="待回归">待回归</option>
+              <option value="已验证">已验证</option>
+              <option value="已关闭">已关闭</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="bug-dialog-association">
+          <div class="bug-dialog-section-title">
+            <strong>关联范围</strong>
+            <span>选择版本和任务后，可继续关联具体失败用例。</span>
+          </div>
+          <div class="bug-dialog-grid bug-association-grid">
+            <label>
+              <span>关联版本</span>
+              <select id="bugModalBatch"></select>
+            </label>
+            <label>
+              <span>关联任务</span>
+              <select id="bugModalTask"></select>
+            </label>
+            <label>
+              <span>关联用例</span>
+              <select id="bugModalCase"></select>
+            </label>
+          </div>
+        </div>
+
+        <label class="bug-dialog-link-field">
+          <span>Lark 链接 / 单号</span>
+          <input id="bugModalLink" type="text" placeholder="可选">
+        </label>
+
+        <div class="bug-dialog-note-field">
+          <div class="bug-note-heading">
+            <label for="bugModalNote">BUG 描述与备注</label>
+            <span>可直接输入文字，或按 Ctrl+V 粘贴截图</span>
+          </div>
+          <textarea id="bugModalNote" rows="8" placeholder="记录复现步骤、实际结果、预期结果和补充信息；需要截图时直接在这里粘贴"></textarea>
+          <div id="bugModalImagePreview" class="bug-note-image-preview" aria-live="polite"></div>
+          <p id="bugModalPasteHint" class="bug-note-paste-hint">支持 PNG、JPG、WebP，单张不超过 5MB，最多 10 张。</p>
+        </div>
+
+        <div id="bugModalTrace" class="bug-modal-trace"></div>
+        <p id="bugModalFeedback" class="inline-feedback">填写 BUG 信息后保存。</p>
+
+        <div class="dialog-actions bug-dialog-actions">
+          <button id="deleteBugModal" class="ghost-button bug-dialog-delete hidden-field" type="button">删除 BUG</button>
+          <span class="bug-dialog-action-spacer"></span>
+          <button id="cancelBugModal" class="ghost-button" type="button">关闭</button>
+          <button id="editBugModal" class="ghost-button hidden-field" type="button">编辑 BUG</button>
+          <button id="saveBugModal" class="primary-button" type="submit">保存 BUG</button>
+        </div>
+      </form>
+    </section>
   </div>
 
   <template id="caseTemplate">

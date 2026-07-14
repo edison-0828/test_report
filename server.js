@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
 loadEnvFile(path.join(__dirname, ".env"));
@@ -11,6 +12,8 @@ const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
 const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team-members.json");
 const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
+const BUG_ATTACHMENTS_ROOT = process.env.BUG_ATTACHMENTS_ROOT || path.join(ROOT, "data", "bug-attachments");
+const MAX_BUG_IMAGE_BYTES = 5 * 1024 * 1024;
 const API_AUTOMATION_CONFIG_FILE = process.env.API_AUTOMATION_CONFIG_FILE || path.join(ROOT, "api-automation.config.json");
 const API_AUTOMATION_CONFIG_EXAMPLE_FILE = path.join(ROOT, "api-automation.config.example.json");
 const PYTHON_BIN = resolvePythonBin();
@@ -56,7 +59,10 @@ const MIME_TYPES = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
-  ".ico": "image/x-icon"
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".webp": "image/webp"
 };
 
 function loadEnvFile(filePath) {
@@ -593,6 +599,7 @@ async function executeUiAutomationSteps(page, steps, baseUrl) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (req.method === "GET" && req.url === "/api/health") {
       return sendJson(res, 200, {
         ok: true,
@@ -650,6 +657,22 @@ const server = http.createServer(async (req, res) => {
       ensureParentDir(APP_STATE_FILE);
       fs.writeFileSync(APP_STATE_FILE, JSON.stringify({ state: nextState }, null, 2), "utf-8");
       return sendJson(res, 200, { ok: true, state: nextState });
+    }
+
+    if (requestUrl.pathname === "/api/bug-images" && req.method === "POST") {
+      return await handleSaveBugImage(req, res, requestUrl.searchParams.get("bugId"));
+    }
+
+    if (requestUrl.pathname === "/api/bug-images" && req.method === "DELETE") {
+      return handleDeleteBugImages(res, requestUrl.searchParams.get("bugId"));
+    }
+
+    const bugImageMatch = requestUrl.pathname.match(/^\/api\/bug-images\/([^/]+)\/([^/]+)$/);
+    if (bugImageMatch && req.method === "GET") {
+      return handleReadBugImage(res, decodeURIComponent(bugImageMatch[1]), decodeURIComponent(bugImageMatch[2]));
+    }
+    if (bugImageMatch && req.method === "DELETE") {
+      return handleDeleteBugImage(res, decodeURIComponent(bugImageMatch[1]), decodeURIComponent(bugImageMatch[2]));
     }
 
     if (req.method === "POST" && req.url === "/api/export-report-docx") {
@@ -2016,6 +2039,110 @@ function narrowPlainTextContent(content, keywords) {
     .sort((a, b) => a - b)
     .map((index) => lines[index])
     .join("\n");
+}
+
+async function handleSaveBugImage(req, res, bugId) {
+  assertSafePathPart(bugId, "BUG ID");
+  const buffer = await readBinaryBody(req, MAX_BUG_IMAGE_BYTES);
+  const imageType = detectImageType(buffer);
+  if (!imageType) throw new Error("仅支持有效的 PNG、JPG 或 WebP 图片");
+
+  const imageId = crypto.randomUUID();
+  const storedName = `${imageId}.${imageType.extension}`;
+  const bugDirectory = path.join(BUG_ATTACHMENTS_ROOT, bugId);
+  fs.mkdirSync(bugDirectory, { recursive: true });
+  fs.writeFileSync(path.join(bugDirectory, storedName), buffer);
+
+  let originalName = "粘贴的截图";
+  try {
+    originalName = decodeURIComponent(String(req.headers["x-file-name"] || originalName));
+  } catch (_error) {}
+  const fileName = sanitizeFileName(originalName).slice(0, 160) || `截图.${imageType.extension}`;
+  return sendJson(res, 201, {
+    ok: true,
+    image: {
+      id: imageId,
+      fileName,
+      storedName,
+      mimeType: imageType.mimeType,
+      size: buffer.length,
+      url: `/api/bug-images/${encodeURIComponent(bugId)}/${encodeURIComponent(imageId)}`,
+      createdAt: new Date().toISOString()
+    }
+  });
+}
+
+function handleReadBugImage(res, bugId, imageId) {
+  assertSafePathPart(bugId, "BUG ID");
+  assertSafePathPart(imageId, "图片 ID");
+  const filePath = findBugImagePath(bugId, imageId);
+  if (!filePath) return sendJson(res, 404, { error: "图片不存在" });
+  const extension = path.extname(filePath).toLowerCase();
+  res.writeHead(200, {
+    "Content-Type": MIME_TYPES[extension] || "application/octet-stream",
+    "Content-Disposition": "inline",
+    "Cache-Control": "private, max-age=3600",
+    "X-Content-Type-Options": "nosniff"
+  });
+  fs.createReadStream(filePath).pipe(res);
+}
+
+function handleDeleteBugImage(res, bugId, imageId) {
+  assertSafePathPart(bugId, "BUG ID");
+  assertSafePathPart(imageId, "图片 ID");
+  const filePath = findBugImagePath(bugId, imageId);
+  if (filePath) fs.rmSync(filePath, { force: true });
+  return sendJson(res, 200, { ok: true });
+}
+
+function handleDeleteBugImages(res, bugId) {
+  assertSafePathPart(bugId, "BUG ID");
+  fs.rmSync(path.join(BUG_ATTACHMENTS_ROOT, bugId), { recursive: true, force: true });
+  return sendJson(res, 200, { ok: true });
+}
+
+function findBugImagePath(bugId, imageId) {
+  const directory = path.join(BUG_ATTACHMENTS_ROOT, bugId);
+  if (!fs.existsSync(directory)) return "";
+  const fileName = fs.readdirSync(directory).find((name) => name.startsWith(`${imageId}.`));
+  return fileName ? path.join(directory, fileName) : "";
+}
+
+function assertSafePathPart(value, label) {
+  if (!value || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) {
+    throw new Error(`${label} 不合法`);
+  }
+}
+
+function detectImageType(buffer) {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { mimeType: "image/png", extension: "png" };
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { mimeType: "image/jpeg", extension: "jpg" };
+  }
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+    return { mimeType: "image/webp", extension: "webp" };
+  }
+  return null;
+}
+
+function readBinaryBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error("单张图片不能超过 5MB"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
 }
 
 function serveStatic(req, res) {

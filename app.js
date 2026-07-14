@@ -21,6 +21,7 @@ const BUSINESS_ALIAS_MAP = {
 };
 const SHARED_STATE_KEYS = ["documents", "cases", "bugs", "batches", "tasks", "reportConclusion", "reportConclusions", "lastGeneration"];
 const LOCAL_STATE_KEYS = ["activeBatchId", "generationBatchId", "activeTaskId", "activeModuleId", "activeReportBatchId", "settings", "uiMode", "selfTestSnapshot", "caseQualityReports", "caseQualityCasesByBusiness", "caseQualityBusiness", "uiAutomationSettings", "uiAutomationSession"];
+const DEFAULT_WORKSPACE_VERSION = "默认工作区";
 const DEFAULT_AI_MODEL = "gpt-5.4";
 const CASE_QUALITY_BUSINESSES = ["VA业务", "卡收单业务"];
 const AUTOMATION_STEP_TYPES = [
@@ -102,6 +103,11 @@ const state = loadState();
 const els = {
   navLinks: [...document.querySelectorAll(".nav-link")],
   panels: [...document.querySelectorAll(".tab-panel")],
+  topbarTitle: document.getElementById("topbarTitle"),
+  topbarMenuBtn: document.getElementById("topbarMenuBtn"),
+  topbarSelfTest: document.getElementById("topbarSelfTest"),
+  topbarSettings: document.getElementById("topbarSettings"),
+  sidebarBackdrop: document.getElementById("sidebarBackdrop"),
   documentInput: document.getElementById("documentInput"),
   documentUploadBox: document.getElementById("documentUploadBox"),
   uploadBoxPrimary: document.getElementById("uploadBoxPrimary"),
@@ -140,7 +146,24 @@ const els = {
   currentTaskSummary: document.getElementById("currentTaskSummary"),
   generationVersionSummary: document.getElementById("generationVersionSummary"),
   versionManagerList: document.getElementById("versionManagerList"),
+  versionManagerCount: document.getElementById("versionManagerCount"),
+  versionSearchInput: document.getElementById("versionSearchInput"),
+  versionStatusFilter: document.getElementById("versionStatusFilter"),
+  addVersionBtn: document.getElementById("addVersionBtn"),
+  versionModal: document.getElementById("versionModal"),
+  versionModalTitle: document.getElementById("versionModalTitle"),
+  versionForm: document.getElementById("versionForm"),
+  versionNumberInput: document.getElementById("versionNumberInput"),
+  versionTaskOptions: document.getElementById("versionTaskOptions"),
+  versionTaskSelectionCount: document.getElementById("versionTaskSelectionCount"),
+  versionFormFeedback: document.getElementById("versionFormFeedback"),
+  closeVersionModal: document.getElementById("closeVersionModal"),
+  cancelVersionModal: document.getElementById("cancelVersionModal"),
   taskManagerList: document.getElementById("taskManagerList"),
+  taskManagerCount: document.getElementById("taskManagerCount"),
+  taskSearchInput: document.getElementById("taskSearchInput"),
+  taskVersionFilter: document.getElementById("taskVersionFilter"),
+  goCreateTaskBtn: document.getElementById("goCreateTaskBtn"),
   versionsPanel: document.getElementById("versions"),
   quickStats: document.getElementById("quickStats"),
   sidebarContext: document.getElementById("sidebarContext"),
@@ -153,6 +176,12 @@ const els = {
   modelSelect: document.getElementById("modelSelect"),
   apiFeedback: document.getElementById("apiFeedback"),
   caseList: document.getElementById("caseList"),
+  caseExecutionWorkspace: document.getElementById("caseExecutionWorkspace"),
+  caseProgressPercent: document.getElementById("caseProgressPercent"),
+  caseProgressSummary: document.getElementById("caseProgressSummary"),
+  caseProgressBar: document.getElementById("caseProgressBar"),
+  caseProgressStats: document.getElementById("caseProgressStats"),
+  caseBrowserCount: document.getElementById("caseBrowserCount"),
   caseImportInput: document.getElementById("caseImportInput"),
   automationCaseImportInput: document.getElementById("automationCaseImportInput"),
   caseBatchFilter: document.getElementById("caseBatchFilter"),
@@ -187,9 +216,35 @@ const els = {
   executionList: document.getElementById("executionList"),
   bugBatchFilter: document.getElementById("bugBatchFilter"),
   bugTaskFilter: document.getElementById("bugTaskFilter"),
+  bugSearchInput: document.getElementById("bugSearchInput"),
+  bugSeverityFilter: document.getElementById("bugSeverityFilter"),
+  bugWorkflowStatusFilter: document.getElementById("bugWorkflowStatusFilter"),
+  bugManagerCount: document.getElementById("bugManagerCount"),
+  bugHistoryList: document.getElementById("bugHistoryList"),
   bugList: document.getElementById("bugList"),
   bugStatus: document.getElementById("bugStatus"),
   addBug: document.getElementById("addBug"),
+  bugModal: document.getElementById("bugModal"),
+  bugModalTitle: document.getElementById("bugModalTitle"),
+  bugModalBadges: document.getElementById("bugModalBadges"),
+  bugForm: document.getElementById("bugForm"),
+  bugModalName: document.getElementById("bugModalName"),
+  bugModalSeverity: document.getElementById("bugModalSeverity"),
+  bugModalStatus: document.getElementById("bugModalStatus"),
+  bugModalBatch: document.getElementById("bugModalBatch"),
+  bugModalTask: document.getElementById("bugModalTask"),
+  bugModalCase: document.getElementById("bugModalCase"),
+  bugModalLink: document.getElementById("bugModalLink"),
+  bugModalNote: document.getElementById("bugModalNote"),
+  bugModalImagePreview: document.getElementById("bugModalImagePreview"),
+  bugModalPasteHint: document.getElementById("bugModalPasteHint"),
+  bugModalTrace: document.getElementById("bugModalTrace"),
+  bugModalFeedback: document.getElementById("bugModalFeedback"),
+  closeBugModal: document.getElementById("closeBugModal"),
+  cancelBugModal: document.getElementById("cancelBugModal"),
+  editBugModal: document.getElementById("editBugModal"),
+  deleteBugModal: document.getElementById("deleteBugModal"),
+  saveBugModal: document.getElementById("saveBugModal"),
   reportHero: document.getElementById("reportHero"),
   reportHealthCard: document.getElementById("reportHealthCard"),
   reportMetrics: document.getElementById("reportMetrics"),
@@ -225,6 +280,13 @@ const settings = {
 let uploadedFileContent = "";
 let editingBatchId = "";
 let editingTaskId = "";
+let activeExecutionCaseId = "";
+let activeBugEditorId = "";
+let bugModalRecordId = "";
+let bugModalSourceCaseId = "";
+let bugModalExistingImages = [];
+let bugModalPendingImages = [];
+let bugModalRemovedImageIds = [];
 let persistSharedTimer = 0;
 const buttonSuccessTimers = new WeakMap();
 const selfTestState = {
@@ -273,8 +335,27 @@ renderUiAutomationPanel();
 
 function bindEvents() {
   els.navLinks.forEach((link, index) => {
-    link.addEventListener("click", () => switchTab(link.dataset.tab));
+    link.addEventListener("click", () => {
+      switchTab(link.dataset.tab);
+      toggleMobileNavigation(false);
+    });
     link.addEventListener("keydown", (event) => handleNavigationKeydown(event, index));
+  });
+
+  els.topbarMenuBtn?.addEventListener("click", () => {
+    toggleMobileNavigation(!document.querySelector(".sidebar")?.classList.contains("is-open"));
+  });
+  els.sidebarBackdrop?.addEventListener("click", () => toggleMobileNavigation(false));
+  els.topbarSelfTest?.addEventListener("click", () => {
+    switchTab("upload");
+    els.runSelfTest?.click();
+  });
+  els.topbarSettings?.addEventListener("click", () => {
+    switchTab("upload");
+    window.setTimeout(() => {
+      els.apiKey?.focus();
+      els.apiKey?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
   });
 
   els.documentInput.addEventListener("change", handleFileUpload);
@@ -289,6 +370,32 @@ function bindEvents() {
   els.activeModuleSelect.addEventListener("change", handleActiveModuleChange);
   els.createBatchBtn.addEventListener("click", createBatch);
   els.createTaskBtn.addEventListener("click", createTask);
+  els.addVersionBtn?.addEventListener("click", () => openVersionModal());
+  els.versionSearchInput?.addEventListener("input", renderVersionManager);
+  els.versionStatusFilter?.addEventListener("change", renderVersionManager);
+  els.versionForm?.addEventListener("submit", saveVersionFromManager);
+  els.closeVersionModal?.addEventListener("click", closeVersionModal);
+  els.cancelVersionModal?.addEventListener("click", closeVersionModal);
+  els.versionModal?.addEventListener("click", (event) => {
+    if (event.target === els.versionModal) closeVersionModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.versionModal?.classList.contains("hidden-field")) {
+      closeVersionModal();
+    }
+    if (event.key === "Escape" && !els.bugModal?.classList.contains("hidden-field")) {
+      closeBugModal();
+    }
+  });
+  els.taskSearchInput?.addEventListener("input", renderTaskManager);
+  els.taskVersionFilter?.addEventListener("change", renderTaskManager);
+  els.goCreateTaskBtn?.addEventListener("click", () => {
+    switchTab("upload");
+    window.setTimeout(() => {
+      els.taskNameInput?.focus();
+      els.taskNameInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  });
   els.caseImportInput.addEventListener("change", handleCaseImport);
   els.automationCaseImportInput?.addEventListener("change", handleCaseImport);
   els.qualityBusinessTabs.forEach((button) => {
@@ -322,7 +429,25 @@ function bindEvents() {
     renderBugs();
   });
   els.bugTaskFilter.addEventListener("change", renderBugs);
-  els.addBug.addEventListener("click", createBugRecord);
+  els.bugSearchInput?.addEventListener("input", renderBugs);
+  els.bugSeverityFilter?.addEventListener("change", renderBugs);
+  els.bugWorkflowStatusFilter?.addEventListener("change", renderBugs);
+  els.addBug.addEventListener("click", () => openBugModal());
+  els.bugForm?.addEventListener("submit", saveBugFromModal);
+  els.bugModalNote?.addEventListener("paste", handleBugNotePaste);
+  els.bugModalImagePreview?.addEventListener("click", handleBugImagePreviewClick);
+  els.closeBugModal?.addEventListener("click", closeBugModal);
+  els.cancelBugModal?.addEventListener("click", closeBugModal);
+  els.editBugModal?.addEventListener("click", () => setBugModalMode("edit"));
+  els.deleteBugModal?.addEventListener("click", deleteBugFromModal);
+  els.bugModal?.addEventListener("click", (event) => {
+    if (event.target === els.bugModal) closeBugModal();
+  });
+  els.bugModalBatch?.addEventListener("change", () => refreshBugModalAssociations("batch"));
+  els.bugModalTask?.addEventListener("change", () => refreshBugModalAssociations("task"));
+  els.bugModalCase?.addEventListener("change", syncBugModalFromCase);
+  els.bugModalSeverity?.addEventListener("change", renderBugModalBadges);
+  els.bugModalStatus?.addEventListener("change", renderBugModalBadges);
   els.exportReport.addEventListener("click", exportReport);
   els.runSelfTest?.addEventListener("click", runSelfTest);
   els.checkApiKey?.addEventListener("click", () => saveApiSettings({ autoCheck: true }));
@@ -339,6 +464,7 @@ function bindEvents() {
 
 function hydrateInteractionUi() {
   const nav = document.querySelector(".nav");
+  hydrateNavigationChrome();
   nav?.setAttribute("role", "tablist");
   nav?.setAttribute("aria-label", "主要功能");
   nav?.setAttribute("aria-orientation", "vertical");
@@ -358,7 +484,53 @@ function hydrateInteractionUi() {
     }
   });
 
+  const activeLink = els.navLinks.find((link) => link.classList.contains("active"));
+  updateTopbarTitle(activeLink);
+
   hydrateFeedbackRegions();
+}
+
+function hydrateNavigationChrome() {
+  const iconPaths = {
+    upload: '<path d="M7 3.5h7l3 3V20H7z"></path><path d="M14 3.5V7h3M12 10v6M9 13h6"></path>',
+    quality: '<path d="M12 3.5 19 6v5.2c0 4.2-2.9 7.6-7 9.3-4.1-1.7-7-5.1-7-9.3V6z"></path><path d="m8.7 12 2.1 2.1 4.5-4.6"></path>',
+    tasks: '<path d="M8 4h11v16H8zM5 7h3M5 12h3M5 17h3"></path><path d="M11 9h5M11 14h5"></path>',
+    versions: '<path d="m12 3 8 4-8 4-8-4z"></path><path d="m4 12 8 4 8-4M4 17l8 4 8-4"></path>',
+    cases: '<path d="M8 4h11v16H8zM5 7H3m2 5H3m2 5H3"></path><path d="m11 9 1.5 1.5L16 7m-5 8 1.5 1.5L16 13"></path>',
+    automationCases: '<path d="m8 7-4 5 4 5m8-10 4 5-4 5M14 4l-4 16"></path>',
+    bugs: '<path d="M8 8h8v9a4 4 0 0 1-8 0zM9 8V6a3 3 0 0 1 6 0v2M4 11h4m8 0h4M4 16h4m8 0h4"></path>',
+    report: '<path d="M5 20V10h4v10zm5 0V4h4v16zm5 0v-7h4v7z"></path>'
+  };
+
+  els.navLinks.forEach((link) => {
+    if (link.querySelector(".nav-icon")) {
+      return;
+    }
+    const label = link.textContent.trim();
+    const icon = document.createElement("span");
+    icon.className = "nav-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = `<svg viewBox="0 0 24 24">${iconPaths[link.dataset.tab] || iconPaths.upload}</svg>`;
+    const text = document.createElement("span");
+    text.className = "nav-label";
+    text.textContent = label;
+    link.replaceChildren(icon, text);
+  });
+}
+
+function updateTopbarTitle(link) {
+  if (!els.topbarTitle || !link) {
+    return;
+  }
+  els.topbarTitle.textContent = link.querySelector(".nav-label")?.textContent || link.textContent.trim();
+}
+
+function toggleMobileNavigation(open) {
+  const sidebar = document.querySelector(".sidebar");
+  sidebar?.classList.toggle("is-open", open);
+  els.sidebarBackdrop?.classList.toggle("is-visible", open);
+  els.topbarMenuBtn?.setAttribute("aria-expanded", open ? "true" : "false");
+  document.body.classList.toggle("nav-open", open);
 }
 
 function hydrateFeedbackRegions(root = document) {
@@ -439,6 +611,11 @@ function simplifyUploadFlow() {
   els.generateCasesLocal?.remove();
   els.saveDocument?.remove();
 
+  const generateTitle = document.querySelector(".upload-stage-panel-generate > h3:first-child");
+  if (generateTitle) {
+    generateTitle.textContent = "3. 导入文档并生成用例";
+  }
+
   const actionWrap = els.generateCases?.parentElement;
   if (actionWrap && !actionWrap.querySelector("[data-action='download-case-template']")) {
     const templateButton = document.createElement("button");
@@ -504,6 +681,9 @@ function switchTab(tabId) {
     link.classList.toggle("active", isActive);
     link.setAttribute("aria-selected", isActive ? "true" : "false");
     link.tabIndex = isActive ? 0 : -1;
+    if (isActive) {
+      updateTopbarTitle(link);
+    }
   });
   els.panels.forEach((panel) => {
     const isActive = panel === targetPanel;
@@ -516,6 +696,7 @@ function switchTab(tabId) {
     targetPanel.classList.remove("entering");
   }, 260);
   els.sidebarBackToTop?.classList.toggle("hidden-field", tabId !== "upload");
+  toggleMobileNavigation(false);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1816,17 +1997,12 @@ function createBatch() {
 }
 
 function createTask() {
-  const batchId = els.taskBatchSelect.value;
-  const batch = getBatchById(batchId);
+  const batch = ensureDefaultTaskBatch();
   const name = els.taskNameInput.value.trim();
   const scope = els.taskScopeInput.value.trim();
   const existingTask = getTaskById(editingTaskId);
   const owner = existingTask?.owner || "";
 
-  if (!batch) {
-    setGenerationStatus("请先给任务选择关联版本。", "warn");
-    return;
-  }
   if (!name) {
     setGenerationStatus("请先填写任务名称。", "warn");
     return;
@@ -1876,6 +2052,17 @@ function createTask() {
   renderAll();
   setGenerationStatus(`${isEditing ? "已更新" : "已保存"}任务：${auditedTask.name}。下一步请生成测试用例。`, "ok");
   flashButtonSuccess(els.createTaskBtn, "保存成功");
+}
+
+function ensureDefaultTaskBatch() {
+  const editingTask = getTaskById(editingTaskId);
+  const existingBatch = getBatchById(editingTask?.batchId);
+  if (existingBatch) return existingBatch;
+
+  const defaultBatch = getOrCreateDefaultWorkspaceBatch();
+  state.activeBatchId = defaultBatch.id;
+  state.generationBatchId = defaultBatch.id;
+  return defaultBatch;
 }
 
 function autoResizeTextarea() {
@@ -2988,16 +3175,9 @@ function renderOnboarding() {
       current: flow.nextAction === "configure-bot"
     },
     {
-      key: "meta",
-      title: "建一个测试版本",
-      desc: "把本次测试归到一个版本里，例如 2026.07 回归或某个需求版本。",
-      done: flow.hasMeta,
-      current: flow.nextAction === "create-meta"
-    },
-    {
       key: "task",
-      title: "写清楚这次测什么",
-      desc: "创建测试任务，简单说明范围。新人只要按一个需求点建一个任务即可。",
+      title: "新建测试任务",
+      desc: "填写任务名称，简单说明这次需要测试的功能和范围。",
       done: flow.hasTask,
       current: flow.nextAction === "create-task"
     },
@@ -3046,7 +3226,7 @@ function renderOnboarding() {
 
 function getWorkflowState() {
   const hasBotConfig = Boolean(settings.apiKey && settings.apiReady);
-  const hasMeta = Boolean(state.activeBatchId && state.activeModuleId);
+  const hasMeta = Boolean(state.activeBatchId);
   const hasTask = Boolean(state.activeTaskId && state.tasks.some((item) => item.id === state.activeTaskId));
   const hasSource = Boolean(uploadedFileContent.trim() || els.sourceUrl.value.trim() || els.sourceText?.value.trim() || state.documents.length);
   const hasCases = Boolean(state.cases.length);
@@ -3068,22 +3248,6 @@ function getWorkflowState() {
       actionLabel: "先配置个人 Key",
       tipTitle: "先配置个人 Key",
       tipBody: "先填写你自己的 API Key 并检测通过。检测通过后，当前浏览器会自动保留，下次刷新无需重新输入。"
-    };
-  }
-
-  if (!hasMeta) {
-    return {
-      hasBotConfig,
-      hasMeta,
-      hasTask,
-      hasSource,
-      hasCases,
-      hasExecutionOrBug,
-      hasReportData,
-      nextAction: "create-meta",
-      actionLabel: "先保存当前版本",
-      tipTitle: "先建立测试范围",
-      tipBody: "先选择当前业务、填写版本号。后面生成的用例、BUG、报告都会自动归到这里。"
     };
   }
 
@@ -3184,7 +3348,6 @@ function getWorkflowState() {
 
 function getStepAction(stepKey) {
   if (stepKey === "bot") return "configure-bot";
-  if (stepKey === "meta") return "create-meta";
   if (stepKey === "task") return "create-task";
   if (stepKey === "source") return "prepare-source";
   if (stepKey === "cases") return "generate-cases";
@@ -3194,7 +3357,6 @@ function getStepAction(stepKey) {
 
 function getStepButtonLabel(stepKey) {
   if (stepKey === "bot") return "去配置";
-  if (stepKey === "meta") return "去创建版本";
   if (stepKey === "task") return "去创建任务";
   if (stepKey === "source") return "去准备内容";
   if (stepKey === "cases") return "去生成用例";
@@ -3282,120 +3444,454 @@ function renderTaskManager() {
   if (!els.taskManagerList) {
     return;
   }
-  els.taskManagerList.innerHTML = "";
-}
+  const search = els.taskSearchInput?.value.trim().toLowerCase() || "";
+  const versionFilter = els.taskVersionFilter?.value || "";
+  const visibleTasks = state.tasks.filter((task) => {
+    const batch = getBatchById(task.batchId);
+    const isLinked = Boolean(batch && !batch.systemManaged);
+    const matchesSearch = !search || [task.name, task.scope, batch?.version]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+    const matchesVersion = !versionFilter
+      || (versionFilter === "linked" && isLinked)
+      || (versionFilter === "unlinked" && !isLinked);
+    return matchesSearch && matchesVersion;
+  });
 
-function renderVersionManager() {
-  if (!state.batches.length) {
-    els.versionManagerList.innerHTML = `
-      <div class="empty-state empty-state-rich">
-        <strong>还没有版本记录</strong>
-        <p>先在“文档与生成”页按 4 步保存一个版本，这里就会出现。</p>
+  if (els.taskManagerCount) {
+    els.taskManagerCount.textContent = `${visibleTasks.length} 个任务`;
+  }
+
+  if (!state.tasks.length) {
+    els.taskManagerList.innerHTML = `
+      <div class="empty-state empty-state-rich task-table-empty">
+        <strong>还没有测试任务</strong>
+        <p>先在“用例生成”页面创建任务，保存后会自动出现在这里。</p>
+        <button class="primary-button" type="button" data-create-task>新建第一个任务</button>
+      </div>
+    `;
+    els.taskManagerList.querySelector("[data-create-task]")?.addEventListener("click", () => els.goCreateTaskBtn?.click());
+    return;
+  }
+
+  if (!visibleTasks.length) {
+    els.taskManagerList.innerHTML = `
+      <div class="empty-state empty-state-rich task-table-empty">
+        <strong>没有匹配的任务</strong>
+        <p>尝试清空搜索词或切换版本归属筛选。</p>
       </div>
     `;
     return;
   }
 
-  els.versionManagerList.innerHTML = "";
-  state.batches.forEach((batch) => {
+  els.taskManagerList.innerHTML = `
+    <table class="task-table">
+      <thead>
+        <tr>
+          <th>任务名称</th>
+          <th>测试范围</th>
+          <th>关联版本</th>
+          <th>状态</th>
+          <th>创建时间</th>
+          <th class="task-action-column">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${visibleTasks.map((task) => renderTaskTableRow(task)).join("")}
+      </tbody>
+    </table>
+  `;
+
+  els.taskManagerList.querySelectorAll("[data-task-action]").forEach((button) => {
+    button.addEventListener("click", () => handleTaskAction(button.dataset.taskAction, button.dataset.taskId));
+  });
+}
+
+function renderTaskTableRow(task) {
+  const batch = getBatchById(task.batchId);
+  const isLinked = Boolean(batch && !batch.systemManaged);
+  const isActive = task.id === state.activeTaskId;
+  const isReadonly = isTaskReadonly(task);
+
+  return `
+    <tr class="task-table-row ${isActive ? "is-active" : ""}">
+      <td data-label="任务名称">
+        <div class="task-name-cell">
+          <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+          ${isActive ? `<span class="badge subtle">当前</span>` : ""}
+        </div>
+      </td>
+      <td data-label="测试范围"><p class="task-scope-cell">${escapeHtml(task.scope || "未填写测试范围")}</p></td>
+      <td data-label="关联版本">
+        ${isLinked
+    ? `<span class="task-version-linked">${escapeHtml(batch.version || "未命名版本")}</span>`
+    : `<span class="task-version-unlinked">待关联</span>`}
+      </td>
+      <td data-label="状态"><span class="version-status version-status-${task.status === "已完成" ? "success" : "active"}">${escapeHtml(task.status || "进行中")}</span></td>
+      <td data-label="创建时间">${escapeHtml(formatAuditTime(task.createdAt))}</td>
+      <td data-label="操作" class="task-action-column">
+        <div class="task-row-actions">
+          ${!isActive && !isReadonly ? `<button class="table-link" type="button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
+          ${isReadonly
+    ? `<span class="task-readonly-label">已完成，只读</span>`
+    : `<button class="table-link" type="button" data-task-action="edit" data-task-id="${task.id}">编辑</button>
+               <button class="table-link task-delete-link" type="button" data-task-action="delete" data-task-id="${task.id}">删除</button>`}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderVersionManager() {
+  const search = els.versionSearchInput?.value.trim().toLowerCase() || "";
+  const status = els.versionStatusFilter?.value || "";
+  const managedBatches = state.batches.filter((batch) => !batch.systemManaged);
+  const visibleBatches = managedBatches.filter((batch) => {
     const relatedTasks = state.tasks.filter((task) => task.batchId === batch.id);
-    const isActive = batch.id === state.activeBatchId;
-    const isSuspended = batch.status === "已挂起";
-    const isCompleted = batch.status === "已完成";
-    const node = document.createElement("article");
-    node.className = "list-card version-card";
-    node.innerHTML = `
-      <div class="version-card-shell">
-        <div class="version-card-header">
-          <div class="version-card-title-block">
-            <div class="version-card-kicker">版本</div>
-            <h3 class="case-title-text">${escapeHtml(batch.version || "未命名版本")}</h3>
-            <div class="card-meta version-card-badges">
-              <span class="badge subtle ${isCompleted ? "tone-green" : isSuspended ? "tone-gray" : "tone-orange"}">${escapeHtml(batch.status || "进行中")}</span>
-              <span class="badge subtle">${relatedTasks.length} 个任务</span>
-              ${isActive ? `<span class="badge tone-orange">当前版本</span>` : ""}
-            </div>
-          </div>
-          <div class="version-card-summary">
-            <div class="version-summary-chip">
-              <span>可操作状态</span>
-              <strong>${escapeHtml(isCompleted ? "只读查看" : isSuspended ? "已挂起" : "可继续编辑")}</strong>
-            </div>
-          </div>
-        </div>
+    const matchesSearch = !search || [batch.version, ...relatedTasks.map((task) => task.name)]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+    return matchesSearch && (!status || batch.status === status);
+  });
 
-        <div class="version-card-toolbar">
-          <div class="card-actions version-card-actions">
-            <button class="ghost-button tiny-button toggle-version-detail">展开详情</button>
-            ${!isActive && !isSuspended ? `<button class="ghost-button tiny-button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
-            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : `<span class="summary-label version-lock-text">已完成版本仅支持查看</span>`}
-            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>` : ""}
-            ${!isCompleted ? `<button class="ghost-button tiny-button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复" : "挂起"}</button>` : ""}
-            ${isCompleted ? `<span class="summary-label version-lock-text">已完成版本不可删除</span>` : `<button class="danger-link" data-version-action="delete" data-version-id="${batch.id}">删除</button>`}
-          </div>
-        </div>
+  if (els.versionManagerCount) {
+    els.versionManagerCount.textContent = `${visibleBatches.length} 个版本`;
+  }
 
-        <div class="version-card-detail hidden-field">
-          <div class="version-card-body">
-            <div class="summary-block version-owner-panel">
-              <span class="summary-label">时间记录</span>
-              <p>创建时间：${escapeHtml(formatAuditTime(batch.createdAt))}</p>
-              <p>完成时间：${escapeHtml(batch.completedAt ? formatAuditTime(batch.completedAt) : "未完成")}</p>
-            </div>
-          </div>
-          <div class="version-task-section">
-            <div class="version-task-head">
-              <strong>测试任务列表</strong>
-              <span class="summary-label">同版本任务统一收在这里管理</span>
-            </div>
-            <div class="version-task-list">
-              ${relatedTasks.length ? relatedTasks.map((task) => {
-      const isTaskActive = task.id === state.activeTaskId;
-      const taskReadonly = isCompleted;
-      return `
-                  <article class="version-task-card">
-                    <div class="version-task-top">
-                      <div>
-                        <span class="version-task-kicker">测试任务</span>
-                        <strong>${escapeHtml(task.name || "未命名任务")}</strong>
-                        <div class="card-meta">
-                          ${isTaskActive ? `<span class="badge tone-orange">当前任务</span>` : ""}
-                        </div>
-                      </div>
-                      <div class="card-actions version-task-actions">
-                        ${!isTaskActive ? `<button class="ghost-button tiny-button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
-                        ${!taskReadonly ? `<button class="ghost-button tiny-button" data-task-action="edit" data-task-id="${task.id}">编辑</button>` : `<span class="summary-label version-lock-text">任务仅支持查看</span>`}
-                        ${!taskReadonly ? `<button class="danger-link" data-task-action="delete" data-task-id="${task.id}">删除</button>` : ""}
-                      </div>
-                    </div>
-                    <div class="version-task-grid">
-                      <div class="summary-block">
-                        <span class="summary-label">测试内容</span>
-                        <p>${escapeHtml(task.scope || "未填写")}</p>
-                      </div>
-                      <div class="summary-block">
-                        <span class="summary-label">时间记录</span>
-                        <div class="trace-meta compact-trace-meta">
-                          ${renderTraceMetaHtml(task)}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                `;
-    }).join("") : `
-                <div class="empty-state empty-state-rich compact-empty-state">
-                  <strong>这个版本还没有任务</strong>
-                  <p>先回到文档与生成页，为当前版本新增测试任务。</p>
-                </div>
-              `}
-            </div>
-          </div>
-        </div>
+  if (!managedBatches.length) {
+    els.versionManagerList.innerHTML = `
+      <div class="empty-state empty-state-rich version-table-empty">
+        <strong>还没有正式版本</strong>
+        <p>点击“新增版本”，可以同时把用例生成页创建的新任务关联进来。</p>
+        <button class="primary-button" type="button" data-open-version-modal>新增第一个版本</button>
       </div>
     `;
-    bindVersionCard(node, batch.id, relatedTasks.map((task) => task.id));
-    els.versionManagerList.appendChild(node);
+    els.versionManagerList.querySelector("[data-open-version-modal]")?.addEventListener("click", () => openVersionModal());
+    return;
+  }
+
+  if (!visibleBatches.length) {
+    els.versionManagerList.innerHTML = `
+      <div class="empty-state empty-state-rich version-table-empty">
+        <strong>没有匹配的版本</strong>
+        <p>尝试清空搜索词或切换状态筛选。</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.versionManagerList.innerHTML = `
+    <table class="version-table">
+      <thead>
+        <tr>
+          <th>版本号</th>
+          <th>状态</th>
+          <th>关联任务</th>
+          <th>创建时间</th>
+          <th>完成时间</th>
+          <th class="version-action-column">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${visibleBatches.map((batch) => renderVersionTableRows(batch)).join("")}
+      </tbody>
+    </table>
+  `;
+
+  els.versionManagerList.querySelectorAll("[data-version-detail-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const detailRow = els.versionManagerList.querySelector(`[data-version-detail-row="${button.dataset.versionDetailToggle}"]`);
+      const opening = detailRow?.classList.contains("hidden-field");
+      detailRow?.classList.toggle("hidden-field", !opening);
+      button.textContent = opening ? "收起" : "详情";
+    });
   });
+  els.versionManagerList.querySelectorAll("[data-version-action]").forEach((button) => {
+    button.addEventListener("click", () => handleVersionAction(button.dataset.versionAction, button.dataset.versionId));
+  });
+  els.versionManagerList.querySelectorAll("[data-task-action]").forEach((button) => {
+    button.addEventListener("click", () => handleTaskAction(button.dataset.taskAction, button.dataset.taskId));
+  });
+  els.versionManagerList.querySelectorAll("[data-task-detail-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const detail = els.versionManagerList.querySelector(`[data-task-readonly-detail="${button.dataset.taskDetailToggle}"]`);
+      const opening = detail?.classList.contains("hidden-field");
+      detail?.classList.toggle("hidden-field", !opening);
+      button.textContent = opening ? "收起详情" : "查看详情";
+    });
+  });
+}
+
+function renderVersionTableRows(batch) {
+  const relatedTasks = state.tasks.filter((task) => task.batchId === batch.id);
+  const isActive = batch.id === state.activeBatchId;
+  const isSuspended = batch.status === "已挂起";
+  const isCompleted = batch.status === "已完成";
+  const taskPreview = relatedTasks.slice(0, 2).map((task) => `<span>${escapeHtml(task.name || "未命名任务")}</span>`).join("");
+  const remainingTaskCount = Math.max(0, relatedTasks.length - 2);
+
+  return `
+    <tr class="version-table-row ${isActive ? "is-active" : ""}">
+      <td data-label="版本号">
+        <div class="version-name-cell">
+          <strong>${escapeHtml(batch.version || "未命名版本")}</strong>
+          ${isActive ? `<span class="badge subtle">当前</span>` : ""}
+        </div>
+      </td>
+      <td data-label="状态"><span class="version-status version-status-${getVersionStatusTone(batch.status)}">${escapeHtml(batch.status || "进行中")}</span></td>
+      <td data-label="关联任务">
+        <div class="version-task-preview">
+          ${taskPreview || `<span class="version-task-empty">暂未关联</span>`}
+          ${remainingTaskCount ? `<span class="version-task-more">+${remainingTaskCount}</span>` : ""}
+        </div>
+      </td>
+      <td data-label="创建时间">${escapeHtml(formatAuditTime(batch.createdAt))}</td>
+      <td data-label="完成时间">${escapeHtml(batch.completedAt ? formatAuditTime(batch.completedAt) : "-")}</td>
+      <td data-label="操作" class="version-action-column">
+        <div class="version-row-actions">
+          ${!isCompleted ? `<button class="table-link version-link-task-button" type="button" data-version-action="link-tasks" data-version-id="${batch.id}">关联任务</button>` : ""}
+          <button class="table-link" type="button" data-version-detail-toggle="${batch.id}">详情</button>
+          ${!isCompleted ? `<button class="table-link" type="button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : ""}
+          ${!isCompleted && !isActive && !isSuspended ? `<button class="table-link" type="button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
+          ${!isCompleted ? `
+            <details class="version-more-menu">
+              <summary aria-label="更多版本操作">更多</summary>
+              <div class="version-more-menu-list">
+                <button type="button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>
+                <button type="button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复版本" : "挂起版本"}</button>
+                <button class="danger-menu-action" type="button" data-version-action="delete" data-version-id="${batch.id}">删除版本</button>
+              </div>
+            </details>
+          ` : ""}
+        </div>
+      </td>
+    </tr>
+    <tr class="version-detail-row hidden-field" data-version-detail-row="${batch.id}">
+      <td colspan="6">
+        <div class="version-table-detail">
+          <div class="version-table-detail-head">
+            <strong>关联任务（${relatedTasks.length}）</strong>
+            ${!isCompleted ? `<button class="ghost-button tiny-button" type="button" data-version-action="edit" data-version-id="${batch.id}">调整关联</button>` : ""}
+          </div>
+          <div class="version-table-task-list">
+            ${relatedTasks.length ? relatedTasks.map((task) => isCompleted ? `
+              <article class="version-table-task-item completed-task-item">
+                <div class="completed-task-summary">
+                  <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+                  <span class="version-status version-status-success">${escapeHtml(task.status || "已完成")}</span>
+                </div>
+                <button class="table-link" type="button" data-task-detail-toggle="${task.id}">查看详情</button>
+                <div class="completed-task-detail hidden-field" data-task-readonly-detail="${task.id}">
+                  <div><span>测试范围</span><p>${escapeHtml(task.scope || "未填写测试范围")}</p></div>
+                  <div><span>创建时间</span><p>${escapeHtml(formatAuditTime(task.createdAt))}</p></div>
+                  <div><span>更新时间</span><p>${escapeHtml(formatAuditTime(task.updatedAt))}</p></div>
+                </div>
+              </article>
+            ` : `
+              <article class="version-table-task-item">
+                <div>
+                  <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+                  <p>${escapeHtml(task.scope || "未填写测试范围")}</p>
+                </div>
+                <div class="version-row-actions">
+                  ${task.id !== state.activeTaskId && task.status !== "已完成" ? `<button class="table-link" type="button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : task.id === state.activeTaskId ? `<span class="badge subtle">当前任务</span>` : ""}
+                  ${task.status !== "已完成" ? `<button class="table-link" type="button" data-task-action="edit" data-task-id="${task.id}">编辑任务</button>` : `<span class="task-readonly-label">任务已完成</span>`}
+                </div>
+              </article>
+            `).join("") : `<p class="version-detail-empty">当前版本还没有关联任务，可点击“调整关联”添加。</p>`}
+          </div>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function getVersionStatusTone(status) {
+  if (status === "已完成") return "success";
+  if (status === "已挂起") return "muted";
+  return "active";
+}
+
+function isTaskReadonly(task) {
+  const batch = getBatchById(task?.batchId);
+  return task?.status === "已完成" || batch?.status === "已完成";
+}
+
+function openVersionModal(batchId = "", mode = "edit") {
+  const batch = getBatchById(batchId);
+  const isLinkMode = Boolean(batch && mode === "link-tasks");
+  editingBatchId = batch?.id || "";
+  els.versionModal.dataset.mode = isLinkMode ? "link-tasks" : batch ? "edit" : "create";
+  els.versionModalTitle.textContent = isLinkMode ? `关联任务 · ${batch.version}` : batch ? "编辑版本" : "新增版本";
+  els.versionNumberInput.value = batch?.version || "";
+  els.versionNumberInput.readOnly = isLinkMode;
+  els.versionFormFeedback.textContent = isLinkMode
+    ? "勾选需要归入此版本的任务，取消勾选会将任务放回待关联列表。"
+    : batch
+    ? "修改版本号，或调整当前版本关联的测试任务。"
+    : "填写版本号，可选择需要关联的新建任务。";
+  els.versionFormFeedback.className = "inline-feedback";
+
+  const candidateTasks = state.tasks.filter((task) => {
+    const linkedBatch = getBatchById(task.batchId);
+    return task.batchId === batch?.id || !task.batchId || linkedBatch?.systemManaged;
+  });
+  const selectedTaskIds = new Set(state.tasks.filter((task) => task.batchId === batch?.id).map((task) => task.id));
+
+  els.versionTaskOptions.innerHTML = candidateTasks.length ? candidateTasks.map((task) => {
+    const linkedBatch = getBatchById(task.batchId);
+    const sourceLabel = task.batchId === batch?.id
+      ? "当前版本"
+      : linkedBatch?.systemManaged ? "待归档" : "未关联";
+    return `
+      <label class="version-task-option">
+        <input type="checkbox" value="${escapeHtml(task.id)}" ${selectedTaskIds.has(task.id) ? "checked" : ""}>
+        <span class="version-task-option-copy">
+          <strong>${escapeHtml(task.name || "未命名任务")}</strong>
+          <small>${escapeHtml(task.scope || "未填写测试范围")}</small>
+        </span>
+        <span class="badge subtle">${sourceLabel}</span>
+      </label>
+    `;
+  }).join("") : `
+    <div class="version-task-options-empty">
+      <strong>暂无待关联任务</strong>
+      <p>可以先到“用例生成”中新建任务，也可以先创建空版本。</p>
+    </div>
+  `;
+
+  els.versionTaskOptions.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.addEventListener("change", updateVersionTaskSelectionCount);
+  });
+  updateVersionTaskSelectionCount();
+  const saveButton = document.getElementById("saveVersionBtn");
+  if (saveButton) saveButton.textContent = isLinkMode ? "保存关联" : "保存版本";
+  els.versionModal.classList.remove("hidden-field");
+  document.body.classList.add("dialog-open");
+  window.setTimeout(() => {
+    if (isLinkMode) {
+      els.versionTaskOptions.querySelector('input[type="checkbox"]')?.focus();
+    } else {
+      els.versionNumberInput.focus();
+    }
+  }, 0);
+}
+
+function closeVersionModal() {
+  els.versionModal?.classList.add("hidden-field");
+  document.body.classList.remove("dialog-open");
+  editingBatchId = "";
+  if (els.versionNumberInput) els.versionNumberInput.readOnly = false;
+  els.versionForm?.reset();
+}
+
+function updateVersionTaskSelectionCount() {
+  const selectedCount = els.versionTaskOptions?.querySelectorAll('input[type="checkbox"]:checked').length || 0;
+  if (els.versionTaskSelectionCount) {
+    els.versionTaskSelectionCount.textContent = `已选 ${selectedCount} 项`;
+  }
+}
+
+function saveVersionFromManager(event) {
+  event.preventDefault();
+  const version = els.versionNumberInput.value.trim();
+  const existingBatch = getBatchById(editingBatchId);
+  const duplicateBatch = state.batches.find((item) => (
+    !item.systemManaged && item.version === version && item.id !== editingBatchId
+  ));
+
+  if (!version) {
+    els.versionFormFeedback.textContent = "请填写版本号后再保存。";
+    els.versionFormFeedback.className = "inline-feedback warn";
+    els.versionNumberInput.focus();
+    return;
+  }
+  if (duplicateBatch) {
+    els.versionFormFeedback.textContent = `版本号 ${version} 已存在，请换一个版本号。`;
+    els.versionFormFeedback.className = "inline-feedback warn";
+    els.versionNumberInput.focus();
+    return;
+  }
+
+  const isEditing = Boolean(existingBatch);
+  const batch = isEditing
+    ? applyUpdateAuditFields({ ...existingBatch, version })
+    : applyCreateAuditFields({
+      id: `batch-${Date.now()}`,
+      name: "",
+      version,
+      scope: "",
+      moduleId: "",
+      moduleName: "",
+      status: "进行中"
+    });
+  const selectedTaskIds = new Set(
+    [...els.versionTaskOptions.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value)
+  );
+  const previouslyLinkedTaskIds = new Set(
+    state.tasks.filter((task) => task.batchId === batch.id).map((task) => task.id)
+  );
+
+  if (isEditing) {
+    state.batches = state.batches.map((item) => (item.id === batch.id ? batch : item));
+  } else {
+    state.batches.unshift(batch);
+  }
+
+  selectedTaskIds.forEach((taskId) => moveTaskToBatch(taskId, batch));
+  const detachedTaskIds = [...previouslyLinkedTaskIds].filter((taskId) => !selectedTaskIds.has(taskId));
+  if (detachedTaskIds.length) {
+    const defaultBatch = getOrCreateDefaultWorkspaceBatch();
+    detachedTaskIds.forEach((taskId) => moveTaskToBatch(taskId, defaultBatch));
+  }
+
+  state.activeBatchId = batch.id;
+  state.generationBatchId = batch.id;
+  state.activeTaskId = [...selectedTaskIds][0] || state.tasks.find((task) => task.batchId === batch.id)?.id || "";
+  persist();
+  closeVersionModal();
+  renderAll();
+  setGenerationStatus(`${isEditing ? "已更新" : "已新增"}版本：${version}，关联 ${selectedTaskIds.size} 个任务。`, "ok");
+}
+
+function getOrCreateDefaultWorkspaceBatch() {
+  const existingBatch = state.batches.find((item) => item.systemManaged || item.version === DEFAULT_WORKSPACE_VERSION);
+  if (existingBatch) {
+    return existingBatch;
+  }
+  const defaultBatch = applyCreateAuditFields({
+    id: "batch-default-workspace",
+    name: "",
+    version: DEFAULT_WORKSPACE_VERSION,
+    scope: "",
+    moduleId: "",
+    moduleName: "",
+    status: "进行中",
+    systemManaged: true
+  });
+  state.batches.push(defaultBatch);
+  return defaultBatch;
+}
+
+function moveTaskToBatch(taskId, batch) {
+  const task = getTaskById(taskId);
+  if (!task || !batch) {
+    return;
+  }
+  const batchName = formatBatchLabel(batch);
+  const nextTask = applyUpdateAuditFields({
+    ...task,
+    batchId: batch.id,
+    batchVersion: batch.version || "",
+    batchName,
+    moduleId: batch.moduleId || "",
+    moduleName: batch.moduleName || batch.name || ""
+  });
+  state.tasks = state.tasks.map((item) => (item.id === taskId ? nextTask : item));
+  state.cases = state.cases.map((item) => (
+    item.taskId === taskId ? { ...item, batchId: batch.id, batchVersion: batch.version || "", batchName } : item
+  ));
+  state.bugs = state.bugs.map((item) => (
+    item.taskId === taskId ? { ...item, batchId: batch.id, batchVersion: batch.version || "", batchName } : item
+  ));
 }
 
 function bindVersionCard(node, batchId, taskIds = []) {
@@ -3432,7 +3928,7 @@ function handleVersionAction(action, batchId) {
     return;
   }
 
-  if (batch.status === "已完成" && ["edit", "suspend", "resume", "delete"].includes(action)) {
+  if (batch.status === "已完成" && ["edit", "link-tasks", "suspend", "resume", "delete"].includes(action)) {
     setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，只支持查看。`, "warn");
     return;
   }
@@ -3449,14 +3945,12 @@ function handleVersionAction(action, batchId) {
   }
 
   if (action === "edit") {
-    editingBatchId = batch.id;
-    els.batchVersionInput.value = batch.version || "";
-    els.activeModuleSelect.value = batch.moduleId || "";
-    els.createBatchBtn.textContent = "保存版本修改";
-    autoResizeTextarea();
-    switchTab("upload");
-    els.batchVersionInput.focus();
-    setGenerationStatus(`正在编辑版本：${formatBatchLabel(batch)}。`, "neutral");
+    openVersionModal(batch.id);
+    return;
+  }
+
+  if (action === "link-tasks") {
+    openVersionModal(batch.id, "link-tasks");
     return;
   }
 
@@ -3542,8 +4036,10 @@ function handleTaskAction(action, taskId) {
   }
   const batch = getBatchById(task.batchId);
 
-  if (batch?.status === "已完成" && ["edit", "delete"].includes(action)) {
-    setGenerationStatus(`版本 ${formatBatchLabel(batch)} 已完成，已有任务只支持查看。`, "warn");
+  if (isTaskReadonly(task) && ["activate", "edit", "delete"].includes(action)) {
+    setGenerationStatus(task.status === "已完成"
+      ? `任务 ${task.name || "未命名任务"} 已完成，只支持查看。`
+      : `版本 ${formatBatchLabel(batch)} 已完成，已有任务只支持查看。`, "warn");
     return;
   }
 
@@ -3572,6 +4068,10 @@ function handleTaskAction(action, taskId) {
   }
 
   if (action === "delete") {
+    const confirmed = window.confirm(`确认删除任务“${task.name || "未命名任务"}”？相关用例和 BUG 记录也会一起删除。`);
+    if (!confirmed) {
+      return;
+    }
     state.tasks = state.tasks.filter((item) => item.id !== task.id);
     state.cases = state.cases.filter((item) => item.taskId !== task.id);
     state.bugs = state.bugs.filter((item) => item.taskId !== task.id);
@@ -3714,7 +4214,9 @@ function formatTaskBatchLabel(batch) {
 }
 
 function formatTaskLabel(task) {
-  return [task.name || "未命名任务", task.batchVersion || getBatchVersionById(task.batchId)].filter(Boolean).join(" / ");
+  const batch = getBatchById(task.batchId);
+  const version = batch?.systemManaged ? "" : task.batchVersion || batch?.version || "";
+  return [task.name || "未命名任务", version].filter(Boolean).join(" / ");
 }
 
 function getBatchById(batchId) {
@@ -4393,11 +4895,18 @@ function getFilteredAutomationCasesForView() {
 function getFilteredBugs() {
   const batchFilter = els.bugBatchFilter.value;
   const taskFilter = els.bugTaskFilter.value;
+  const search = els.bugSearchInput?.value.trim().toLowerCase() || "";
+  const severityFilter = els.bugSeverityFilter?.value || "";
+  const statusFilter = els.bugWorkflowStatusFilter?.value || "";
 
   return state.bugs.filter((bug) => {
     const byBatch = matchesBatchFilter(bug, batchFilter);
     const byTask = !taskFilter || bug.taskName === taskFilter;
-    return byBatch && byTask;
+    const bySearch = !search || [bug.title, bug.note, bug.batchVersion, bug.taskName]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+    const bySeverity = !severityFilter || bug.severity === severityFilter;
+    const byStatus = !statusFilter || bug.status === statusFilter;
+    return byBatch && byTask && bySearch && bySeverity && byStatus;
   });
 }
 
@@ -4578,6 +5087,214 @@ function renderQuickStats() {
 }
 
 function renderCases() {
+  if (!els.caseList || !els.caseExecutionWorkspace) {
+    return;
+  }
+
+  const filtered = getFilteredCasesForView();
+  const batchFilter = els.caseBatchFilter.value;
+  const taskFilter = els.caseTaskFilter.value;
+  const progressScope = state.cases.filter((item) => (
+    matchesBatchFilter(item, batchFilter) && (!taskFilter || item.taskName === taskFilter)
+  ));
+  renderManualExecutionProgress(progressScope);
+
+  if (els.caseBrowserCount) {
+    els.caseBrowserCount.textContent = `${filtered.length} 条`;
+  }
+
+  if (!filtered.some((item) => item.id === activeExecutionCaseId)) {
+    activeExecutionCaseId = filtered[0]?.id || "";
+  }
+
+  if (!filtered.length) {
+    els.caseList.innerHTML = `
+      <div class="empty-state compact-execution-empty">
+        <strong>${state.cases.length ? "没有匹配的用例" : "还没有测试用例"}</strong>
+        <p>${state.cases.length ? "请调整上方筛选条件。" : "请先生成用例或上传 CSV。"}</p>
+      </div>
+    `;
+    els.caseExecutionWorkspace.innerHTML = `
+      <div class="case-runner-empty">
+        <span class="case-runner-empty-icon">✓</span>
+        <strong>等待选择用例</strong>
+        <p>有可执行用例后，会在这里展示步骤和执行按钮。</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.caseList.innerHTML = filtered.map((item, index) => {
+    const status = item.executionStatus || "未执行";
+    const tone = getManualExecutionTone(status);
+    return `
+      <button class="case-browser-item status-${tone} ${item.id === activeExecutionCaseId ? "is-active" : ""}" type="button" data-execution-case-id="${item.id}">
+        <span class="case-browser-index">${String(index + 1).padStart(2, "0")}</span>
+        <span class="case-browser-item-copy">
+          <strong>${escapeHtml(item.title || "未命名用例")}</strong>
+          <small>${escapeHtml(item.priority || "P2")} · ${escapeHtml(item.taskName || "未分任务")}</small>
+        </span>
+        <span class="case-browser-status status-${tone}">${escapeHtml(status)}</span>
+      </button>
+    `;
+  }).join("");
+
+  els.caseList.querySelectorAll("[data-execution-case-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeExecutionCaseId = button.dataset.executionCaseId;
+      renderCases();
+    });
+  });
+
+  const activeCase = filtered.find((item) => item.id === activeExecutionCaseId) || filtered[0];
+  renderActiveCaseExecution(activeCase, filtered);
+}
+
+function renderManualExecutionProgress(cases) {
+  const total = cases.length;
+  const counts = {
+    passed: cases.filter((item) => item.executionStatus === "通过").length,
+    failed: cases.filter((item) => item.executionStatus === "失败").length,
+    blocked: cases.filter((item) => item.executionStatus === "阻塞").length
+  };
+  const completed = counts.passed + counts.failed + counts.blocked;
+  const pending = Math.max(0, total - completed);
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+
+  els.caseProgressPercent.textContent = `${percent}%`;
+  els.caseProgressSummary.textContent = `已完成 ${completed} / ${total} 条`;
+  els.caseProgressBar.style.width = `${percent}%`;
+  els.caseProgressStats.innerHTML = `
+    <span class="progress-stat stat-passed"><i></i>通过 <strong>${counts.passed}</strong></span>
+    <span class="progress-stat stat-failed"><i></i>失败 <strong>${counts.failed}</strong></span>
+    <span class="progress-stat stat-blocked"><i></i>阻塞 <strong>${counts.blocked}</strong></span>
+    <span class="progress-stat stat-pending"><i></i>未执行 <strong>${pending}</strong></span>
+  `;
+}
+
+function renderActiveCaseExecution(item, filteredCases) {
+  const status = item.executionStatus || "未执行";
+  const tone = getManualExecutionTone(status);
+  const currentIndex = filteredCases.findIndex((caseItem) => caseItem.id === item.id);
+  const previousCase = filteredCases[currentIndex - 1];
+  const nextCase = filteredCases[currentIndex + 1];
+
+  els.caseExecutionWorkspace.innerHTML = `
+    <article class="focused-case-runner status-${tone}">
+      <header class="focused-case-head">
+        <div>
+          <div class="focused-case-eyebrow">
+            <span>当前执行 · ${currentIndex + 1}/${filteredCases.length}</span>
+            <span class="focused-case-status status-${tone}">${escapeHtml(status)}</span>
+          </div>
+          <h3>${escapeHtml(item.title || "未命名用例")}</h3>
+          <div class="focused-case-meta">
+            <span>${escapeHtml(item.batchVersion || "未带版本")}</span>
+            <span>${escapeHtml(item.taskName || "未分任务")}</span>
+            <span>${escapeHtml(item.priority || "P2")}</span>
+          </div>
+        </div>
+        <button class="ghost-button tiny-button" type="button" data-delete-current-case>删除用例</button>
+      </header>
+
+      <div class="focused-case-content">
+        <section class="execution-detail-block">
+          <span>前置条件</span>
+          <pre>${escapeHtml(item.preconditions || "无特殊前置条件")}</pre>
+        </section>
+        <section class="execution-detail-block execution-steps-block">
+          <span>测试步骤</span>
+          <pre>${escapeHtml(item.steps || "未填写测试步骤")}</pre>
+        </section>
+        <section class="execution-detail-block expected-result-block">
+          <span>预期结果</span>
+          <pre>${escapeHtml(item.expected || "未填写预期结果")}</pre>
+        </section>
+      </div>
+
+      <label class="focused-execution-note">
+        <span>执行备注</span>
+        <textarea rows="3" placeholder="记录实际结果、异常现象或补充信息">${escapeHtml(item.executionNote || "")}</textarea>
+      </label>
+
+      <div class="execution-primary-actions">
+        <button class="execution-start-button" type="button" data-start-execution>开始执行</button>
+        <button class="execution-result-button result-pass" type="button" data-case-result="通过">通过</button>
+        <button class="execution-result-button result-fail" type="button" data-case-result="失败">失败</button>
+      </div>
+      <div class="execution-secondary-actions">
+        <button class="ghost-button" type="button" data-case-result="未执行">重置为未执行</button>
+        <button class="ghost-button blocked-action" type="button" data-case-result="阻塞">标记阻塞</button>
+        ${status === "失败" ? `<button class="ghost-button case-bug-action" type="button" data-current-case-to-bug>转为 BUG</button>` : ""}
+      </div>
+
+      <footer class="execution-case-navigation">
+        <button class="ghost-button" type="button" data-previous-case ${previousCase ? "" : "disabled"}>上一条</button>
+        <span>切换用例不会离开当前执行区域</span>
+        <button class="ghost-button" type="button" data-next-case ${nextCase ? "" : "disabled"}>下一条</button>
+      </footer>
+    </article>
+  `;
+
+  const runner = els.caseExecutionWorkspace.querySelector(".focused-case-runner");
+  els.caseExecutionWorkspace.querySelector("[data-start-execution]")?.addEventListener("click", (event) => {
+    runner?.classList.add("is-running");
+    event.currentTarget.textContent = "执行中";
+    event.currentTarget.disabled = true;
+    els.caseExecutionWorkspace.querySelector(".focused-execution-note textarea")?.focus();
+    setCaseActionStatus(`正在执行「${item.title || "未命名用例"}」。完成后请选择通过或失败。`, "neutral");
+  });
+  els.caseExecutionWorkspace.querySelectorAll("[data-case-result]").forEach((button) => {
+    button.addEventListener("click", () => setFocusedCaseResult(item, button.dataset.caseResult));
+  });
+  els.caseExecutionWorkspace.querySelector(".focused-execution-note textarea")?.addEventListener("input", (event) => {
+    item.executionNote = event.target.value;
+    Object.assign(item, applyUpdateAuditFields(item));
+    persist();
+  });
+  els.caseExecutionWorkspace.querySelector("[data-previous-case]")?.addEventListener("click", () => {
+    if (previousCase) {
+      activeExecutionCaseId = previousCase.id;
+      renderCases();
+    }
+  });
+  els.caseExecutionWorkspace.querySelector("[data-next-case]")?.addEventListener("click", () => {
+    if (nextCase) {
+      activeExecutionCaseId = nextCase.id;
+      renderCases();
+    }
+  });
+  els.caseExecutionWorkspace.querySelector("[data-current-case-to-bug]")?.addEventListener("click", () => {
+    createBugRecord(item);
+    switchTab("bugs");
+  });
+  els.caseExecutionWorkspace.querySelector("[data-delete-current-case]")?.addEventListener("click", () => {
+    if (!window.confirm(`确认删除用例“${item.title || "未命名用例"}”？`)) return;
+    state.cases = state.cases.filter((caseItem) => caseItem.id !== item.id);
+    activeExecutionCaseId = nextCase?.id || previousCase?.id || "";
+    persist();
+    renderAll();
+    setCaseActionStatus("已删除当前用例。", "warn");
+  });
+}
+
+function setFocusedCaseResult(item, nextStatus) {
+  updateCaseExecutionState(item, nextStatus);
+  persist();
+  renderCases();
+  renderQuickStats();
+  renderReport();
+  setCaseActionStatus(`已将「${item.title || "未命名用例"}」更新为“${nextStatus}”。`, nextStatus === "失败" ? "warn" : "ok");
+}
+
+function getManualExecutionTone(status) {
+  if (status === "通过") return "passed";
+  if (status === "失败") return "failed";
+  if (status === "阻塞") return "blocked";
+  return "pending";
+}
+
+function renderLegacyCases() {
   const filtered = getFilteredCasesForView();
 
   if (!filtered.length) {
@@ -5296,43 +6013,329 @@ function truncateText(text, limit) {
 }
 
 function createBugRecord(sourceCase) {
-  const firstCase = sourceCase || getFilteredExecutionCases()[0] || state.cases[0];
-  const activeBatch = getBatchById(state.activeBatchId);
-  const activeTask = getTaskById(state.activeTaskId);
+  const firstCase = sourceCase?.id ? sourceCase : null;
   const linkedBug = firstCase ? state.bugs.find((item) => item.caseId === firstCase.id && !["已修复", "已验证", "已关闭"].includes(item.status)) : null;
   const duplicateBug = firstCase ? findPotentialDuplicateBug(firstCase) : null;
 
   if (linkedBug) {
     switchTab("bugs");
     setBugStatus("这个失败用例已经有关联的未关闭 BUG 了。", "warn");
+    openBugModal(linkedBug.id, "view");
     return;
   }
 
   if (duplicateBug) {
     switchTab("bugs");
     setBugStatus(`疑似重复 BUG：${duplicateBug.title}。可先确认是否复用已有记录。`, "warn");
+    openBugModal(duplicateBug.id, "view");
+    return;
+  }
+  switchTab("bugs");
+  openBugModal("", "create", firstCase);
+}
+
+function openBugModal(bugId = "", mode = bugId ? "view" : "create", sourceCase = null) {
+  const bug = state.bugs.find((item) => item.id === bugId) || null;
+  const activeTask = getTaskById(state.activeTaskId);
+  const activeBatch = getBatchById(state.activeBatchId || activeTask?.batchId);
+  bugModalRecordId = bug?.id || "";
+  bugModalSourceCaseId = sourceCase?.id || bug?.caseId || "";
+
+  const batchId = sourceCase?.batchId || bug?.batchId || activeBatch?.id || "";
+  const taskId = sourceCase?.taskId || bug?.taskId || activeTask?.id || "";
+  const caseId = sourceCase?.id || bug?.caseId || "";
+  els.bugModalName.value = bug?.title || (sourceCase ? `${sourceCase.title || "未命名用例"} - 缺陷记录` : "");
+  els.bugModalSeverity.value = bug?.severity || "中";
+  els.bugModalStatus.value = bug?.status || "新建";
+  els.bugModalLink.value = bug?.link || "";
+  els.bugModalNote.value = bug?.note || buildBugNoteFromCase(sourceCase);
+  clearPendingBugImages();
+  bugModalExistingImages = Array.isArray(bug?.images) ? bug.images.map((image) => ({ ...image })) : [];
+  bugModalRemovedImageIds = [];
+  fillBugModalAssociations(batchId, taskId, caseId);
+  els.bugModalTrace.innerHTML = bug ? renderTraceMetaHtml(bug) : "";
+  els.bugModalFeedback.textContent = mode === "view" ? "当前为只读详情，点击“编辑 BUG”后可修改。" : "填写完整信息后保存 BUG。";
+  els.bugModalFeedback.className = "inline-feedback";
+  setBugModalMode(mode);
+  renderBugModalImages();
+  renderBugModalBadges();
+  els.bugModal.classList.remove("hidden-field");
+  document.body.classList.add("dialog-open");
+  window.setTimeout(() => {
+    if (mode === "create") els.bugModalName.focus();
+  }, 0);
+}
+
+function closeBugModal() {
+  els.bugModal?.classList.add("hidden-field");
+  document.body.classList.remove("dialog-open");
+  bugModalRecordId = "";
+  bugModalSourceCaseId = "";
+  clearPendingBugImages();
+  bugModalExistingImages = [];
+  bugModalRemovedImageIds = [];
+  els.bugForm?.reset();
+}
+
+function setBugModalMode(mode) {
+  const isView = mode === "view";
+  const isCreate = mode === "create";
+  els.bugModal.dataset.mode = mode;
+  els.bugModalTitle.textContent = isCreate ? "新增 BUG" : isView ? "BUG 详情" : "编辑 BUG";
+  els.bugForm.querySelectorAll("input, textarea, select").forEach((control) => {
+    control.disabled = isView;
+  });
+  els.editBugModal.classList.toggle("hidden-field", !isView);
+  els.saveBugModal.classList.toggle("hidden-field", isView);
+  els.deleteBugModal.classList.toggle("hidden-field", isCreate);
+  els.cancelBugModal.textContent = isView ? "关闭" : "取消";
+  if (!isView) {
+    els.bugModalFeedback.textContent = isCreate ? "填写完整信息后保存 BUG。" : "修改完成后点击保存。";
+  }
+  renderBugModalImages();
+}
+
+function handleBugNotePaste(event) {
+  if (els.bugModal?.dataset.mode === "view") return;
+  const imageItems = [...(event.clipboardData?.items || [])]
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"));
+  if (!imageItems.length) return;
+
+  event.preventDefault();
+  const pastedText = event.clipboardData?.getData("text/plain") || "";
+  if (pastedText) insertTextAtCursor(els.bugModalNote, pastedText);
+
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  const availableSlots = Math.max(0, 10 - bugModalExistingImages.length - bugModalPendingImages.length);
+  let rejectedMessage = imageItems.length > availableSlots ? "每个 BUG 最多保留 10 张图片。" : "";
+
+  imageItems.slice(0, availableSlots).forEach((item) => {
+    const file = item.getAsFile();
+    if (!file) return;
+    if (!allowedTypes.has(file.type)) {
+      rejectedMessage = "仅支持 PNG、JPG 和 WebP 图片。";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      rejectedMessage = "单张图片不能超过 5MB。";
+      return;
+    }
+    bugModalPendingImages.push({
+      id: `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      file,
+      previewUrl: URL.createObjectURL(file)
+    });
+  });
+
+  renderBugModalImages();
+  els.bugModalPasteHint.textContent = rejectedMessage || `已粘贴 ${bugModalPendingImages.length} 张新图片，保存 BUG 后生效。`;
+  els.bugModalPasteHint.classList.toggle("warn", Boolean(rejectedMessage));
+}
+
+function insertTextAtCursor(textarea, text) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  textarea.value = `${textarea.value.slice(0, start)}${text}${textarea.value.slice(end)}`;
+  const nextPosition = start + text.length;
+  textarea.setSelectionRange(nextPosition, nextPosition);
+}
+
+function renderBugModalImages() {
+  if (!els.bugModalImagePreview) return;
+  const isView = els.bugModal?.dataset.mode === "view";
+  const existingHtml = bugModalExistingImages.map((image) => renderBugImageCard(image, image.url, isView, false)).join("");
+  const pendingHtml = bugModalPendingImages.map((image) => renderBugImageCard(image, image.previewUrl, isView, true)).join("");
+  els.bugModalImagePreview.innerHTML = `${existingHtml}${pendingHtml}`;
+  els.bugModalImagePreview.classList.toggle("has-images", Boolean(existingHtml || pendingHtml));
+  if (els.bugModalPasteHint) {
+    els.bugModalPasteHint.classList.remove("warn");
+    els.bugModalPasteHint.textContent = isView
+      ? (existingHtml ? `共 ${bugModalExistingImages.length} 张问题截图，点击图片可查看原图。` : "当前 BUG 没有问题截图。")
+      : "支持 PNG、JPG、WebP，单张不超过 5MB，最多 10 张。";
+  }
+}
+
+function renderBugImageCard(image, source, isView, isPending) {
+  const removeButton = isView ? "" : `<button type="button" data-remove-bug-image="${escapeHtml(image.id)}" data-pending="${isPending}">移除</button>`;
+  return `
+    <figure class="bug-note-image-card">
+      <a href="${escapeHtml(source)}" target="_blank" rel="noopener" title="查看原图">
+        <img src="${escapeHtml(source)}" alt="${escapeHtml(image.fileName || "BUG 截图")}">
+      </a>
+      <figcaption><span>${escapeHtml(image.fileName || "粘贴的截图")}</span>${removeButton}</figcaption>
+    </figure>
+  `;
+}
+
+function handleBugImagePreviewClick(event) {
+  const button = event.target.closest("[data-remove-bug-image]");
+  if (!button) return;
+  const imageId = button.dataset.removeBugImage;
+  if (button.dataset.pending === "true") {
+    const pendingImage = bugModalPendingImages.find((image) => image.id === imageId);
+    if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    bugModalPendingImages = bugModalPendingImages.filter((image) => image.id !== imageId);
+  } else {
+    bugModalExistingImages = bugModalExistingImages.filter((image) => image.id !== imageId);
+    bugModalRemovedImageIds.push(imageId);
+  }
+  renderBugModalImages();
+}
+
+function clearPendingBugImages() {
+  bugModalPendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+  bugModalPendingImages = [];
+}
+
+async function uploadBugImage(bugId, pendingImage) {
+  const response = await fetch(`/api/bug-images?bugId=${encodeURIComponent(bugId)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": pendingImage.file.type,
+      "X-File-Name": encodeURIComponent(pendingImage.file.name || "粘贴的截图")
+    },
+    body: pendingImage.file
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "图片保存失败");
+  return result.image;
+}
+
+async function deleteBugImage(bugId, imageId) {
+  await fetch(`/api/bug-images/${encodeURIComponent(bugId)}/${encodeURIComponent(imageId)}`, { method: "DELETE" });
+}
+
+function fillBugModalAssociations(batchId = "", taskId = "", caseId = "") {
+  const batches = state.batches.filter((batch) => !batch.systemManaged);
+  els.bugModalBatch.innerHTML = [`<option value="">未关联版本</option>`]
+    .concat(batches.map((batch) => `<option value="${batch.id}">${escapeHtml(batch.version || "未命名版本")}</option>`))
+    .join("");
+  const resolvedBatchId = batches.some((batch) => batch.id === batchId) ? batchId : "";
+  els.bugModalBatch.value = resolvedBatchId;
+
+  const tasks = state.tasks.filter((task) => !resolvedBatchId || task.batchId === resolvedBatchId);
+  els.bugModalTask.innerHTML = [`<option value="">未关联任务</option>`]
+    .concat(tasks.map((task) => `<option value="${task.id}">${escapeHtml(task.name || "未命名任务")}</option>`))
+    .join("");
+  els.bugModalTask.value = tasks.some((task) => task.id === taskId) ? taskId : "";
+
+  const cases = state.cases.filter((item) => (
+    (!resolvedBatchId || item.batchId === resolvedBatchId) && (!taskId || item.taskId === taskId)
+  ));
+  els.bugModalCase.innerHTML = [`<option value="">未关联用例</option>`]
+    .concat(cases.map((item) => `<option value="${item.id}">${escapeHtml(item.title || "未命名用例")}</option>`))
+    .join("");
+  els.bugModalCase.value = cases.some((item) => item.id === caseId) ? caseId : "";
+}
+
+function refreshBugModalAssociations(source) {
+  const batchId = els.bugModalBatch.value;
+  const taskId = source === "batch" ? "" : els.bugModalTask.value;
+  fillBugModalAssociations(batchId, taskId, "");
+}
+
+function syncBugModalFromCase() {
+  const linkedCase = state.cases.find((item) => item.id === els.bugModalCase.value);
+  if (!linkedCase) return;
+  fillBugModalAssociations(linkedCase.batchId || "", linkedCase.taskId || "", linkedCase.id);
+}
+
+function renderBugModalBadges() {
+  if (!els.bugModalBadges) return;
+  els.bugModalBadges.innerHTML = `
+    <span class="bug-modal-severity severity-${getBugSeverityClass(els.bugModalSeverity.value)}">${escapeHtml(els.bugModalSeverity.value || "中")}</span>
+    <span class="bug-modal-status status-${getBugStatusClass(els.bugModalStatus.value)}">${escapeHtml(els.bugModalStatus.value || "新建")}</span>
+  `;
+}
+
+function getBugSeverityClass(severity) {
+  if (severity === "严重") return "critical";
+  if (severity === "低") return "low";
+  return "medium";
+}
+
+function getBugStatusClass(status) {
+  if (["已验证", "已关闭"].includes(status)) return "done";
+  if (["已修复", "待回归"].includes(status)) return "progress";
+  return "open";
+}
+
+async function saveBugFromModal(event) {
+  event.preventDefault();
+  const title = els.bugModalName.value.trim();
+  if (!title) {
+    els.bugModalFeedback.textContent = "请先填写 BUG 名称。";
+    els.bugModalFeedback.className = "inline-feedback warn";
+    els.bugModalName.focus();
+    return;
   }
 
-  state.bugs.unshift(applyCreateAuditFields({
-    id: `bug-${Date.now()}`,
-    title: firstCase ? `${firstCase.title} - 缺陷记录` : "新BUG",
-    caseId: firstCase ? firstCase.id : "",
-    taskId: firstCase?.taskId || activeTask?.id || "",
-    taskName: firstCase?.taskName || activeTask?.name || "",
-    batchId: firstCase?.batchId || activeBatch?.id || "",
-    batchVersion: firstCase?.batchVersion || activeBatch?.version || "",
-    batchName: firstCase?.batchName || (activeBatch ? formatBatchLabel(activeBatch) : ""),
-    severity: "中",
-    status: "新建",
-    owner: splitOwnerValues(activeTask?.owners || activeTask?.owner)[0] || "",
-    link: "",
-    note: buildBugNoteFromCase(firstCase)
-  }));
+  const existingBug = state.bugs.find((item) => item.id === bugModalRecordId);
+  const linkedCase = state.cases.find((item) => item.id === els.bugModalCase.value);
+  const batch = getBatchById(linkedCase?.batchId || els.bugModalBatch.value);
+  const task = getTaskById(linkedCase?.taskId || els.bugModalTask.value);
+  const previousStatus = existingBug?.status || "";
+  const bugId = existingBug?.id || `bug-${Date.now()}`;
+  const uploadedImages = [];
+  els.saveBugModal.disabled = true;
+  els.bugModalFeedback.textContent = bugModalPendingImages.length ? "正在保存文字和粘贴的图片..." : "正在保存 BUG...";
+  try {
+    for (const pendingImage of bugModalPendingImages) {
+      uploadedImages.push(await uploadBugImage(bugId, pendingImage));
+    }
+  } catch (error) {
+    await Promise.all(uploadedImages.map((image) => deleteBugImage(bugId, image.id)));
+    els.saveBugModal.disabled = false;
+    els.bugModalFeedback.textContent = error.message || "图片保存失败，请重试。";
+    els.bugModalFeedback.className = "inline-feedback warn";
+    return;
+  }
 
+  const nextBug = {
+    ...(existingBug || {}),
+    id: bugId,
+    title,
+    severity: els.bugModalSeverity.value,
+    status: els.bugModalStatus.value,
+    batchId: batch?.id || "",
+    batchVersion: batch?.version || "",
+    batchName: batch ? formatBatchLabel(batch) : "",
+    taskId: task?.id || "",
+    taskName: task?.name || "",
+    caseId: linkedCase?.id || "",
+    owner: existingBug?.owner || "",
+    link: els.bugModalLink.value.trim(),
+    note: els.bugModalNote.value.trim(),
+    images: [...bugModalExistingImages, ...uploadedImages]
+  };
+  const auditedBug = existingBug ? applyUpdateAuditFields(nextBug) : applyCreateAuditFields(nextBug);
+  const duplicateBug = findPotentialDuplicateBug(auditedBug, existingBug?.id || "");
+
+  if (existingBug) {
+    state.bugs = state.bugs.map((item) => (item.id === existingBug.id ? auditedBug : item));
+  } else {
+    state.bugs.unshift(auditedBug);
+  }
+  if (auditedBug.status !== previousStatus || auditedBug.caseId) {
+    syncLinkedCaseByBug(auditedBug, auditedBug.status === "已验证" ? "verified" : auditedBug.status === "待回归" ? "pending-regression" : "open");
+  }
   persist();
+  Promise.all(bugModalRemovedImageIds.map((imageId) => deleteBugImage(bugId, imageId))).catch(() => {});
+  els.saveBugModal.disabled = false;
+  closeBugModal();
   renderAll();
-  switchTab("bugs");
-  setBugStatus(firstCase ? "已从失败用例生成 BUG 记录。" : "已新增 BUG 记录。", "ok");
+  setBugStatus(duplicateBug ? `BUG 已保存，但疑似与“${duplicateBug.title}”重复。` : "BUG 已保存。", duplicateBug ? "warn" : "ok");
+}
+
+function deleteBugFromModal() {
+  const bug = state.bugs.find((item) => item.id === bugModalRecordId);
+  if (!bug || !window.confirm(`确认删除 BUG“${bug.title || "未命名 BUG"}”？`)) return;
+  state.bugs = state.bugs.filter((item) => item.id !== bug.id);
+  fetch(`/api/bug-images?bugId=${encodeURIComponent(bug.id)}`, { method: "DELETE" }).catch(() => {});
+  persist();
+  closeBugModal();
+  renderAll();
+  setBugStatus("BUG 已删除。", "warn");
 }
 
 function buildBugNoteFromCase(caseItem) {
@@ -5390,6 +6393,40 @@ function normalizeBugCompareText(value) {
 
 function renderBugs() {
   const filteredBugs = getFilteredBugs();
+  if (els.bugManagerCount) {
+    els.bugManagerCount.textContent = `${filteredBugs.length} 个 BUG`;
+  }
+
+  if (!filteredBugs.length) {
+    els.bugList.innerHTML = `
+      <div class="empty-state empty-state-rich">
+        <strong>${state.bugs.length ? "没有匹配的 BUG" : "当前还没有 BUG 记录"}</strong>
+        <p>${state.bugs.length ? "请调整顶部筛选条件。" : "点击右上角“新增 BUG”，通过弹窗录入问题。"}</p>
+        ${state.bugs.length ? "" : `<div class="empty-actions"><button class="primary-button" type="button" data-open-bug-modal>新增 BUG</button></div>`}
+      </div>
+    `;
+    els.bugList.querySelector("[data-open-bug-modal]")?.addEventListener("click", () => openBugModal());
+    return;
+  }
+
+  els.bugList.innerHTML = filteredBugs.map((bug) => `
+    <article class="bug-title-row">
+      <strong>${escapeHtml(bug.title || "未命名 BUG")}</strong>
+      <button class="ghost-button" type="button" data-view-bug-id="${bug.id}">查看详情</button>
+    </article>
+  `).join("");
+
+  els.bugList.querySelectorAll("[data-view-bug-id]").forEach((button) => {
+    button.addEventListener("click", () => openBugModal(button.dataset.viewBugId, "view"));
+  });
+}
+
+function renderLegacyBugs() {
+  const filteredBugs = getFilteredBugs();
+  renderBugHistory();
+  if (els.bugManagerCount) {
+    els.bugManagerCount.textContent = `${filteredBugs.length} 个 BUG`;
+  }
   if (!filteredBugs.length) {
     els.bugList.innerHTML = `
       <div class="empty-state empty-state-rich">
@@ -5433,11 +6470,16 @@ function renderBugs() {
     const verifyButton = node.querySelector(".mark-bug-verified");
     regressionButton.classList.toggle("hidden-field", bug.status !== "已修复");
     verifyButton.classList.toggle("hidden-field", !["待回归", "已修复"].includes(bug.status));
+    if (bug.id === activeBugEditorId) {
+      detail.classList.remove("hidden-field");
+      detailToggle.textContent = "收起详情";
+    }
 
     detailToggle.addEventListener("click", () => {
       const isHidden = detail.classList.contains("hidden-field");
       detail.classList.toggle("hidden-field", !isHidden);
       detailToggle.textContent = isHidden ? "收起详情" : "展开详情";
+      activeBugEditorId = isHidden ? bug.id : "";
     });
 
     node.querySelectorAll("input, textarea, select").forEach((control) => {
@@ -5471,6 +6513,13 @@ function renderBugs() {
         if (control.classList.contains("bug-case")) {
           syncBugLinkedInfo(node, getBugDraftFromNode(node, bug));
         }
+        if (control.classList.contains("bug-severity") || control.classList.contains("bug-status")) {
+          syncBugBadges(
+            node,
+            node.querySelector(".bug-severity")?.value || bug.severity,
+            node.querySelector(".bug-status")?.value || bug.status
+          );
+        }
         markBugCardDirty(node);
       });
     });
@@ -5480,6 +6529,8 @@ function renderBugs() {
       markBugCardSaved(node);
       detail.classList.add("hidden-field");
       detailToggle.textContent = "展开详情";
+      activeBugEditorId = "";
+      renderBugHistory();
       setBugStatus("BUG 已保存。", "ok");
       flashButtonSuccess(saveButton, "保存成功");
     });
@@ -5507,6 +6558,7 @@ function renderBugs() {
         return;
       }
       state.bugs = state.bugs.filter((item) => item.id !== bug.id);
+      if (activeBugEditorId === bug.id) activeBugEditorId = "";
       persist();
       renderAll();
       setBugStatus("BUG 已删除。", "warn");
@@ -5514,6 +6566,43 @@ function renderBugs() {
 
     els.bugList.appendChild(node);
   });
+}
+
+function renderBugHistory() {
+  if (!els.bugHistoryList) {
+    return;
+  }
+  const recentBugs = [...state.bugs]
+    .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))
+    .slice(0, 6);
+
+  if (!recentBugs.length) {
+    els.bugHistoryList.innerHTML = `
+      <div class="bug-history-empty">
+        <strong>暂无活动记录</strong>
+        <p>新增或更新 BUG 后，最近活动会展示在这里。</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.bugHistoryList.innerHTML = recentBugs.map((bug) => `
+    <article class="bug-history-item">
+      <span class="bug-history-dot tone-${getBugHistoryTone(bug.status)}"></span>
+      <div>
+        <strong>${escapeHtml(bug.title || "未命名 BUG")}</strong>
+        <p>${escapeHtml(bug.batchVersion || "未关联版本")} · ${escapeHtml(bug.taskName || "未关联任务")}</p>
+      </div>
+      <span class="bug-history-status">${escapeHtml(bug.status || "新建")}</span>
+      <time>${escapeHtml(formatAuditTime(bug.updatedAt || bug.createdAt))}</time>
+    </article>
+  `).join("");
+}
+
+function getBugHistoryTone(status) {
+  if (["已验证", "已关闭"].includes(status)) return "green";
+  if (["已修复", "待回归"].includes(status)) return "orange";
+  return "red";
 }
 
 function markBugCardDirty(node) {
