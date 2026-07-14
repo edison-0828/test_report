@@ -147,7 +147,6 @@ const els = {
   sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
   toggleApiKey: document.getElementById("toggleApiKey"),
-  currentOperatorSelect: document.getElementById("currentOperatorSelect"),
   apiStatus: document.getElementById("apiStatus"),
   checkApiKey: document.getElementById("checkApiKey"),
   clearApiKey: document.getElementById("clearApiKey"),
@@ -168,8 +167,11 @@ const els = {
   automationCaseTaskFilter: document.getElementById("automationCaseTaskFilter"),
   automationCaseEnabledFilter: document.getElementById("automationCaseEnabledFilter"),
   automationCaseStatus: document.getElementById("automationCaseStatus"),
+  apiAutomationSite: document.getElementById("apiAutomationSite"),
   apiAutomationEnv: document.getElementById("apiAutomationEnv"),
   apiAutomationBaseUrl: document.getElementById("apiAutomationBaseUrl"),
+  runApiAutomationBatch: document.getElementById("runApiAutomationBatch"),
+  viewApiAutomationRuns: document.getElementById("viewApiAutomationRuns"),
   apiAutomationConfigStatus: document.getElementById("apiAutomationConfigStatus"),
   automationBaseUrl: document.getElementById("automationBaseUrl"),
   automationLoginPath: document.getElementById("automationLoginPath"),
@@ -232,6 +234,8 @@ const selfTestState = {
 };
 const uiAutomationState = normalizeUiAutomationSession(state.uiAutomationSession);
 const apiAutomationConfigState = {
+  defaultSite: "klicklpay",
+  sites: {},
   environments: {},
   signature: {},
   error: ""
@@ -239,9 +243,6 @@ const apiAutomationConfigState = {
 
 els.apiKey.value = settings.apiKey;
 els.modelSelect.value = settings.model;
-if (els.currentOperatorSelect) {
-  els.currentOperatorSelect.value = settings.currentOperator;
-}
 if (els.automationBaseUrl) {
   els.automationBaseUrl.value = state.uiAutomationSettings?.baseUrl || "";
 }
@@ -258,6 +259,7 @@ initTextSourceUi();
 initOwnerUi();
 bindEvents();
 renderAll();
+hydrateInteractionUi();
 ensureCasesToolbarEnhancements();
 loadTeamMembersConfig();
 loadSharedState();
@@ -270,8 +272,9 @@ renderSelfTestPanel();
 renderUiAutomationPanel();
 
 function bindEvents() {
-  els.navLinks.forEach((link) => {
+  els.navLinks.forEach((link, index) => {
     link.addEventListener("click", () => switchTab(link.dataset.tab));
+    link.addEventListener("keydown", (event) => handleNavigationKeydown(event, index));
   });
 
   els.documentInput.addEventListener("change", handleFileUpload);
@@ -305,7 +308,10 @@ function bindEvents() {
   });
   els.automationCaseTaskFilter?.addEventListener("change", renderAutomationCases);
   els.automationCaseEnabledFilter?.addEventListener("change", renderAutomationCases);
+  els.apiAutomationSite?.addEventListener("change", renderApiAutomationConfigPanel);
   els.apiAutomationEnv?.addEventListener("change", renderApiAutomationConfigPanel);
+  els.runApiAutomationBatch?.addEventListener("click", handleApiAutomationBatchRun);
+  els.viewApiAutomationRuns?.addEventListener("click", handleApiAutomationRunHistory);
   els.automationBaseUrl?.addEventListener("input", handleUiAutomationDraftChange);
   els.automationLoginPath?.addEventListener("input", handleUiAutomationDraftChange);
   els.startAutomationLoginSession?.addEventListener("click", startUiAutomationLoginSession);
@@ -323,13 +329,66 @@ function bindEvents() {
   els.clearApiKey?.addEventListener("click", clearApiSettings);
   els.modelSelect?.addEventListener("change", saveApiSettings);
   els.apiKey?.addEventListener("input", handleApiDraftChange);
-  els.currentOperatorSelect?.addEventListener("change", handleCurrentOperatorChange);
   els.toggleApiKey?.addEventListener("click", toggleApiKeyVisibility);
   els.checkLark?.addEventListener("click", checkLarkStatus);
   els.syncLark?.addEventListener("click", syncLarkData);
   els.seedDemo?.addEventListener("click", seedDemoData);
   els.sidebarBackToTop?.addEventListener("click", scrollSidebarToTop);
   document.addEventListener("click", handleGlobalActionClick);
+}
+
+function hydrateInteractionUi() {
+  const nav = document.querySelector(".nav");
+  nav?.setAttribute("role", "tablist");
+  nav?.setAttribute("aria-label", "主要功能");
+  nav?.setAttribute("aria-orientation", "vertical");
+
+  els.navLinks.forEach((link, index) => {
+    const panel = els.panels.find((item) => item.id === link.dataset.tab);
+    const isActive = link.classList.contains("active");
+    link.id = link.id || `nav-${link.dataset.tab}`;
+    link.setAttribute("role", "tab");
+    link.setAttribute("aria-selected", isActive ? "true" : "false");
+    link.tabIndex = isActive ? 0 : -1;
+    if (panel) {
+      link.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", link.id);
+      panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+    }
+  });
+
+  hydrateFeedbackRegions();
+}
+
+function hydrateFeedbackRegions(root = document) {
+  root.querySelectorAll(".inline-feedback").forEach((feedback) => {
+    feedback.setAttribute("role", "status");
+    feedback.setAttribute("aria-live", "polite");
+    feedback.setAttribute("aria-atomic", "true");
+  });
+}
+
+function handleNavigationKeydown(event, currentIndex) {
+  const lastIndex = els.navLinks.length - 1;
+  let nextIndex = currentIndex;
+
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
+  } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = lastIndex;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  const nextLink = els.navLinks[nextIndex];
+  nextLink.focus();
+  switchTab(nextLink.dataset.tab);
 }
 
 function scrollSidebarToTop() {
@@ -423,20 +482,7 @@ function initTextSourceUi() {
 }
 
 function initOwnerUi() {
-  const taskPanel = els.currentTaskSummary?.closest(".panel");
   const bugOwnerField = els.bugTemplate?.content.querySelector(".bug-owner");
-
-  if (taskPanel && !document.getElementById("taskOwnerSelect")) {
-    const taskActions = taskPanel.querySelector(".inline-actions");
-    const ownerField = document.createElement("label");
-    ownerField.innerHTML = `
-      任务负责人
-      <select id="taskOwnerSelect">
-        <option value="">未选择</option>
-      </select>
-    `;
-    taskActions?.before(ownerField);
-  }
 
   if (bugOwnerField && bugOwnerField.tagName === "INPUT") {
     const select = document.createElement("select");
@@ -445,8 +491,6 @@ function initOwnerUi() {
     bugOwnerField.replaceWith(select);
   }
 
-  els.taskOwnerSelect = document.getElementById("taskOwnerSelect");
-  fillOwnerSelect(els.currentOperatorSelect, settings.currentOperator, "请选择当前操作人");
 }
 
 function switchTab(tabId) {
@@ -456,17 +500,23 @@ function switchTab(tabId) {
   }
 
   els.navLinks.forEach((link) => {
-    link.classList.toggle("active", link.dataset.tab === tabId);
+    const isActive = link.dataset.tab === tabId;
+    link.classList.toggle("active", isActive);
+    link.setAttribute("aria-selected", isActive ? "true" : "false");
+    link.tabIndex = isActive ? 0 : -1;
   });
   els.panels.forEach((panel) => {
+    const isActive = panel === targetPanel;
     panel.classList.remove("entering");
-    panel.classList.toggle("active", panel === targetPanel);
+    panel.classList.toggle("active", isActive);
+    panel.setAttribute("aria-hidden", isActive ? "false" : "true");
   });
   targetPanel.classList.add("entering");
   window.setTimeout(() => {
     targetPanel.classList.remove("entering");
   }, 260);
   els.sidebarBackToTop?.classList.toggle("hidden-field", tabId !== "upload");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function handleGlobalActionClick(event) {
@@ -623,17 +673,6 @@ function handleApiDraftChange() {
   settings.apiKey = els.apiKey.value.trim();
   settings.apiReady = false;
   setApiStatus(settings.apiKey ? "待检测" : "需要填写 API Key", settings.apiKey ? "neutral" : "warn");
-}
-
-function handleCurrentOperatorChange() {
-  settings.currentOperator = els.currentOperatorSelect?.value.trim() || "";
-  state.settings = {
-    ...state.settings,
-    apiKey: settings.apiKey,
-    model: settings.model,
-    currentOperator: settings.currentOperator
-  };
-  persist();
 }
 
 function toggleApiKeyVisibility() {
@@ -821,12 +860,8 @@ function flashButtonSuccess(button, successText = "保存成功") {
 }
 
 function renderTraceMetaHtml(item, creatorFallback = "未记录") {
-  const createdBy = item.createdBy || creatorFallback || "未记录";
-  const updatedBy = item.updatedBy || createdBy || "未记录";
   return `
-    <div class="trace-meta-item"><span>创建人</span><strong>${escapeHtml(createdBy)}</strong></div>
     <div class="trace-meta-item"><span>创建时间</span><strong>${escapeHtml(formatAuditTime(item.createdAt))}</strong></div>
-    <div class="trace-meta-item"><span>最后修改人</span><strong>${escapeHtml(updatedBy)}</strong></div>
     <div class="trace-meta-item"><span>更新时间</span><strong>${escapeHtml(formatAuditTime(item.updatedAt))}</strong></div>
   `;
 }
@@ -1167,10 +1202,14 @@ async function loadApiAutomationConfig() {
       throw new Error(data.error || "接口自动化配置读取失败");
     }
 
+    apiAutomationConfigState.defaultSite = data.defaultSite || "klicklpay";
+    apiAutomationConfigState.sites = data.sites || {};
     apiAutomationConfigState.environments = data.environments || {};
     apiAutomationConfigState.signature = data.signature || {};
     apiAutomationConfigState.error = "";
   } catch (error) {
+    apiAutomationConfigState.defaultSite = "klicklpay";
+    apiAutomationConfigState.sites = {};
     apiAutomationConfigState.environments = {};
     apiAutomationConfigState.signature = {};
     apiAutomationConfigState.error = error.message || "接口自动化配置读取失败";
@@ -1184,7 +1223,29 @@ function renderApiAutomationConfigPanel() {
     return;
   }
 
-  const environmentNames = Object.keys(apiAutomationConfigState.environments || {}).filter((name) => ["test", "sandbox"].includes(name));
+  const sites = apiAutomationConfigState.sites || {};
+  const siteNames = Object.keys(sites);
+  if (els.apiAutomationSite && siteNames.length) {
+    const preferredSite = siteNames.includes(els.apiAutomationSite.value)
+      ? els.apiAutomationSite.value
+      : siteNames.includes(apiAutomationConfigState.defaultSite)
+        ? apiAutomationConfigState.defaultSite
+        : siteNames[0];
+    els.apiAutomationSite.innerHTML = siteNames
+      .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(sites[name]?.label || name)}</option>`)
+      .join("");
+    els.apiAutomationSite.value = preferredSite;
+  }
+
+  const selectedSiteName = els.apiAutomationSite?.value || apiAutomationConfigState.defaultSite || "klicklpay";
+  const selectedSite = sites[selectedSiteName] || {
+    label: selectedSiteName,
+    requiredHeaders: ["KlicklPay-Key"],
+    environments: apiAutomationConfigState.environments || {},
+    signature: apiAutomationConfigState.signature || {}
+  };
+
+  const environmentNames = Object.keys(selectedSite.environments || {});
   if (environmentNames.length) {
     const currentValue = environmentNames.includes(els.apiAutomationEnv.value) ? els.apiAutomationEnv.value : environmentNames[0];
     els.apiAutomationEnv.innerHTML = environmentNames
@@ -1193,7 +1254,7 @@ function renderApiAutomationConfigPanel() {
     els.apiAutomationEnv.value = currentValue;
   }
 
-  const selectedEnv = apiAutomationConfigState.environments?.[els.apiAutomationEnv.value] || {};
+  const selectedEnv = selectedSite.environments?.[els.apiAutomationEnv.value] || {};
   if (els.apiAutomationBaseUrl) {
     els.apiAutomationBaseUrl.value = selectedEnv.baseUrl || "";
   }
@@ -1208,12 +1269,86 @@ function renderApiAutomationConfigPanel() {
     return;
   }
 
-  const keyReady = Boolean(selectedEnv.headers?.["KlicklPay-Key"]);
-  const signatureStatus = apiAutomationConfigState.signature?.status || "pending-docs";
-  els.apiAutomationConfigStatus.textContent = keyReady
-    ? `已读取 ${els.apiAutomationEnv.value} 环境：${selectedEnv.baseUrl || "未配置 Base URL"}。KlicklPay-Key 已配置；验签规则状态：${signatureStatus}。`
-    : `已读取 ${els.apiAutomationEnv.value} 环境：${selectedEnv.baseUrl || "未配置 Base URL"}。请在 api-automation.config.json 中填写 KlicklPay-Key；验签规则状态：${signatureStatus}。`;
-  els.apiAutomationConfigStatus.className = `inline-feedback ${keyReady ? "ok" : "warn"}`;
+  const requiredHeaders = Array.isArray(selectedSite.requiredHeaders) ? selectedSite.requiredHeaders : [];
+  const signature = selectedSite.signature || {};
+  const missingItems = [];
+  if (!selectedEnv.baseUrl) {
+    missingItems.push(`${selectedSiteName}.${els.apiAutomationEnv.value}.baseUrl`);
+  }
+  for (const headerName of requiredHeaders) {
+    if (!selectedEnv.headers?.[headerName]) {
+      missingItems.push(`${selectedSiteName}.${els.apiAutomationEnv.value}.headers.${headerName}`);
+    }
+  }
+  if (signature.status === "ready" && !signature.apiKeyConfigured) {
+    missingItems.push(`${selectedSiteName}.signature.apiKey`);
+  }
+
+  const signatureText = signature.status === "ready"
+    ? `验签：${signature.algorithm || "已配置"}，${signature.timestampUnit || "时间戳规则已配置"}，${signature.nonceLength || "nonce"}。`
+    : `验签规则状态：${signature.status || "pending-rules"}，等拿到文档后补充。`;
+  const baseText = `已读取 ${selectedSite.label || selectedSiteName} / ${els.apiAutomationEnv.value}：${selectedEnv.baseUrl || "未配置 Base URL"}。${signatureText}`;
+  els.apiAutomationConfigStatus.textContent = missingItems.length
+    ? `${baseText} 请在 api-automation.config.json 中补充：${missingItems.join("、")}。`
+    : `${baseText} 当前站点基础配置已就绪，可以进入 pytest 接口执行接入。`;
+  els.apiAutomationConfigStatus.className = `inline-feedback ${missingItems.length || signature.status !== "ready" ? "warn" : "ok"}`;
+}
+
+function getSelectedApiAutomationSiteConfig() {
+  const sites = apiAutomationConfigState.sites || {};
+  const selectedSiteName = els.apiAutomationSite?.value || apiAutomationConfigState.defaultSite || "klicklpay";
+  const selectedSite = sites[selectedSiteName] || {
+    label: selectedSiteName,
+    requiredHeaders: ["KlicklPay-Key"],
+    environments: apiAutomationConfigState.environments || {},
+    signature: apiAutomationConfigState.signature || {}
+  };
+  const selectedEnvName = els.apiAutomationEnv?.value || Object.keys(selectedSite.environments || {})[0] || "";
+  return {
+    siteName: selectedSiteName,
+    site: selectedSite,
+    envName: selectedEnvName,
+    environment: selectedSite.environments?.[selectedEnvName] || {}
+  };
+}
+
+function getMissingApiAutomationConfigItems(siteName, envName, site, environment) {
+  const missingItems = [];
+  if (!environment.baseUrl) {
+    missingItems.push(`${siteName}.${envName}.baseUrl`);
+  }
+  for (const headerName of Array.isArray(site.requiredHeaders) ? site.requiredHeaders : []) {
+    if (!environment.headers?.[headerName]) {
+      missingItems.push(`${siteName}.${envName}.headers.${headerName}`);
+    }
+  }
+  if (site.signature?.status === "ready" && !site.signature?.apiKeyConfigured) {
+    missingItems.push(`${siteName}.signature.apiKey`);
+  }
+  return missingItems;
+}
+
+function handleApiAutomationBatchRun() {
+  const { siteName, site, envName, environment } = getSelectedApiAutomationSiteConfig();
+  const missingItems = getMissingApiAutomationConfigItems(siteName, envName, site, environment);
+  if (missingItems.length) {
+    setApiAutomationStatus(`暂时不能批量执行，请先在 api-automation.config.json 补充：${missingItems.join("、")}。`, "warn");
+    return;
+  }
+
+  setApiAutomationStatus(`配置已就绪：${site.label || siteName} / ${envName}。下一步接入 pytest 执行器后，这里会直接触发批量执行。`, "ok");
+}
+
+function handleApiAutomationRunHistory() {
+  setApiAutomationStatus("运行记录入口已预留。等 pytest 执行结果落库后，这里会展示每次批量执行的状态、耗时和失败原因。", "neutral");
+}
+
+function setApiAutomationStatus(message, tone = "neutral") {
+  if (!els.apiAutomationConfigStatus) {
+    return;
+  }
+  els.apiAutomationConfigStatus.textContent = message;
+  els.apiAutomationConfigStatus.className = `inline-feedback ${tone}`;
 }
 
 function setCaseQualityStatus(text, tone = "neutral") {
@@ -1685,7 +1820,8 @@ function createTask() {
   const batch = getBatchById(batchId);
   const name = els.taskNameInput.value.trim();
   const scope = els.taskScopeInput.value.trim();
-  const owner = els.taskOwnerSelect?.value.trim() || "";
+  const existingTask = getTaskById(editingTaskId);
+  const owner = existingTask?.owner || "";
 
   if (!batch) {
     setGenerationStatus("请先给任务选择关联版本。", "warn");
@@ -1733,7 +1869,6 @@ function createTask() {
   els.taskBatchSelect.value = auditedTask.batchId;
   els.taskNameInput.value = "";
   els.taskScopeInput.value = "";
-  fillOwnerSelect(els.taskOwnerSelect, "");
   els.createTaskBtn.textContent = "保存当前任务";
   editingTaskId = "";
   autoResizeTextarea();
@@ -2713,7 +2848,6 @@ function extractModuleName(text) {
 }
 
 function renderAll() {
-  fillOwnerSelect(els.currentOperatorSelect, settings.currentOperator, "请选择当前操作人");
   renderOnboarding();
   renderMetaControls();
   renderVersionManager();
@@ -2725,6 +2859,7 @@ function renderAll() {
   renderAutomationCases();
   renderBugs();
   renderReport();
+  hydrateFeedbackRegions();
 }
 
 function renderCaseQuality() {
@@ -3124,7 +3259,6 @@ function renderMetaControls() {
   fillSelectFromItems(els.activeBatchSelect, state.batches, "未选择", state.activeBatchId, formatBatchLabel);
   fillSelectFromItems(els.activeModuleSelect, state.modules, "未选择", state.activeModuleId, (item) => item.name);
   fillSelectFromItems(els.taskBatchSelect, state.batches, "请选择版本", els.taskBatchSelect.value || state.activeBatchId, (item) => formatTaskBatchLabel(item));
-  fillOwnerSelect(els.taskOwnerSelect, editingTaskId ? (getTaskById(editingTaskId)?.owner || "") : "");
   els.currentVersionSummary.innerHTML = "";
   els.currentTaskSummary.innerHTML = "";
 
@@ -3240,13 +3374,9 @@ function renderVersionManager() {
                         <p>${escapeHtml(task.scope || "未填写")}</p>
                       </div>
                       <div class="summary-block">
-                        <span class="summary-label">负责人</span>
-                        <p>${escapeHtml(getOwnerDisplay(task.owners || task.owner) || "未分配")}</p>
-                      </div>
-                      <div class="summary-block">
-                        <span class="summary-label">协作留痕</span>
+                        <span class="summary-label">时间记录</span>
                         <div class="trace-meta compact-trace-meta">
-                          ${renderTraceMetaHtml(task, getOwnerDisplay(task.owners || task.owner) || "未记录")}
+                          ${renderTraceMetaHtml(task)}
                         </div>
                       </div>
                     </div>
@@ -3433,7 +3563,6 @@ function handleTaskAction(action, taskId) {
     els.taskBatchSelect.value = task.batchId || "";
     els.taskNameInput.value = task.name || "";
     els.taskScopeInput.value = task.scope || "";
-    fillOwnerSelect(els.taskOwnerSelect, task.owner || "");
     els.createTaskBtn.textContent = "保存任务修改";
     autoResizeTextarea();
     switchTab("upload");
@@ -3454,7 +3583,6 @@ function handleTaskAction(action, taskId) {
       els.taskBatchSelect.value = "";
       els.taskNameInput.value = "";
       els.taskScopeInput.value = "";
-      fillOwnerSelect(els.taskOwnerSelect, "");
       els.createTaskBtn.textContent = "保存当前任务";
       autoResizeTextarea();
     }
@@ -5742,7 +5870,6 @@ function renderReport() {
   els.reportDetailHeader.textContent = `${activeCard.batch.version || "未命名版本"} 详情`;
   const fixedSummary = [
     ["版本", report.batchVersion],
-    ["负责人", report.testOwners.join("、") || "未分配"],
     ["任务数", String(report.versionTaskCount)],
     ["用例总数", String(report.total)],
     ["执行用例", String(report.executed)],
@@ -5803,7 +5930,6 @@ function renderReport() {
             <strong>${escapeHtml(item.title)}</strong>
             <p>${escapeHtml(item.taskName || "未分任务")}</p>
             <div class="bug-detail-list">
-              <div><span>负责人</span><strong>${escapeHtml(item.owner || "未填写")}</strong></div>
               <div><span>Lark</span><strong>${escapeHtml(item.link || "未填写")}</strong></div>
               <div class="bug-detail-full"><span>详情</span><strong>${escapeHtml(item.note || "暂无补充说明")}</strong></div>
             </div>
@@ -5841,7 +5967,6 @@ function buildReportViewModel(scope = getReportScope()) {
   const executionRate = total ? `${Math.round((executed / total) * 100)}%` : "0%";
   const passRate = executed ? `${Math.round((passed / executed) * 100)}%` : "0%";
   const openBugs = scope.bugs.filter((bug) => !["已验证", "已关闭"].includes(bug.status)).length;
-  const testOwners = getReportOwners(scope);
   const versionTaskCount = scope.tasks?.length || (scope.task ? 1 : 0);
   const releaseDecision = getReleaseDecision({
     failed: statusCounts["失败"] || 0,
@@ -5852,10 +5977,7 @@ function buildReportViewModel(scope = getReportScope()) {
   const scopeLabel = [
     resolvedBusinessName ? `业务：${resolvedBusinessName}` : "",
     resolvedBatchVersion && resolvedBatchVersion !== "未选择" ? `版本：${resolvedBatchVersion}` : "",
-    scope.task ? `任务：${scope.task.name || ""}` : "",
-    getOwnerDisplay(scope.task?.owners || scope.task?.owner)
-      ? `任务负责人：${getOwnerDisplay(scope.task?.owners || scope.task?.owner)}`
-      : ""
+    scope.task ? `任务：${scope.task.name || ""}` : ""
   ].filter(Boolean).join(" / ") || "当前全部范围";
 
   return {
@@ -5869,7 +5991,6 @@ function buildReportViewModel(scope = getReportScope()) {
     executionRate,
     passRate,
     openBugs,
-    testOwners,
     scopeLabel,
     heroTitle: scope.task?.name || scope.batch?.version || "当前测试报告",
     batchVersion: resolvedBatchVersion,
@@ -5879,7 +6000,6 @@ function buildReportViewModel(scope = getReportScope()) {
       ["报告名称", "测试报告"],
       ["版本号", resolvedBatchVersion],
       ["测试任务", scope.task?.name || "未选择"],
-      ["测试负责人", testOwners.join("、") || "未分配"],
       ["生成时间", new Date().toLocaleString("zh-CN")],
       ["报告范围", scopeLabel],
       ["当前结论", releaseDecision.label]
@@ -5892,10 +6012,8 @@ function buildReportViewModel(scope = getReportScope()) {
     ],
     summaryItems: [
       ["当前范围", scopeLabel],
-      ["测试负责人", testOwners.join("、") || "未分配"],
       ["测试任务数", versionTaskCount],
       ["测试用例总数", total],
-      ["任务负责人", getOwnerDisplay(scope.task?.owners || scope.task?.owner) || "未分配"],
       ["执行用例数", executed],
       ["成功用例数", passed],
       ["失败用例数", statusCounts["失败"] || 0],
@@ -6116,9 +6234,6 @@ function buildReportExportChecks(report) {
 
 function buildReportHtml(report) {
   const conclusion = getReportConclusionForBatch(report.scope.batch?.id) || "暂无补充结论。";
-  const ownerTags = report.testOwners.length
-    ? report.testOwners.map((owner) => `<span class="badge tone-green">${escapeHtml(owner)}</span>`).join("")
-    : `<span class="badge tone-gray">未分配</span>`;
   const renderDocumentInfoTable = report.documentInfoItems.map(([label, value]) => `
     <tr>
       <th>${escapeHtml(label)}</th>
@@ -6213,14 +6328,13 @@ function buildReportHtml(report) {
         <td><span class="badge ${getBugStatusTone(item.status)}">${escapeHtml(item.status)}</span></td>
         <td><span class="badge ${getBugSeverityTone(item.severity)}">${escapeHtml(item.severity || "未标记")}</span></td>
         <td>${escapeHtml(item.taskName || "未分任务")}</td>
-        <td>${escapeHtml(item.owner || "未填写")}</td>
         <td class="multiline-cell">${escapeHtml(item.link || "未填写")}</td>
         <td class="multiline-cell">${escapeHtml(item.note || "暂无补充说明")}</td>
       </tr>
     `).join("")
     : `
       <tr>
-        <td colspan="8" class="empty-cell">当前没有未修复BUG</td>
+        <td colspan="7" class="empty-cell">当前没有未修复BUG</td>
       </tr>
     `;
 
@@ -6271,7 +6385,6 @@ function buildReportHtml(report) {
     .health p { margin-top: 8px; color: var(--muted); line-height: 1.7; }
     .text-area-like, .multiline-cell { white-space: pre-wrap; line-height: 1.8; color: var(--text); word-break: break-word; }
     .empty-cell { text-align: center; color: var(--muted); padding: 22px 14px; }
-    .owner-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
     @page { size: A4; margin: 14mm; }
     @media print {
       body { background: #fff; }
@@ -6289,10 +6402,6 @@ function buildReportHtml(report) {
         <span class="eyebrow">测试范围</span>
         <h1>${escapeHtml(report.heroTitle)}</h1>
         <p>${escapeHtml(report.scopeLabel)}</p>
-        <div>
-          <span class="summary-label">测试负责人</span>
-          <div class="owner-tags">${ownerTags}</div>
-        </div>
         <div class="meta-grid">
           <div class="meta-item"><span>版本</span><strong>${escapeHtml(report.batchVersion)}</strong></div>
           <div class="meta-item"><span>任务</span><strong>${escapeHtml(report.taskName)}</strong></div>
@@ -6392,7 +6501,6 @@ function buildReportHtml(report) {
                 <th>状态</th>
                 <th>严重级别</th>
                 <th>任务</th>
-                <th>负责人</th>
                 <th>Lark链接</th>
                 <th>详情</th>
               </tr>

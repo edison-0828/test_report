@@ -33,8 +33,8 @@
     </aside>
 
     <main class="content">
-      <section class="tab-panel active" id="upload">
-        <div class="panel-header">
+      <section class="tab-panel active upload-workspace" id="upload">
+        <div class="panel-header upload-hero">
           <div>
             <h2>任务创建与用例生成</h2>
             <p>从上到下完成创建流程，再到用例、BUG、报告模块跟进执行结果。</p>
@@ -60,7 +60,7 @@
         </section>
 
         <div class="panel-grid upload-grid">
-          <section class="panel ai-config-panel">
+          <section class="panel ai-config-panel upload-stage-panel upload-stage-panel-ai">
             <div class="section-head">
               <div>
                 <h3>1. AI 配置</h3>
@@ -86,14 +86,6 @@
             </div>
             <p class="field-hint">&#23448;&#26041; Key &#33719;&#21462;&#22320;&#22336;&#65306;<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">https://platform.openai.com/api-keys</a></p>
             <p class="security-note">当前浏览器会保留你的个人 Key 和模型设置，刷新页面后无需重新输入。</p>
-            <div class="form-row">
-              <label>
-                当前操作人
-                <select id="currentOperatorSelect">
-                  <option value="">请选择当前操作人</option>
-                </select>
-              </label>
-            </div>
             <div class="inline-actions">
               <button id="checkApiKey" class="primary-button">检测并启用</button>
               <button id="clearApiKey" class="ghost-button">清空Key</button>
@@ -101,7 +93,7 @@
             <p id="apiFeedback" class="inline-feedback">这里会显示你当前个人 Key 的检测结果和使用状态。</p>
           </section>
 
-          <section class="panel">
+          <section class="panel upload-stage-panel upload-stage-panel-version">
             <div class="section-head">
               <div>
                 <h3>2. 新建版本</h3>
@@ -140,7 +132,7 @@
             <div id="currentVersionSummary" class="version-summary"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel upload-stage-panel upload-stage-panel-task">
             <div class="section-head">
               <div>
                 <h3>3. 新建任务</h3>
@@ -176,7 +168,7 @@
             <div id="currentTaskSummary" class="version-summary"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel upload-stage-panel upload-stage-panel-generate">
             <h3>4. 导入文档并生成用例</h3>
 
             <div id="generationVersionSummary" class="version-summary generation-version-summary"></div>
@@ -307,11 +299,18 @@
             </div>
             <div class="api-workbench-badges">
               <span class="state-chip subtle">pytest</span>
-              <span class="state-chip neutral">test / sandbox</span>
+              <span class="state-chip neutral">site / env</span>
             </div>
           </div>
 
           <div class="api-workbench-grid">
+            <label>
+              &#31449;&#28857;
+              <select id="apiAutomationSite">
+                <option value="klicklpay">KlicklPay</option>
+                <option value="sunpay">SunPay</option>
+              </select>
+            </label>
             <label>
               &#25191;&#34892;&#29615;&#22659;
               <select id="apiAutomationEnv">
@@ -323,20 +322,12 @@
               Base URL
               <input type="text" id="apiAutomationBaseUrl" readonly placeholder="&#35835;&#21462;&#37197;&#32622;&#25991;&#20214;">
             </label>
-            <label>
-              &#25968;&#25454;&#38598;
-              <input type="text" id="apiAutomationDataset" placeholder="&#20363;&#22914;&#65306;default / smoke / payout">
-            </label>
-            <label>
-              pytest marker
-              <input type="text" id="apiAutomationMarker" placeholder="&#20363;&#22914;&#65306;smoke and api">
-            </label>
             <div class="api-workbench-actions">
-              <button type="button" class="ghost-button" disabled>&#25209;&#37327;&#25191;&#34892;</button>
-              <button type="button" class="ghost-button" disabled>&#26597;&#30475;&#36816;&#34892;&#35760;&#24405;</button>
+              <button type="button" id="runApiAutomationBatch" class="ghost-button">&#25209;&#37327;&#25191;&#34892;</button>
+              <button type="button" id="viewApiAutomationRuns" class="ghost-button">&#26597;&#30475;&#36816;&#34892;&#35760;&#24405;</button>
             </div>
           </div>
-          <p id="apiAutomationConfigStatus" class="inline-feedback neutral">&#35835;&#21462; api-automation.config.json &#21518;&#65292;&#20250;&#26174;&#31034;&#24403;&#21069;&#29615;&#22659;&#30340; Base URL &#21644; KlicklPay-Key &#37197;&#32622;&#29366;&#24577;&#12290;</p>
+          <p id="apiAutomationConfigStatus" class="inline-feedback neutral">&#35835;&#21462; api-automation.config.json &#21518;&#65292;&#20250;&#26174;&#31034;&#24403;&#21069;&#31449;&#28857;&#12289;&#29615;&#22659;&#12289;Base URL&#12289;&#31449;&#28857; Key &#21644;&#31614;&#21517; API Key &#37197;&#32622;&#29366;&#24577;&#12290;</p>
         </section>
 
         <section class="panel api-case-library-panel">

@@ -214,35 +214,79 @@ test cases.
 
 ## API Automation Configuration
 
-Interface automation reads local environment settings from
+Interface automation reads local site and environment settings from
 `api-automation.config.json`. This file is ignored by Git, so put private
-values such as `KlicklPay-Key` there.
+values such as merchant keys and signing API keys there.
 
-Create it from `api-automation.config.example.json`, then fill the key for each
-environment:
+Create it from `api-automation.config.example.json`, then fill the merchant key
+and signing API key for each site:
 
 ```json
 {
-  "environments": {
-    "test": {
-      "baseUrl": "https://test-oapi.klicklpay.com",
-      "headers": {
-        "KlicklPay-Key": "your_test_key"
+  "defaultSite": "klicklpay",
+  "sites": {
+    "klicklpay": {
+      "label": "KlicklPay",
+      "requiredHeaders": ["KlicklPay-Key"],
+      "environments": {
+        "test": {
+          "baseUrl": "https://test-oapi.klicklpay.com",
+          "headers": {
+            "KlicklPay-Key": "your_test_key"
+          }
+        },
+        "sandbox": {
+          "baseUrl": "https://sandbox-oapi.klicklpay.com",
+          "headers": {
+            "KlicklPay-Key": "your_sandbox_key"
+          }
+        }
+      },
+      "signature": {
+        "enabled": true,
+        "status": "ready",
+        "algorithm": "SHA256",
+        "uppercase": true,
+        "timestampUnit": "milliseconds",
+        "nonceLength": 32,
+        "stringTemplate": "{timestamp}{nonce}{body}",
+        "apiKey": "your_signing_api_key"
       }
     },
-    "sandbox": {
-      "baseUrl": "https://sandbox-oapi.klicklpay.com",
-      "headers": {
-        "KlicklPay-Key": "your_sandbox_key"
+    "sunpay": {
+      "label": "SunPay",
+      "requiredHeaders": ["SunPay-Key"],
+      "environments": {
+        "sandbox": {
+          "baseUrl": "https://sandbox-oapi.sunpay.pro",
+          "headers": {
+            "SunPay-Key": "your_sandbox_key"
+          }
+        }
+      },
+      "signature": {
+        "enabled": true,
+        "status": "ready",
+        "algorithm": "SHA256",
+        "uppercase": true,
+        "timestampUnit": "milliseconds",
+        "nonceLength": 32,
+        "stringTemplate": "{timestamp}{nonce}{body}",
+        "apiKey": "your_signing_api_key"
       }
     }
   }
 }
 ```
 
-The signing rules are still marked as `pending-docs` because the PayIn URL was
-not accessible from this workspace. Paste the official signing rule into the
-`signature` section before enabling real pytest execution.
+KlicklPay signing uses `timestamp + nonce + body` as the signature string, then
+encrypts it with the API key by SHA256 and uppercases the result. Timestamp is
+Unix time in milliseconds, nonce is a 32-character random string, and body is
+omitted when the request has no body.
+
+SunPay is sandbox-only for now and uses the same documented signature shape:
+`timestamp + nonce + body`, SHA256 with API key, uppercased. The default SunPay
+header names are configurable in `sites.sunpay.signature.headers`.
 
 ## Optional Lark Integration
 

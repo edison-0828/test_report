@@ -74,6 +74,33 @@ test("serves the app shell", async () => {
   assert.match(html, /id="qualityBusinessModules"/);
 });
 
+test("keeps decorative header layers from blocking controls", async () => {
+  const response = await fetch(`${BASE_URL}/styles.css`);
+  const styles = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(
+    styles,
+    /\.panel-header::before,\s*\.panel-header::after\s*\{[^}]*pointer-events:\s*none;/s
+  );
+});
+
+test("omits operator and task owner fields from UI and exports", async () => {
+  const [htmlResponse, appResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const serverSource = fs.readFileSync(SERVER_ENTRY, "utf-8");
+
+  assert.equal(htmlResponse.status, 200);
+  assert.equal(appResponse.status, 200);
+  assert.doesNotMatch(html, /currentOperatorSelect/);
+  assert.doesNotMatch(appSource, /taskOwnerSelect|任务负责人|测试负责人/);
+  assert.doesNotMatch(serverSource, /"负责人"\s*:/);
+});
+
 test("serves quality rule configuration", async () => {
   const response = await fetch(`${BASE_URL}/quality-rules.js`);
   const source = await response.text();
@@ -110,10 +137,32 @@ test("reports api automation config without exposing keys", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(data.ok, true);
+  assert.equal(data.defaultSite, "klicklpay");
+  assert.equal(data.sites.klicklpay.label, "KlicklPay");
+  assert.equal(data.sites.sunpay.label, "SunPay");
+  assert.deepEqual(Object.keys(data.sites.sunpay.environments), ["sandbox"]);
+  assert.equal(data.sites.sunpay.environments.sandbox.baseUrl, "https://sandbox-oapi.sunpay.pro");
+  assert.equal(typeof data.sites.sunpay.environments.sandbox.headers["SunPay-Key"], "boolean");
+  assert.equal(data.sites.sunpay.signature.status, "ready");
+  assert.equal(data.sites.sunpay.signature.algorithm, "SHA256");
+  assert.equal(data.sites.sunpay.signature.headers.timestamp, "SunPay-Timestamp");
+  assert.equal(data.sites.sunpay.signature.headers.nonce, "SunPay-Nonce");
+  assert.equal(data.sites.sunpay.signature.headers.signature, "SunPay-Sign");
   assert.equal(data.environments.test.baseUrl, "https://test-oapi.klicklpay.com");
   assert.equal(data.environments.sandbox.baseUrl, "https://sandbox-oapi.klicklpay.com");
   assert.equal(typeof data.environments.test.headers["KlicklPay-Key"], "boolean");
   assert.equal(typeof data.environments.sandbox.headers["KlicklPay-Key"], "boolean");
+  assert.equal(data.signature.status, "ready");
+  assert.equal(data.signature.algorithm, "SHA256");
+  assert.equal(data.signature.timestampUnit, "milliseconds");
+  assert.equal(data.signature.nonceLength, 32);
+  assert.equal(typeof data.signature.apiKeyConfigured, "boolean");
+  assert.equal(data.signature.headers.timestamp, "KlicklPay-Timestamp");
+  assert.equal(data.signature.headers.nonce, "KlicklPay-Nonce");
+  assert.equal(data.signature.headers.signature, "KlicklPay-Sign");
+  assert.equal(data.signature.apiKey, undefined);
+  assert.equal(data.sites.klicklpay.signature.apiKey, undefined);
+  assert.equal(data.sites.sunpay.signature.apiKey, undefined);
 });
 
 test("reports ui automation session status", async () => {

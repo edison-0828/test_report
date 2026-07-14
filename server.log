@@ -1,0 +1,5 @@
+
+> test-flow-tool@0.1.0 dev
+> node scripts/dev-server.js --host 127.0.0.1
+
+Test flow tool listening on http://0.0.0.0:4173

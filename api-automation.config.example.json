@@ -1,26 +1,75 @@
 {
-  "environments": {
-    "test": {
-      "baseUrl": "https://test-oapi.klicklpay.com",
-      "headers": {
-        "KlicklPay-Key": "your_test_klicklpay_key"
+  "defaultSite": "klicklpay",
+  "sites": {
+    "klicklpay": {
+      "label": "KlicklPay",
+      "requiredHeaders": [
+        "KlicklPay-Key"
+      ],
+      "environments": {
+        "test": {
+          "baseUrl": "https://test-oapi.klicklpay.com",
+          "headers": {
+            "KlicklPay-Key": "your_test_klicklpay_key"
+          }
+        },
+        "sandbox": {
+          "baseUrl": "https://sandbox-oapi.klicklpay.com",
+          "headers": {
+            "KlicklPay-Key": "your_sandbox_klicklpay_key"
+          }
+        }
+      },
+      "signature": {
+        "enabled": true,
+        "status": "ready",
+        "algorithm": "SHA256",
+        "uppercase": true,
+        "timestampUnit": "milliseconds",
+        "nonceLength": 32,
+        "bodyMode": "raw-json-string",
+        "stringTemplate": "{timestamp}{nonce}{body}",
+        "keySource": "apiKey",
+        "apiKey": "your_klicklpay_signing_api_key",
+        "headers": {
+          "timestamp": "KlicklPay-Timestamp",
+          "nonce": "KlicklPay-Nonce",
+          "signature": "KlicklPay-Sign"
+        },
+        "note": "Signature string is timestamp + nonce + body, then SHA256 encrypted with API Key and uppercased. Omit body when request body is empty."
       }
     },
-    "sandbox": {
-      "baseUrl": "https://sandbox-oapi.klicklpay.com",
-      "headers": {
-        "KlicklPay-Key": "your_sandbox_klicklpay_key"
+    "sunpay": {
+      "label": "SunPay",
+      "requiredHeaders": [
+        "SunPay-Key"
+      ],
+      "environments": {
+        "sandbox": {
+          "baseUrl": "https://sandbox-oapi.sunpay.pro",
+          "headers": {
+            "SunPay-Key": "your_sandbox_sunpay_key"
+          }
+        }
+      },
+      "signature": {
+        "enabled": true,
+        "status": "ready",
+        "algorithm": "SHA256",
+        "uppercase": true,
+        "timestampUnit": "milliseconds",
+        "nonceLength": 32,
+        "bodyMode": "raw-json-string",
+        "stringTemplate": "{timestamp}{nonce}{body}",
+        "keySource": "apiKey",
+        "apiKey": "your_sunpay_signing_api_key",
+        "headers": {
+          "timestamp": "SunPay-Timestamp",
+          "nonce": "SunPay-Nonce",
+          "signature": "SunPay-Sign"
+        },
+        "note": "SunPay signature docs use the same rule: timestamp + nonce + body, SHA256 encrypted with API Key and uppercased. Header names are configurable if the merchant backend uses different names."
       }
     }
-  },
-  "signature": {
-    "enabled": true,
-    "status": "pending-docs",
-    "note": "The PayIn URL currently returns 403 from this workspace. Paste the accessible API documentation or signing rule here before enabling real pytest execution.",
-    "algorithm": "",
-    "signatureHeader": "",
-    "timestampHeader": "",
-    "nonceHeader": "",
-    "secret": ""
   }
 }

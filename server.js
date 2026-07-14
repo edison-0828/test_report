@@ -147,51 +147,126 @@ function readApiAutomationConfig() {
 }
 
 function normalizeApiAutomationConfig(rawConfig) {
-  const environments = rawConfig && typeof rawConfig.environments === "object" ? rawConfig.environments : {};
+  const sites = rawConfig && typeof rawConfig.sites === "object" ? rawConfig.sites : {};
+  const normalizedSites = {};
+
+  if (Object.keys(sites).length) {
+    for (const [siteName, siteConfig] of Object.entries(sites)) {
+      normalizedSites[siteName] = normalizeApiAutomationSite(siteName, siteConfig);
+    }
+  } else {
+    normalizedSites.klicklpay = normalizeApiAutomationSite("klicklpay", {
+      label: "KlicklPay",
+      requiredHeaders: ["KlicklPay-Key"],
+      environments: rawConfig?.environments,
+      signature: rawConfig?.signature
+    });
+    normalizedSites.sunpay = normalizeApiAutomationSite("sunpay", {
+      label: "SunPay",
+      environments: {
+        sandbox: {
+          baseUrl: "",
+          headers: {}
+        }
+      },
+      signature: {
+        enabled: false,
+        status: "pending-rules",
+        note: "SunPay signing rules are not configured yet."
+      }
+    });
+  }
+
+  return {
+    defaultSite: String(rawConfig?.defaultSite || (normalizedSites.klicklpay ? "klicklpay" : Object.keys(normalizedSites)[0] || "")),
+    sites: normalizedSites,
+    environments: normalizedSites.klicklpay?.environments || {},
+    signature: normalizedSites.klicklpay?.signature || {}
+  };
+}
+
+function normalizeApiAutomationSite(siteName, rawSite) {
+  const siteConfig = rawSite && typeof rawSite === "object" ? rawSite : {};
+  const environments = siteConfig.environments && typeof siteConfig.environments === "object" ? siteConfig.environments : {};
+  const defaultEnvironmentNames = siteName === "sunpay" ? ["sandbox"] : ["test", "sandbox"];
+  const environmentNames = Object.keys(environments).length ? Object.keys(environments) : defaultEnvironmentNames;
   const normalizedEnvironments = {};
-  for (const envName of ["test", "sandbox"]) {
+
+  for (const envName of environmentNames) {
     const envConfig = environments[envName] && typeof environments[envName] === "object" ? environments[envName] : {};
     const headers = envConfig.headers && typeof envConfig.headers === "object" ? envConfig.headers : {};
+    const normalizedHeaders = {};
+    for (const [headerName, headerValue] of Object.entries(headers)) {
+      normalizedHeaders[headerName] = String(headerValue || "");
+    }
+
     normalizedEnvironments[envName] = {
       baseUrl: String(envConfig.baseUrl || "").replace(/\/+$/, ""),
-      headers: {
-        "KlicklPay-Key": String(headers["KlicklPay-Key"] || "")
-      }
+      headers: normalizedHeaders
     };
   }
 
-  const signature = rawConfig && typeof rawConfig.signature === "object" ? rawConfig.signature : {};
+  const signature = siteConfig.signature && typeof siteConfig.signature === "object" ? siteConfig.signature : {};
+  const signatureHeaders = signature.headers && typeof signature.headers === "object" ? signature.headers : {};
+  const requiredHeaders = Array.isArray(siteConfig.requiredHeaders) ? siteConfig.requiredHeaders.map(String) : [];
+
   return {
+    label: String(siteConfig.label || siteName),
+    requiredHeaders,
     environments: normalizedEnvironments,
     signature: {
       enabled: Boolean(signature.enabled),
-      status: String(signature.status || "pending-docs"),
+      status: String(signature.status || (signature.enabled ? "ready" : "pending-rules")),
       note: String(signature.note || ""),
       algorithm: String(signature.algorithm || ""),
-      signatureHeader: String(signature.signatureHeader || ""),
-      timestampHeader: String(signature.timestampHeader || ""),
-      nonceHeader: String(signature.nonceHeader || "")
+      uppercase: signature.uppercase !== false,
+      timestampUnit: String(signature.timestampUnit || ""),
+      nonceLength: Number.isFinite(Number(signature.nonceLength)) ? Number(signature.nonceLength) : 0,
+      bodyMode: String(signature.bodyMode || ""),
+      stringTemplate: String(signature.stringTemplate || ""),
+      keySource: String(signature.keySource || ""),
+      apiKeyConfigured: Boolean(signature.apiKey || signature.secret),
+      headers: {
+        timestamp: String(signatureHeaders.timestamp || signature.timestampHeader || ""),
+        nonce: String(signatureHeaders.nonce || signature.nonceHeader || ""),
+        signature: String(signatureHeaders.signature || signature.signatureHeader || "")
+      }
     }
   };
 }
 
 function buildApiAutomationConfigPayload() {
   const config = readApiAutomationConfig();
-  const environments = Object.fromEntries(Object.entries(config.environments).map(([name, envConfig]) => [
-    name,
-    {
-      baseUrl: envConfig.baseUrl,
-      headers: {
-        "KlicklPay-Key": Boolean(envConfig.headers?.["KlicklPay-Key"])
+  const sites = Object.fromEntries(Object.entries(config.sites).map(([siteName, siteConfig]) => {
+    const environments = Object.fromEntries(Object.entries(siteConfig.environments).map(([name, envConfig]) => [
+      name,
+      {
+        baseUrl: envConfig.baseUrl,
+        headers: Object.fromEntries(Object.entries(envConfig.headers || {}).map(([headerName, headerValue]) => [
+          headerName,
+          Boolean(headerValue)
+        ]))
       }
-    }
-  ]));
+    ]));
+
+    return [
+      siteName,
+      {
+        label: siteConfig.label,
+        requiredHeaders: siteConfig.requiredHeaders,
+        environments,
+        signature: siteConfig.signature
+      }
+    ];
+  }));
 
   return {
     ok: !config.error,
     error: config.error || "",
-    environments,
-    signature: config.signature
+    defaultSite: config.defaultSite,
+    sites,
+    environments: sites.klicklpay?.environments || {},
+    signature: sites.klicklpay?.signature || {}
   };
 }
 
@@ -1326,7 +1401,6 @@ function buildLarkRecords(state) {
         "任务名称": task.name,
         "所属版本": task.batchVersion || batch?.version,
         "测试范围": task.scope,
-        "负责人": formatOwners(task.owners || task.owner),
         "状态": task.status,
         "更新时间": now
       });
@@ -1359,7 +1433,6 @@ function buildLarkRecords(state) {
         "BUG标题": bug.title,
         "严重程度": bug.severity,
         "状态": bug.status,
-        "负责人": bug.owner,
         "关联用例": linkedCase?.title || bug.caseId,
         "备注": bug.note,
         "所属版本": bug.batchVersion || linkedCase?.batchVersion || batch?.version,
