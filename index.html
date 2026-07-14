@@ -161,10 +161,11 @@
             <div id="currentVersionSummary" class="version-summary"></div>
           </section>
 
-          <section class="panel upload-stage-panel upload-stage-panel-task">
+          <section class="panel upload-stage-panel upload-stage-panel-task upload-stage-panel-combined">
             <div class="section-head">
               <div>
-                <h3>2. 新建任务</h3>
+                <h3>2. 新建任务并生成用例</h3>
+                <p class="section-note">填写测试目标并放入需求文档，一次完成任务创建和用例生成。</p>
               </div>
             </div>
 
@@ -184,23 +185,20 @@
               </label>
 
               <label class="step-field step-field-wide">
-                <span class="step-label">你要测什么</span>
+                <span class="step-label">你要测什么 <strong class="required-mark">*</strong></span>
                 <textarea id="taskScopeInput" class="md-textarea" rows="6"
                   placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
               </label>
             </div>
 
-            <div class="inline-actions">
-              <button id="createTaskBtn" class="primary-button">保存当前任务</button>
+            <div id="currentTaskSummary" class="version-summary"></div>
+
+            <div class="combined-generation-divider">
+              <strong>需求 / 接口文档</strong>
+              <span>AI 会结合上面的测试目标生成用例</span>
             </div>
 
-            <div id="currentTaskSummary" class="version-summary"></div>
-          </section>
-
-          <section class="panel upload-stage-panel upload-stage-panel-generate">
-            <h3>4. 导入文档并生成用例</h3>
-
-            <div id="generationVersionSummary" class="version-summary generation-version-summary"></div>
+            <div id="generationVersionSummary" class="version-summary generation-version-summary hidden-field"></div>
 
             <div class="form-row">
               <label>
@@ -230,11 +228,6 @@
               <input type="url" id="sourceUrl" placeholder="例如：https://petstore.swagger.io/ 或接口文档页面链接">
             </label>
 
-            <label id="focusHintWrap">
-              测试定位 / 范围提示
-              <textarea id="focusHint" rows="3" placeholder="例如：只测试登录相关接口；只看订单创建、取消和查询；定位 pet 模块中的新增与删除"></textarea>
-            </label>
-
             <div class="form-row">
               <label>
                 内容名称
@@ -243,7 +236,7 @@
             </div>
 
             <div class="actions">
-              <button id="generateCases">AI生成用例</button>
+              <button id="createTaskAndGenerate" class="primary-button">创建任务并生成用例</button>
               <button id="generateCasesLocal" class="ghost-button">规则生成</button>
               <button id="saveDocument" class="ghost-button">保存文档</button>
             </div>
@@ -490,10 +483,7 @@
 
         <section class="panel bug-filter-panel">
           <div class="bug-filter-head">
-            <div>
-              <span class="bug-section-kicker">筛选范围</span>
-              <h3>快速定位 BUG</h3>
-            </div>
+            <h3>筛选</h3>
             <span id="bugManagerCount" class="badge subtle">0 个 BUG</span>
           </div>
           <div class="bug-filter-grid">
@@ -542,9 +532,9 @@
           <div class="bug-editor-section-head">
             <div>
               <span class="bug-section-kicker">BUG 列表</span>
-              <h3>问题标题</h3>
+              <h3>问题跟踪</h3>
             </div>
-            <p>页面仅展示 BUG 标题，点击“查看详情”进入完整明细。</p>
+            <p>查看严重程度、状态和处理时间，并在操作列推进 BUG 流程。</p>
           </div>
           <div id="bugList" class="bug-title-list"></div>
         </section>
@@ -562,11 +552,32 @@
         <section class="panel">
           <div class="section-head">
             <div>
-              <h3>版本报告</h3>
-              <p class="section-note">每个版本一张卡片，快速查看执行进度、风险和未关闭问题。</p>
+              <h3>版本报告列表</h3>
+              <p class="section-note">按版本查看任务、执行进度、通过率、BUG 和发布结论。</p>
+            </div>
+            <div class="report-table-toolbar">
+              <input id="reportVersionSearch" type="search" placeholder="搜索版本号" aria-label="搜索报告版本号">
+              <select id="reportVersionStatusFilter" aria-label="按版本状态筛选">
+                <option value="">全部状态</option>
+                <option value="进行中">进行中</option>
+                <option value="已挂起">已挂起</option>
+                <option value="已完成">已完成</option>
+              </select>
+              <select id="reportReleaseFilter" aria-label="按发布结论筛选">
+                <option value="">全部结论</option>
+                <option value="有风险">有风险</option>
+                <option value="需关注">需关注</option>
+                <option value="可发布">可发布</option>
+              </select>
+              <span id="reportVersionCount" class="badge subtle">0 个版本</span>
             </div>
           </div>
-          <div id="reportVersionCards" class="report-version-cards"></div>
+          <div id="reportVersionCards" class="report-version-table-host"></div>
+          <div id="reportVersionPagination" class="report-table-pagination hidden-field">
+            <button id="reportVersionPrev" class="ghost-button" type="button">上一页</button>
+            <span id="reportVersionPageInfo">第 1 / 1 页</span>
+            <button id="reportVersionNext" class="ghost-button" type="button">下一页</button>
+          </div>
         </section>
 
         <div class="section-head report-detail-head">
@@ -587,7 +598,7 @@
         <section class="panel report-section">
           <div class="section-head">
             <div>
-              <h3>重点问题</h3>
+              <h3>问题明细</h3>
             </div>
           </div>
           <div id="reportHighlights" class="list-stack compact-stack"></div>

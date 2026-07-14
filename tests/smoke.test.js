@@ -99,7 +99,7 @@ test("serves the responsive light workspace shell", async () => {
   assert.match(styles, /@media \(max-width:\s*980px\)/);
 });
 
-test("simplifies case generation to AI setup, task, and source steps", async () => {
+test("combines task creation and case generation into one step", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
     fetch(`${BASE_URL}/app.js`),
@@ -110,12 +110,17 @@ test("simplifies case generation to AI setup, task, and source steps", async () 
   const styles = await stylesResponse.text();
 
   assert.match(html, /upload-stage-panel-version hidden-field/);
-  assert.match(html, /<h3>2\. 新建任务<\/h3>/);
+  assert.match(html, /<h3>2\. 新建任务并生成用例<\/h3>/);
+  assert.match(html, /id="createTaskAndGenerate"/);
+  assert.doesNotMatch(html, /id="focusHint"/);
   assert.match(html, /<div class="form-row hidden-field" aria-hidden="true">\s*<label>\s*关联版本/s);
   assert.match(appSource, /const DEFAULT_WORKSPACE_VERSION = "默认工作区";/);
   assert.match(appSource, /function ensureDefaultTaskBatch\(\)/);
+  assert.match(appSource, /async function createTaskAndGenerateCases\(\)/);
+  assert.match(appSource, /const focusHint = activeTask\?\.scope \|\| "";/);
   assert.doesNotMatch(appSource, /nextAction: "create-meta"/);
-  assert.match(styles, /"ai task"\s*"generate generate"/);
+  assert.match(styles, /grid-template-areas: "ai task";/);
+  assert.match(styles, /\.combined-generation-divider\s*\{/);
 });
 
 test("serves version table, creation dialog, and task assignment controls", async () => {
@@ -210,6 +215,7 @@ test("serves the ZenTao-style bug title list and modal details", async () => {
   const styles = await stylesResponse.text();
 
   assert.match(html, /class="panel bug-filter-panel"/);
+  assert.match(html, /<h3>筛选<\/h3>/);
   assert.match(html, /id="bugSearchInput"/);
   assert.match(html, /id="bugSeverityFilter"/);
   assert.match(html, /id="bugWorkflowStatusFilter"/);
@@ -226,7 +232,12 @@ test("serves the ZenTao-style bug title list and modal details", async () => {
   assert.match(appSource, /function handleBugNotePaste\(event\)/);
   assert.match(appSource, /\/api\/bug-images/);
   assert.match(appSource, /data-view-bug-id/);
+  assert.match(appSource, /data-transition-bug-id/);
+  assert.match(appSource, /class="bug-table-title-text"/);
+  assert.match(appSource, /function transitionBugStatus\(bugId\)/);
+  assert.match(appSource, /function getNextBugTransition\(status\)/);
   assert.match(styles, /\.bug-title-row\s*\{/);
+  assert.match(styles, /\.bug-management-table\s*\{/);
   assert.match(styles, /\.bug-dialog\s*\{/);
   assert.match(styles, /#bugModal\[data-mode="view"\]/);
 });
@@ -240,6 +251,33 @@ test("keeps decorative header layers from blocking controls", async () => {
     styles,
     /\.panel-header::before,\s*\.panel-header::after\s*\{[^}]*pointer-events:\s*none;/s
   );
+});
+
+test("serves the report menu as version and issue tables", async () => {
+  const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
+    fetch(`${BASE_URL}/`),
+    fetch(`${BASE_URL}/app.js`),
+    fetch(`${BASE_URL}/styles.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const appSource = await appResponse.text();
+  const styles = await stylesResponse.text();
+
+  assert.match(html, /class="report-version-table-host"/);
+  assert.match(html, /版本报告列表/);
+  assert.match(html, /id="reportVersionSearch"/);
+  assert.match(html, /id="reportVersionStatusFilter"/);
+  assert.match(html, /id="reportReleaseFilter"/);
+  assert.match(html, /id="reportVersionPagination"/);
+  assert.match(appSource, /class="report-version-table"/);
+  assert.match(appSource, /class="report-detail-table"/);
+  assert.match(appSource, /class="report-issue-table"/);
+  assert.match(appSource, /button\[data-report-batch-id\]/);
+  assert.match(appSource, /REPORT_VERSIONS_PER_PAGE = 10/);
+  assert.match(appSource, /const filteredCards = versionCards\.filter/);
+  assert.match(styles, /\.report-version-table\s*[,\{]/);
+  assert.match(styles, /\.report-detail-table\s*[,\{]/);
+  assert.match(styles, /\.report-issue-table\s*\{/);
 });
 
 test("omits operator and task owner fields from UI and exports", async () => {

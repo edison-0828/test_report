@@ -365,3 +365,18 @@ test("case quality reports are isolated by selected business", () => {
   assert.equal(getCaseQualityReportForBusiness("VA业务").label, "VA通过");
   assert.equal(getCaseQualityReportForBusiness("卡收单业务").label, "卡收单需关注");
 });
+
+test("BUG workflow advances in order and stops after closing", () => {
+  const getNextBugTransition = loadFunction("getNextBugTransition");
+  const isBugCompletedStatus = loadFunction("isBugCompletedStatus");
+
+  assert.deepEqual(toPlainJson(getNextBugTransition("新建")), { status: "已提交", label: "提交 BUG" });
+  assert.deepEqual(toPlainJson(getNextBugTransition("已提交")), { status: "已修复", label: "标记已修复" });
+  assert.deepEqual(toPlainJson(getNextBugTransition("已修复")), { status: "待回归", label: "提交回归" });
+  assert.deepEqual(toPlainJson(getNextBugTransition("待回归")), { status: "已验证", label: "验证通过" });
+  assert.deepEqual(toPlainJson(getNextBugTransition("已验证")), { status: "已关闭", label: "关闭 BUG" });
+  assert.equal(getNextBugTransition("已关闭"), null);
+  assert.equal(isBugCompletedStatus("已验证"), true);
+  assert.equal(isBugCompletedStatus("已关闭"), true);
+  assert.equal(isBugCompletedStatus("待回归"), false);
+});
