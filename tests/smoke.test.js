@@ -1,14 +1,19 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const SERVER_ENTRY = path.join(ROOT, "server.js");
-const TEST_PORT = 4199;
-const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
+let testPort = 4199;
+const BASE_URL = {
+  toString() {
+    return `http://127.0.0.1:${testPort}`;
+  }
+};
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-report-smoke-"));
 const appStateFile = path.join(tempDir, "app-state.json");
@@ -21,11 +26,12 @@ const exportPrefix = `smoke-${Date.now()}`;
 let serverProcess;
 
 test.before(async () => {
+  testPort = await getAvailablePort();
   serverProcess = spawn(process.execPath, [SERVER_ENTRY], {
     cwd: ROOT,
     env: {
       ...process.env,
-      PORT: String(TEST_PORT),
+      PORT: String(testPort),
       APP_STATE_FILE: appStateFile,
       TEAM_MEMBERS_FILE: teamMembersFile,
       BUG_ATTACHMENTS_ROOT: bugAttachmentsRoot,
@@ -703,5 +709,24 @@ function delay(ms) {
 function onceExit(childProcess) {
   return new Promise((resolve) => {
     childProcess.once("exit", () => resolve());
+  });
+}
+
+function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = address && typeof address === "object" ? address.port : 0;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
   });
 }
