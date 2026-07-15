@@ -158,6 +158,12 @@ const els = {
   versionFormFeedback: document.getElementById("versionFormFeedback"),
   closeVersionModal: document.getElementById("closeVersionModal"),
   cancelVersionModal: document.getElementById("cancelVersionModal"),
+  versionCompleteModal: document.getElementById("versionCompleteModal"),
+  versionCompleteTitle: document.getElementById("versionCompleteTitle"),
+  versionCompleteSummary: document.getElementById("versionCompleteSummary"),
+  closeVersionCompleteModal: document.getElementById("closeVersionCompleteModal"),
+  cancelVersionCompleteModal: document.getElementById("cancelVersionCompleteModal"),
+  confirmVersionComplete: document.getElementById("confirmVersionComplete"),
   taskManagerList: document.getElementById("taskManagerList"),
   taskManagerCount: document.getElementById("taskManagerCount"),
   taskSearchInput: document.getElementById("taskSearchInput"),
@@ -264,6 +270,18 @@ const els = {
   reportVersionPageInfo: document.getElementById("reportVersionPageInfo"),
   reportDetailHeader: document.getElementById("reportDetailHeader"),
   exportReport: document.getElementById("exportReport"),
+  publishReport: document.getElementById("publishReport"),
+  reportExportModal: document.getElementById("reportExportModal"),
+  reportExportPreview: document.getElementById("reportExportPreview"),
+  closeReportExportModal: document.getElementById("closeReportExportModal"),
+  cancelReportExport: document.getElementById("cancelReportExport"),
+  confirmReportExport: document.getElementById("confirmReportExport"),
+  publishWebReport: document.getElementById("publishWebReport"),
+  publishedReportResult: document.getElementById("publishedReportResult"),
+  publishedReportCount: document.getElementById("publishedReportCount"),
+  publishedReportList: document.getElementById("publishedReportList"),
+  publishedReportSearch: document.getElementById("publishedReportSearch"),
+  toastRegion: document.getElementById("toastRegion"),
   runSelfTest: document.getElementById("runSelfTest"),
   selfTestStatus: document.getElementById("selfTestStatus"),
   selfTestFeedback: document.getElementById("selfTestFeedback"),
@@ -286,6 +304,7 @@ const settings = {
 
 let uploadedFileContent = "";
 let editingBatchId = "";
+let completingBatchId = "";
 let editingTaskId = "";
 let activeExecutionCaseId = "";
 let activeBugEditorId = "";
@@ -295,6 +314,7 @@ let bugModalExistingImages = [];
 let bugModalPendingImages = [];
 let bugModalRemovedImageIds = [];
 let reportVersionPage = 1;
+let publishedReports = [];
 let persistSharedTimer = 0;
 const buttonSuccessTimers = new WeakMap();
 const selfTestState = {
@@ -326,6 +346,7 @@ hydrateReportChrome();
 hydrateWorkflowChrome();
 simplifyUploadFlow();
 initTextSourceUi();
+enhanceGenerationBeginnerFlow();
 initOwnerUi();
 bindEvents();
 renderAll();
@@ -333,6 +354,7 @@ hydrateInteractionUi();
 ensureCasesToolbarEnhancements();
 loadTeamMembersConfig();
 loadSharedState();
+loadPublishedReports();
 loadApiAutomationConfig();
 loadSelfTestStatus();
 loadUiAutomationStatus();
@@ -386,12 +408,24 @@ function bindEvents() {
   els.versionModal?.addEventListener("click", (event) => {
     if (event.target === els.versionModal) closeVersionModal();
   });
+  els.closeVersionCompleteModal?.addEventListener("click", closeVersionCompleteModal);
+  els.cancelVersionCompleteModal?.addEventListener("click", closeVersionCompleteModal);
+  els.confirmVersionComplete?.addEventListener("click", confirmVersionCompletion);
+  els.versionCompleteModal?.addEventListener("click", (event) => {
+    if (event.target === els.versionCompleteModal) closeVersionCompleteModal();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.versionModal?.classList.contains("hidden-field")) {
       closeVersionModal();
     }
+    if (event.key === "Escape" && !els.versionCompleteModal?.classList.contains("hidden-field")) {
+      closeVersionCompleteModal();
+    }
     if (event.key === "Escape" && !els.bugModal?.classList.contains("hidden-field")) {
       closeBugModal();
+    }
+    if (event.key === "Escape" && !els.reportExportModal?.classList.contains("hidden-field")) {
+      closeReportExportPreview();
     }
   });
   els.taskSearchInput?.addEventListener("input", renderTaskManager);
@@ -451,7 +485,27 @@ function bindEvents() {
   els.bugModalCase?.addEventListener("change", syncBugModalFromCase);
   els.bugModalSeverity?.addEventListener("change", renderBugModalBadges);
   els.bugModalStatus?.addEventListener("change", renderBugModalBadges);
-  els.exportReport.addEventListener("click", exportReport);
+  els.exportReport.addEventListener("click", openReportExportPreview);
+  els.publishReport?.addEventListener("click", openReportExportPreview);
+  els.closeReportExportModal?.addEventListener("click", closeReportExportPreview);
+  els.cancelReportExport?.addEventListener("click", closeReportExportPreview);
+  els.reportExportModal?.addEventListener("click", (event) => {
+    if (event.target === els.reportExportModal) closeReportExportPreview();
+  });
+  els.confirmReportExport?.addEventListener("click", async () => {
+    els.confirmReportExport.disabled = true;
+    els.confirmReportExport.setAttribute("aria-busy", "true");
+    els.confirmReportExport.textContent = "正在生成…";
+    const exported = await exportReport({ skipChecks: true });
+    els.confirmReportExport.disabled = false;
+    els.confirmReportExport.removeAttribute("aria-busy");
+    els.confirmReportExport.textContent = "确认导出 DOCX";
+    if (exported) closeReportExportPreview();
+  });
+  els.publishWebReport?.addEventListener("click", publishCurrentReport);
+  els.publishedReportResult?.addEventListener("click", handlePublishedReportAction);
+  els.publishedReportList?.addEventListener("click", handlePublishedReportListAction);
+  els.publishedReportSearch?.addEventListener("input", renderPublishedReports);
   els.reportVersionSearch?.addEventListener("input", () => {
     reportVersionPage = 1;
     renderReport();
@@ -498,6 +552,11 @@ function hydrateInteractionUi() {
     link.id = link.id || `nav-${link.dataset.tab}`;
     link.setAttribute("role", "tab");
     link.setAttribute("aria-selected", isActive ? "true" : "false");
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
     link.tabIndex = isActive ? 0 : -1;
     if (panel) {
       link.setAttribute("aria-controls", panel.id);
@@ -606,7 +665,7 @@ function hydrateReportChrome() {
 
   if (headerTitle) headerTitle.textContent = "测试报告";
   if (headerDesc) headerDesc.textContent = "基于当前批次 / 任务 / 模块范围，自动汇总用例执行与 BUG 状态。";
-  if (exportBtn) exportBtn.textContent = "导出DOCX";
+  if (exportBtn) exportBtn.textContent = "预览并导出";
 
   if (els.reportConclusion) {
     els.reportConclusion.placeholder = "补充测试范围、风险项、上线建议";
@@ -681,6 +740,89 @@ function initTextSourceUi() {
   }
 }
 
+function enhanceGenerationBeginnerFlow() {
+  const panel = document.querySelector("#upload .upload-stage-panel-combined");
+  const taskFlow = panel?.querySelector(".task-flow");
+  const sourceTypeRow = els.sourceType?.closest(".form-row");
+  const actionWrap = els.generateCases?.parentElement;
+  if (!panel || !taskFlow || !sourceTypeRow || !actionWrap || panel.dataset.beginnerFlowReady === "true") {
+    return;
+  }
+
+  panel.dataset.beginnerFlowReady = "true";
+
+  const progress = document.createElement("div");
+  progress.className = "generation-flow-steps";
+  progress.setAttribute("aria-label", "生成用例操作步骤");
+  progress.innerHTML = `
+    <span class="is-current"><b>1</b>填写任务</span>
+    <span><b>2</b>提供材料</span>
+    <span><b>3</b>生成用例</span>
+  `;
+  taskFlow.insertAdjacentElement("beforebegin", progress);
+
+  const taskBlock = createGenerationStepBlock(
+    "1",
+    "填写测试任务",
+    "任务名称用于后续搜索；测试范围写清楚本次要覆盖和不覆盖的内容。",
+    "generation-step-task"
+  );
+  taskFlow.insertAdjacentElement("beforebegin", taskBlock);
+  taskBlock.append(taskFlow);
+  if (els.currentTaskSummary) taskBlock.append(els.currentTaskSummary);
+
+  const divider = panel.querySelector(".combined-generation-divider");
+  const sourceBlock = createGenerationStepBlock(
+    "2",
+    "提供测试材料",
+    "上传文件、粘贴需求或填写接口文档网址，选择其中一种即可。",
+    "generation-step-materials"
+  );
+  (divider || sourceTypeRow).insertAdjacentElement("beforebegin", sourceBlock);
+  divider?.remove();
+  if (els.generationVersionSummary) sourceBlock.append(els.generationVersionSummary);
+  sourceBlock.append(sourceTypeRow);
+  if (els.documentUploadBox) sourceBlock.append(els.documentUploadBox);
+  if (els.sourceUrlWrap) sourceBlock.append(els.sourceUrlWrap);
+  if (els.sourceTextWrap) sourceBlock.append(els.sourceTextWrap);
+
+  const documentNameRow = els.documentName?.closest(".form-row");
+  if (documentNameRow) {
+    const advanced = document.createElement("details");
+    advanced.className = "generation-advanced-options";
+    advanced.innerHTML = `
+      <summary>补充材料名称 <span>可选，上传文件后会自动填写</span></summary>
+    `;
+    advanced.append(documentNameRow);
+    sourceBlock.append(advanced);
+  }
+
+  const actionBlock = createGenerationStepBlock(
+    "3",
+    "确认并生成",
+    "系统会先创建任务，再根据上面的范围与材料生成测试用例。",
+    "generation-step-submit"
+  );
+  actionWrap.insertAdjacentElement("beforebegin", actionBlock);
+  actionBlock.append(actionWrap);
+  if (els.generationStatus) actionBlock.append(els.generationStatus);
+}
+
+function createGenerationStepBlock(number, title, description, className) {
+  const block = document.createElement("section");
+  block.className = `generation-step-block ${className}`;
+  block.innerHTML = `
+    <div class="generation-step-heading">
+      <span>${number}</span>
+      <div>
+        <strong>${title}</strong>
+        <p>${description}</p>
+      </div>
+    </div>
+  `;
+  return block;
+}
+
 function initOwnerUi() {
   const bugOwnerField = els.bugTemplate?.content.querySelector(".bug-owner");
 
@@ -703,6 +845,11 @@ function switchTab(tabId) {
     const isActive = link.dataset.tab === tabId;
     link.classList.toggle("active", isActive);
     link.setAttribute("aria-selected", isActive ? "true" : "false");
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
     link.tabIndex = isActive ? 0 : -1;
     if (isActive) {
       updateTopbarTitle(link);
@@ -1916,7 +2063,7 @@ function ensureSeedMetadata() {
 
   const reportBatchIds = buildReportBatchOptions().map((item) => item.id);
   if (!state.activeReportBatchId || !reportBatchIds.includes(state.activeReportBatchId)) {
-    state.activeReportBatchId = state.activeBatchId || state.generationBatchId || reportBatchIds[0] || "";
+    state.activeReportBatchId = reportBatchIds[0] || "";
   }
 }
 
@@ -3241,42 +3388,82 @@ function renderOnboarding() {
       title: "先启用 AI",
       desc: "填入 OpenAI Key，点检测并启用。通过后，后面的用例生成才会走官方模型。",
       done: flow.hasBotConfig,
-      current: flow.nextAction === "configure-bot"
+      current: flow.nextAction === "configure-bot",
+      action: "configure-bot"
     },
     {
       key: "task-and-cases",
       title: "创建任务并生成用例",
       desc: "填写任务和测试范围，放入需求或接口文档，一次生成测试用例。",
       done: flow.hasCases,
-      current: ["create-task", "prepare-source", "generate-cases"].includes(flow.nextAction)
+      current: ["create-task", "prepare-source", "generate-cases"].includes(flow.nextAction),
+      action: "create-task"
     },
     {
       key: "execution",
       title: "执行用例并记录问题",
       desc: "手工执行时改状态、写备注。失败的问题可以直接转成 BUG。",
       done: flow.hasExecutionOrBug,
-      current: flow.nextAction === "execute-cases"
+      current: flow.nextAction === "execute-cases",
+      action: "execute-cases"
     },
     {
       key: "report",
       title: "看报告，准备自动化",
       desc: "报告页看整体结果；稳定的接口场景再进入接口自动化，后续接 pytest 回归。",
       done: flow.hasExecutionOrBug,
-      current: flow.nextAction === "export-report"
+      current: flow.nextAction === "export-report",
+      action: "export-report"
     }
   ];
 
   els.onboardingSteps.innerHTML = steps.map((step, index) => `
-    <article class="step-card ${step.current ? "current" : ""}">
+    <button class="step-card ${step.current ? "current" : ""} ${step.done ? "done" : ""}" type="button" data-workflow-action="${step.action}" aria-label="${escapeHtml(step.title)}：${step.current ? "当前下一步" : "打开对应页面"}">
       <div class="step-index">${index + 1}</div>
       <div class="step-body">
         <div class="step-head">
           <strong>${escapeHtml(step.title)}</strong>
+          <span class="step-state">${step.done ? "已完成" : step.current ? "下一步" : "查看"}</span>
         </div>
         <p>${escapeHtml(step.desc)}</p>
       </div>
-    </article>
+    </button>
   `).join("");
+
+  els.onboardingSteps.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => handleWorkflowStepAction(button.dataset.workflowAction));
+  });
+}
+
+function handleWorkflowStepAction(action) {
+  if (action === "configure-bot") {
+    switchTab("upload");
+    document.querySelector(".ai-config-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => els.apiKey?.focus(), 260);
+    return;
+  }
+
+  if (action === "create-task") {
+    switchTab("upload");
+    document.querySelector(".upload-stage-panel-combined")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => els.taskNameInput?.focus(), 260);
+    return;
+  }
+
+  if (action === "execute-cases") {
+    const activeTask = getTaskById(state.activeTaskId);
+    if (activeTask && els.caseTaskFilter) {
+      els.caseTaskFilter.value = activeTask.name || "";
+    }
+    activeExecutionCaseId = "";
+    switchTab("cases");
+    renderCases();
+    return;
+  }
+
+  if (action === "export-report") {
+    switchTab("report");
+  }
 }
 
 function getWorkflowState() {
@@ -3533,8 +3720,14 @@ function renderTaskManager() {
       <div class="empty-state empty-state-rich task-table-empty">
         <strong>没有匹配的任务</strong>
         <p>尝试清空搜索词或切换版本归属筛选。</p>
+        <button class="ghost-button" type="button" data-clear-task-filters>清空筛选</button>
       </div>
     `;
+    els.taskManagerList.querySelector("[data-clear-task-filters]")?.addEventListener("click", () => {
+      if (els.taskSearchInput) els.taskSearchInput.value = "";
+      if (els.taskVersionFilter) els.taskVersionFilter.value = "";
+      renderTaskManager();
+    });
     return;
   }
 
@@ -3545,6 +3738,7 @@ function renderTaskManager() {
           <th>任务名称</th>
           <th>测试范围</th>
           <th>关联版本</th>
+          <th>用例进度</th>
           <th>状态</th>
           <th>创建时间</th>
           <th class="task-action-column">操作</th>
@@ -3566,6 +3760,7 @@ function renderTaskTableRow(task) {
   const isLinked = Boolean(batch && !batch.systemManaged);
   const isActive = task.id === state.activeTaskId;
   const isReadonly = isTaskReadonly(task);
+  const caseProgress = getTaskCaseProgress(task);
 
   return `
     <tr class="task-table-row ${isActive ? "is-active" : ""}">
@@ -3581,10 +3776,19 @@ function renderTaskTableRow(task) {
     ? `<span class="task-version-linked">${escapeHtml(batch.version || "未命名版本")}</span>`
     : `<span class="task-version-unlinked">待关联</span>`}
       </td>
+      <td data-label="用例进度">
+        ${caseProgress.total ? `
+          <div class="task-case-progress" title="已执行 ${caseProgress.completed} / ${caseProgress.total} 条">
+            <div><strong>${caseProgress.completed}/${caseProgress.total}</strong><span>${caseProgress.percent}%</span></div>
+            <span class="task-case-progress-track"><i style="width:${caseProgress.percent}%"></i></span>
+          </div>
+        ` : `<span class="task-no-cases">待生成</span>`}
+      </td>
       <td data-label="状态"><span class="version-status version-status-${task.status === "已完成" ? "success" : "active"}">${escapeHtml(task.status || "进行中")}</span></td>
       <td data-label="创建时间">${escapeHtml(formatAuditTime(task.createdAt))}</td>
       <td data-label="操作" class="task-action-column">
         <div class="task-row-actions">
+          ${caseProgress.total ? `<button class="table-link task-execute-link" type="button" data-task-action="execute" data-task-id="${task.id}">执行用例</button>` : ""}
           ${!isActive && !isReadonly ? `<button class="table-link" type="button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : ""}
           ${isReadonly
     ? `<span class="task-readonly-label">已完成，只读</span>`
@@ -3594,6 +3798,42 @@ function renderTaskTableRow(task) {
       </td>
     </tr>
   `;
+}
+
+function getTaskCaseProgress(task) {
+  const taskCases = state.cases.filter((item) => (
+    item.taskId === task.id || (!item.taskId && item.taskName === task.name)
+  ));
+  const completed = taskCases.filter((item) => (
+    item.executionStatus && item.executionStatus !== "未执行"
+  )).length;
+  return {
+    total: taskCases.length,
+    completed,
+    percent: taskCases.length ? Math.round((completed / taskCases.length) * 100) : 0
+  };
+}
+
+function getVersionHealth(batch) {
+  const tasks = state.tasks.filter((task) => task.batchId === batch.id);
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const cases = state.cases.filter((item) => item.batchId === batch.id || taskIds.has(item.taskId));
+  const bugs = state.bugs.filter((item) => item.batchId === batch.id || taskIds.has(item.taskId));
+  const executed = cases.filter((item) => item.executionStatus && item.executionStatus !== "未执行").length;
+  const failed = cases.filter((item) => item.executionStatus === "失败").length;
+  const blocked = cases.filter((item) => item.executionStatus === "阻塞").length;
+  const openBugs = bugs.filter((item) => !["已验证", "已关闭"].includes(item.status)).length;
+  const pending = Math.max(0, cases.length - executed);
+  const percent = cases.length ? Math.round((executed / cases.length) * 100) : 0;
+  let release = { label: "待准备", tone: "muted" };
+  if (cases.length && !failed && !blocked && !openBugs && !pending) {
+    release = { label: "可完成", tone: "success" };
+  } else if (failed) {
+    release = { label: "有风险", tone: "danger" };
+  } else if (cases.length || openBugs) {
+    release = { label: "需关注", tone: "warning" };
+  }
+  return { tasks, cases, bugs, executed, failed, blocked, openBugs, pending, percent, release };
 }
 
 function renderVersionManager() {
@@ -3628,8 +3868,14 @@ function renderVersionManager() {
       <div class="empty-state empty-state-rich version-table-empty">
         <strong>没有匹配的版本</strong>
         <p>尝试清空搜索词或切换状态筛选。</p>
+        <button class="ghost-button" type="button" data-clear-version-filters>清空筛选</button>
       </div>
     `;
+    els.versionManagerList.querySelector("[data-clear-version-filters]")?.addEventListener("click", () => {
+      if (els.versionSearchInput) els.versionSearchInput.value = "";
+      if (els.versionStatusFilter) els.versionStatusFilter.value = "";
+      renderVersionManager();
+    });
     return;
   }
 
@@ -3639,9 +3885,11 @@ function renderVersionManager() {
         <tr>
           <th>版本号</th>
           <th>状态</th>
-          <th>关联任务</th>
-          <th>创建时间</th>
-          <th>完成时间</th>
+          <th>任务</th>
+          <th>用例进度</th>
+          <th>失败</th>
+          <th>待跟进 BUG</th>
+          <th>发布检查</th>
           <th class="version-action-column">操作</th>
         </tr>
       </thead>
@@ -3660,7 +3908,10 @@ function renderVersionManager() {
     });
   });
   els.versionManagerList.querySelectorAll("[data-version-action]").forEach((button) => {
-    button.addEventListener("click", () => handleVersionAction(button.dataset.versionAction, button.dataset.versionId));
+    button.addEventListener("click", () => {
+      button.closest(".version-more-menu")?.removeAttribute("open");
+      handleVersionAction(button.dataset.versionAction, button.dataset.versionId);
+    });
   });
   els.versionManagerList.querySelectorAll("[data-task-action]").forEach((button) => {
     button.addEventListener("click", () => handleTaskAction(button.dataset.taskAction, button.dataset.taskId));
@@ -3676,12 +3927,11 @@ function renderVersionManager() {
 }
 
 function renderVersionTableRows(batch) {
-  const relatedTasks = state.tasks.filter((task) => task.batchId === batch.id);
+  const health = getVersionHealth(batch);
+  const relatedTasks = health.tasks;
   const isActive = batch.id === state.activeBatchId;
   const isSuspended = batch.status === "已挂起";
   const isCompleted = batch.status === "已完成";
-  const taskPreview = relatedTasks.slice(0, 2).map((task) => `<span>${escapeHtml(task.name || "未命名任务")}</span>`).join("");
-  const remainingTaskCount = Math.max(0, relatedTasks.length - 2);
 
   return `
     <tr class="version-table-row ${isActive ? "is-active" : ""}">
@@ -3692,24 +3942,33 @@ function renderVersionTableRows(batch) {
         </div>
       </td>
       <td data-label="状态"><span class="version-status version-status-${getVersionStatusTone(batch.status)}">${escapeHtml(batch.status || "进行中")}</span></td>
-      <td data-label="关联任务">
-        <div class="version-task-preview">
-          ${taskPreview || `<span class="version-task-empty">暂未关联</span>`}
-          ${remainingTaskCount ? `<span class="version-task-more">+${remainingTaskCount}</span>` : ""}
+      <td data-label="任务">
+        <div class="version-task-count">
+          <strong>${relatedTasks.length}</strong>
+          <span>${relatedTasks.length ? "个任务" : "待关联"}</span>
         </div>
       </td>
-      <td data-label="创建时间">${escapeHtml(formatAuditTime(batch.createdAt))}</td>
-      <td data-label="完成时间">${escapeHtml(batch.completedAt ? formatAuditTime(batch.completedAt) : "-")}</td>
+      <td data-label="用例进度">
+        ${health.cases.length ? `
+          <div class="version-case-progress" title="已执行 ${health.executed} / ${health.cases.length} 条">
+            <div><strong>${health.executed}/${health.cases.length}</strong><span>${health.percent}%</span></div>
+            <span><i style="width:${health.percent}%"></i></span>
+          </div>
+        ` : `<span class="version-metric-empty">暂无用例</span>`}
+      </td>
+      <td data-label="失败"><span class="version-risk-count ${health.failed ? "is-danger" : ""}">${health.failed}</span></td>
+      <td data-label="待跟进 BUG"><span class="version-risk-count ${health.openBugs ? "is-warning" : ""}">${health.openBugs}</span></td>
+      <td data-label="发布检查"><span class="version-release-check tone-${health.release.tone}">${health.release.label}</span></td>
       <td data-label="操作" class="version-action-column">
         <div class="version-row-actions">
-          ${!isCompleted ? `<button class="table-link version-link-task-button" type="button" data-version-action="link-tasks" data-version-id="${batch.id}">关联任务</button>` : ""}
-          <button class="table-link" type="button" data-version-detail-toggle="${batch.id}">详情</button>
-          ${!isCompleted ? `<button class="table-link" type="button" data-version-action="edit" data-version-id="${batch.id}">编辑</button>` : ""}
-          ${!isCompleted && !isActive && !isSuspended ? `<button class="table-link" type="button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
+          ${!isCompleted ? `<button class="table-link version-link-task-button" type="button" data-version-action="link-tasks" data-version-id="${batch.id}">${relatedTasks.length ? "管理任务" : "关联任务"}</button>` : ""}
+          <button class="table-link" type="button" data-version-detail-toggle="${batch.id}">查看详情</button>
           ${!isCompleted ? `
             <details class="version-more-menu">
               <summary aria-label="更多版本操作">更多</summary>
               <div class="version-more-menu-list">
+                <button type="button" data-version-action="edit" data-version-id="${batch.id}">编辑版本</button>
+                ${!isActive && !isSuspended ? `<button type="button" data-version-action="activate" data-version-id="${batch.id}">设为当前</button>` : ""}
                 <button type="button" data-version-action="complete" data-version-id="${batch.id}">标记完成</button>
                 <button type="button" data-version-action="${isSuspended ? "resume" : "suspend"}" data-version-id="${batch.id}">${isSuspended ? "恢复版本" : "挂起版本"}</button>
                 <button class="danger-menu-action" type="button" data-version-action="delete" data-version-id="${batch.id}">删除版本</button>
@@ -3720,11 +3979,22 @@ function renderVersionTableRows(batch) {
       </td>
     </tr>
     <tr class="version-detail-row hidden-field" data-version-detail-row="${batch.id}">
-      <td colspan="6">
+      <td colspan="8">
         <div class="version-table-detail">
+          <div class="version-health-summary">
+            <div><span>关联任务</span><strong>${relatedTasks.length}</strong></div>
+            <div><span>用例总数</span><strong>${health.cases.length}</strong></div>
+            <div><span>未执行</span><strong>${health.pending}</strong></div>
+            <div class="${health.failed ? "has-danger" : ""}"><span>失败 / 阻塞</span><strong>${health.failed + health.blocked}</strong></div>
+            <div class="${health.openBugs ? "has-warning" : ""}"><span>待跟进 BUG</span><strong>${health.openBugs}</strong></div>
+          </div>
+          <div class="version-audit-line">
+            <span>创建时间：${escapeHtml(formatAuditTime(batch.createdAt))}</span>
+            <span>完成时间：${escapeHtml(batch.completedAt ? formatAuditTime(batch.completedAt) : "-")}</span>
+          </div>
           <div class="version-table-detail-head">
             <strong>关联任务（${relatedTasks.length}）</strong>
-            ${!isCompleted ? `<button class="ghost-button tiny-button" type="button" data-version-action="edit" data-version-id="${batch.id}">调整关联</button>` : ""}
+            ${!isCompleted ? `<button class="ghost-button tiny-button" type="button" data-version-action="link-tasks" data-version-id="${batch.id}">调整关联</button>` : ""}
           </div>
           <div class="version-table-task-list">
             ${relatedTasks.length ? relatedTasks.map((task) => isCompleted ? `
@@ -3747,6 +4017,7 @@ function renderVersionTableRows(batch) {
                   <p>${escapeHtml(task.scope || "未填写测试范围")}</p>
                 </div>
                 <div class="version-row-actions">
+                  ${getTaskCaseProgress(task).total ? `<button class="table-link task-execute-link" type="button" data-task-action="execute" data-task-id="${task.id}">执行用例</button>` : ""}
                   ${task.id !== state.activeTaskId && task.status !== "已完成" ? `<button class="table-link" type="button" data-task-action="activate" data-task-id="${task.id}">设为当前</button>` : task.id === state.activeTaskId ? `<span class="badge subtle">当前任务</span>` : ""}
                   ${task.status !== "已完成" ? `<button class="table-link" type="button" data-task-action="edit" data-task-id="${task.id}">编辑任务</button>` : `<span class="task-readonly-label">任务已完成</span>`}
                 </div>
@@ -3836,6 +4107,85 @@ function closeVersionModal() {
   editingBatchId = "";
   if (els.versionNumberInput) els.versionNumberInput.readOnly = false;
   els.versionForm?.reset();
+}
+
+function openVersionCompleteModal(batch) {
+  if (!batch || !els.versionCompleteModal) return;
+  const health = getVersionHealth(batch);
+  const warnings = [];
+  if (!health.tasks.length) warnings.push(["未关联任务", "当前版本还没有关联测试任务。"]);
+  if (!health.cases.length) warnings.push(["暂无用例", "当前版本没有可追溯的测试用例。"]);
+  if (health.pending) warnings.push(["存在未执行用例", `还有 ${health.pending} 条用例未执行。`]);
+  if (health.failed) warnings.push(["存在失败用例", `还有 ${health.failed} 条失败用例需要确认。`]);
+  if (health.blocked) warnings.push(["存在阻塞用例", `还有 ${health.blocked} 条阻塞用例需要解除。`]);
+  if (health.openBugs) warnings.push(["存在待跟进 BUG", `还有 ${health.openBugs} 个 BUG 未验证或关闭。`]);
+
+  completingBatchId = batch.id;
+  els.versionCompleteTitle.textContent = `完成版本 · ${batch.version || "未命名版本"}`;
+  els.versionCompleteSummary.innerHTML = `
+    <div class="version-complete-intro ${warnings.length ? "has-risk" : "is-ready"}">
+      <span>${warnings.length ? "请确认发布风险" : "发布检查已通过"}</span>
+      <strong>${warnings.length ? `发现 ${warnings.length} 项需要关注` : "当前版本可以安全完成"}</strong>
+      <p>完成后版本和关联任务进入只读状态，用例、BUG 与报告数据会完整保留。</p>
+    </div>
+    <div class="version-complete-metrics">
+      <div><span>任务</span><strong>${health.tasks.length}</strong></div>
+      <div><span>用例</span><strong>${health.cases.length}</strong></div>
+      <div><span>执行进度</span><strong>${health.percent}%</strong></div>
+      <div><span>失败 / 阻塞</span><strong>${health.failed + health.blocked}</strong></div>
+      <div><span>待跟进 BUG</span><strong>${health.openBugs}</strong></div>
+    </div>
+    <div class="version-complete-checks">
+      ${warnings.length ? warnings.map(([title, detail]) => `
+        <div class="version-complete-check has-warning">
+          <span>!</span>
+          <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
+        </div>
+      `).join("") : `
+        <div class="version-complete-check is-passed">
+          <span>✓</span>
+          <div><strong>没有发现明显发布阻塞</strong><p>用例已执行完成，且没有失败、阻塞或待跟进 BUG。</p></div>
+        </div>
+      `}
+    </div>
+  `;
+  els.confirmVersionComplete.textContent = warnings.length ? "了解风险，仍然完成" : "确认完成并锁定";
+  els.versionCompleteModal.classList.remove("hidden-field");
+  document.body.classList.add("dialog-open");
+  window.setTimeout(() => els.confirmVersionComplete?.focus(), 0);
+}
+
+function closeVersionCompleteModal() {
+  els.versionCompleteModal?.classList.add("hidden-field");
+  document.body.classList.remove("dialog-open");
+  completingBatchId = "";
+}
+
+function confirmVersionCompletion() {
+  const batch = getBatchById(completingBatchId);
+  if (!batch || batch.status === "已完成") {
+    closeVersionCompleteModal();
+    return;
+  }
+  state.batches = state.batches.map((item) => (
+    item.id === batch.id
+      ? applyUpdateAuditFields({ ...item, status: "已完成", completedAt: item.completedAt || nowIsoString() })
+      : item
+  ));
+  if (state.activeBatchId === batch.id) {
+    state.activeBatchId = state.batches.find((item) => !item.systemManaged && item.id !== batch.id && item.status === "进行中")?.id || "";
+  }
+  if (state.generationBatchId === batch.id) {
+    state.generationBatchId = state.activeBatchId || getOrCreateDefaultWorkspaceBatch().id;
+  }
+  if (state.tasks.some((item) => item.batchId === batch.id && item.id === state.activeTaskId)) {
+    state.activeTaskId = state.tasks.find((item) => item.batchId !== batch.id && !isTaskReadonly(item))?.id || "";
+  }
+  persist();
+  closeVersionCompleteModal();
+  renderAll();
+  setGenerationStatus(`已完成版本：${formatBatchLabel(batch)}。历史用例、BUG 和报告数据已保留。`, "ok");
+  showToast(`版本 ${batch.version || "未命名版本"} 已完成并锁定`, "ok");
 }
 
 function updateVersionTaskSelectionCount() {
@@ -4030,16 +4380,7 @@ function handleVersionAction(action, batchId) {
   }
 
   if (action === "complete") {
-    const taskIdsToClear = state.tasks.filter((item) => item.batchId === batch.id).map((item) => item.id);
-    state.batches = state.batches.map((item) => (
-      item.id === batch.id
-        ? applyUpdateAuditFields({ ...item, status: "已完成", completedAt: item.completedAt || nowIsoString() })
-        : item
-    ));
-    state.cases = state.cases.filter((item) => item.batchId !== batch.id && !taskIdsToClear.includes(item.taskId));
-    persist();
-    renderAll();
-    setGenerationStatus(`已完成版本：${formatBatchLabel(batch)}。该版本下的测试用例已清空。`, "ok");
+    openVersionCompleteModal(batch);
     return;
   }
 
@@ -4090,6 +4431,22 @@ function handleTaskAction(action, taskId) {
     return;
   }
   const batch = getBatchById(task.batchId);
+
+  if (action === "execute") {
+    state.activeTaskId = task.id;
+    state.generationBatchId = task.batchId || "";
+    state.activeBatchId = task.batchId || state.activeBatchId;
+    if (els.caseTaskFilter) {
+      els.caseTaskFilter.value = task.name || "";
+    }
+    activeExecutionCaseId = "";
+    persist();
+    renderAll();
+    switchTab("cases");
+    setCaseActionStatus(`已打开任务「${task.name || "未命名任务"}」的测试用例。`, "neutral");
+    showToast(`已进入「${task.name || "未命名任务"}」执行页`, "ok");
+    return;
+  }
 
   if (isTaskReadonly(task) && ["activate", "edit", "delete"].includes(action)) {
     setGenerationStatus(task.status === "已完成"
@@ -4795,13 +5152,27 @@ function getCaseTasks() {
   return [...new Set(state.cases.map((item) => item.taskName).filter(Boolean))];
 }
 
+function isSystemWorkspaceBatch(batch) {
+  return Boolean(
+    batch?.systemManaged
+    || batch?.id === "batch-default-workspace"
+    || batch?.version === DEFAULT_WORKSPACE_VERSION
+  );
+}
+
 function buildCaseBatchFilterOptions(source = "cases") {
   const sourceItems = source === "bugs" ? state.bugs : state.cases;
   const items = [];
   const seen = new Set();
 
   state.batches.forEach((batch) => {
-    if (!batch?.id || seen.has(batch.id)) {
+    if (
+      !batch?.id
+      || batch.systemManaged
+      || batch.id === "batch-default-workspace"
+      || batch.version === DEFAULT_WORKSPACE_VERSION
+      || seen.has(batch.id)
+    ) {
       return;
     }
     seen.add(batch.id);
@@ -4816,6 +5187,15 @@ function buildCaseBatchFilterOptions(source = "cases") {
   sourceItems.forEach((item) => {
     const batchId = String(item.batchId || "").trim();
     const batchVersion = String(item.batchVersion || "").trim();
+    const linkedBatch = getBatchById(batchId);
+    if (
+      linkedBatch?.systemManaged
+      || batchId === "batch-default-workspace"
+      || linkedBatch?.version === DEFAULT_WORKSPACE_VERSION
+      || batchVersion === DEFAULT_WORKSPACE_VERSION
+    ) {
+      return;
+    }
     if (batchId && seen.has(batchId)) {
       return;
     }
@@ -4841,7 +5221,7 @@ function buildReportBatchOptions() {
   const sourceItems = [...state.cases, ...state.bugs];
 
   state.batches.forEach((batch) => {
-    if (!batch?.id || seen.has(batch.id)) {
+    if (!batch?.id || isSystemWorkspaceBatch(batch) || seen.has(batch.id)) {
       return;
     }
     seen.add(batch.id);
@@ -4851,6 +5231,15 @@ function buildReportBatchOptions() {
   sourceItems.forEach((item) => {
     const batchId = String(item.batchId || "").trim();
     const batchVersion = String(item.batchVersion || "").trim();
+    const linkedBatch = getBatchById(batchId);
+    if (
+      isSystemWorkspaceBatch(linkedBatch)
+      || batchId === "batch-default-workspace"
+      || batchVersion === DEFAULT_WORKSPACE_VERSION
+      || (!linkedBatch && !batchVersion)
+    ) {
+      return;
+    }
     if (batchId && seen.has(batchId)) {
       return;
     }
@@ -4933,16 +5322,39 @@ function sortCasesByPriority(cases) {
     .map(({ item }) => item);
 }
 
+function getCasePriorityClass(priority) {
+  const rank = getCasePriorityRank(priority);
+  if (rank === 0) return "priority-critical";
+  if (rank === 1) return "priority-high";
+  if (rank === 2) return "priority-normal";
+  return "priority-low";
+}
+
 function getFilteredCasesForView() {
   const taskFilter = els.caseTaskFilter.value.trim().toLowerCase();
   const statusFilter = els.caseStatusFilter?.value || "";
 
   const filteredCases = state.cases.filter((item) => {
-    return (!taskFilter || String(item.taskName || "").toLowerCase().includes(taskFilter))
+    return matchesCaseTaskSearch(item, taskFilter)
       && (!statusFilter || (item.executionStatus || "未执行") === statusFilter);
   });
 
   return sortCasesByPriority(filteredCases);
+}
+
+function matchesCaseTaskSearch(item, taskFilter) {
+  if (!taskFilter) {
+    return true;
+  }
+  if (String(item.taskName || "").toLowerCase().includes(taskFilter)) {
+    return true;
+  }
+  const activeTask = getTaskById(state.activeTaskId);
+  return Boolean(
+    activeTask
+    && String(activeTask.name || "").toLowerCase() === taskFilter
+    && item.taskId === activeTask.id
+  );
 }
 
 function getFilteredAutomationCasesForView() {
@@ -5104,7 +5516,7 @@ function setReportConclusionForBatch(batchId, value) {
 }
 
 function getReportBatchCards() {
-  return buildReportBatchOptions().map((batch) => {
+  return buildReportBatchOptions().filter((batch) => !isSystemWorkspaceBatch(batch)).map((batch) => {
     const scope = getReportScopeByBatch(batch.id);
     const report = buildReportViewModel(scope);
     return {
@@ -5160,9 +5572,7 @@ function renderCases() {
 
   const filtered = getFilteredCasesForView();
   const taskFilter = els.caseTaskFilter.value.trim().toLowerCase();
-  const progressScope = state.cases.filter((item) => (
-    !taskFilter || String(item.taskName || "").toLowerCase().includes(taskFilter)
-  ));
+  const progressScope = state.cases.filter((item) => matchesCaseTaskSearch(item, taskFilter));
   renderManualExecutionProgress(progressScope);
 
   if (els.caseBrowserCount) {
@@ -5178,27 +5588,39 @@ function renderCases() {
       <div class="empty-state compact-execution-empty">
         <strong>${state.cases.length ? "没有匹配的用例" : "还没有测试用例"}</strong>
         <p>${state.cases.length ? "请调整上方筛选条件。" : "请先生成用例或上传 CSV。"}</p>
+        ${state.cases.length ? `<button class="ghost-button" type="button" data-clear-case-filters>清空筛选</button>` : ""}
       </div>
     `;
     els.caseExecutionWorkspace.innerHTML = `
       <div class="case-runner-empty">
         <span class="case-runner-empty-icon">✓</span>
         <strong>等待选择用例</strong>
-        <p>有可执行用例后，会在这里展示步骤和执行按钮。</p>
+        <p>${state.cases.length ? "清空筛选后继续选择要执行的用例。" : "有可执行用例后，会在这里展示步骤和执行按钮。"}</p>
       </div>
     `;
+    els.caseList.querySelector("[data-clear-case-filters]")?.addEventListener("click", () => {
+      els.caseTaskFilter.value = "";
+      if (els.caseStatusFilter) els.caseStatusFilter.value = "";
+      activeExecutionCaseId = "";
+      renderCases();
+      setCaseActionStatus("已清空筛选，当前显示全部测试用例。", "neutral");
+    });
     return;
   }
 
   els.caseList.innerHTML = filtered.map((item, index) => {
     const status = item.executionStatus || "未执行";
     const tone = getManualExecutionTone(status);
+    const priority = item.priority || "P2";
     return `
       <button class="case-browser-item status-${tone} ${item.id === activeExecutionCaseId ? "is-active" : ""}" type="button" data-execution-case-id="${item.id}">
         <span class="case-browser-index">${String(index + 1).padStart(2, "0")}</span>
         <span class="case-browser-item-copy">
           <strong>${escapeHtml(item.title || "未命名用例")}</strong>
-          <small>${escapeHtml(item.priority || "P2")} · ${escapeHtml(item.taskName || "未分任务")}</small>
+          <small>
+            <span class="case-priority-chip ${getCasePriorityClass(priority)}">${escapeHtml(priority)}</span>
+            <span class="case-browser-task">${escapeHtml(item.taskName || "未分任务")}</span>
+          </small>
         </span>
         <span class="case-browser-status status-${tone}">${escapeHtml(status)}</span>
       </button>
@@ -5241,6 +5663,7 @@ function renderManualExecutionProgress(cases) {
 function renderActiveCaseExecution(item, filteredCases) {
   const status = item.executionStatus || "未执行";
   const tone = getManualExecutionTone(status);
+  const priority = item.priority || "P2";
   const currentIndex = filteredCases.findIndex((caseItem) => caseItem.id === item.id);
   const previousCase = filteredCases[currentIndex - 1];
   const nextCase = filteredCases[currentIndex + 1];
@@ -5255,9 +5678,8 @@ function renderActiveCaseExecution(item, filteredCases) {
           </div>
           <h3>${escapeHtml(item.title || "未命名用例")}</h3>
           <div class="focused-case-meta">
-            <span>${escapeHtml(item.batchVersion || "未带版本")}</span>
-            <span>${escapeHtml(item.taskName || "未分任务")}</span>
-            <span>${escapeHtml(item.priority || "P2")}</span>
+            <span>任务：${escapeHtml(item.taskName || "未分任务")}</span>
+            <span class="case-priority-chip ${getCasePriorityClass(priority)}">优先级 ${escapeHtml(priority)}</span>
           </div>
         </div>
         <button class="ghost-button tiny-button" type="button" data-delete-current-case>删除用例</button>
@@ -5284,7 +5706,6 @@ function renderActiveCaseExecution(item, filteredCases) {
       </label>
 
       <div class="execution-primary-actions">
-        <button class="execution-start-button" type="button" data-start-execution>开始执行</button>
         <button class="execution-result-button result-pass" type="button" data-case-result="通过">通过</button>
         <button class="execution-result-button result-fail" type="button" data-case-result="失败">失败</button>
       </div>
@@ -5302,14 +5723,6 @@ function renderActiveCaseExecution(item, filteredCases) {
     </article>
   `;
 
-  const runner = els.caseExecutionWorkspace.querySelector(".focused-case-runner");
-  els.caseExecutionWorkspace.querySelector("[data-start-execution]")?.addEventListener("click", (event) => {
-    runner?.classList.add("is-running");
-    event.currentTarget.textContent = "执行中";
-    event.currentTarget.disabled = true;
-    els.caseExecutionWorkspace.querySelector(".focused-execution-note textarea")?.focus();
-    setCaseActionStatus(`正在执行「${item.title || "未命名用例"}」。完成后请选择通过或失败。`, "neutral");
-  });
   els.caseExecutionWorkspace.querySelectorAll("[data-case-result]").forEach((button) => {
     button.addEventListener("click", () => setFocusedCaseResult(item, button.dataset.caseResult));
   });
@@ -5345,12 +5758,32 @@ function renderActiveCaseExecution(item, filteredCases) {
 }
 
 function setFocusedCaseResult(item, nextStatus) {
+  const visibleCases = getFilteredCasesForView();
+  const nextCaseId = getNextExecutionCaseId(visibleCases, item.id, nextStatus);
   updateCaseExecutionState(item, nextStatus);
+  activeExecutionCaseId = nextCaseId;
+  if (nextStatus !== "通过" && els.caseStatusFilter?.value && els.caseStatusFilter.value !== nextStatus) {
+    els.caseStatusFilter.value = "";
+  }
   persist();
   renderCases();
   renderQuickStats();
   renderReport();
-  setCaseActionStatus(`已将「${item.title || "未命名用例"}」更新为“${nextStatus}”。`, nextStatus === "失败" ? "warn" : "ok");
+  const movedToNext = nextStatus === "通过" && nextCaseId !== item.id;
+  const message = movedToNext
+    ? `「${item.title || "未命名用例"}」已通过，已自动进入下一条。`
+    : nextStatus === "通过"
+      ? `「${item.title || "未命名用例"}」已通过，当前已是最后一条。`
+      : `已将「${item.title || "未命名用例"}」更新为“${nextStatus}”，当前用例保持不变。`;
+  setCaseActionStatus(message, nextStatus === "失败" ? "warn" : "ok");
+}
+
+function getNextExecutionCaseId(cases, currentCaseId, nextStatus) {
+  if (nextStatus !== "通过") {
+    return currentCaseId;
+  }
+  const currentIndex = cases.findIndex((item) => item.id === currentCaseId);
+  return cases[currentIndex + 1]?.id || currentCaseId;
 }
 
 function getManualExecutionTone(status) {
@@ -6486,10 +6919,21 @@ function renderBugs() {
       <div class="empty-state empty-state-rich">
         <strong>${state.bugs.length ? "没有匹配的 BUG" : "当前还没有 BUG 记录"}</strong>
         <p>${state.bugs.length ? "请调整顶部筛选条件。" : "点击右上角“新增 BUG”，通过弹窗录入问题。"}</p>
-        ${state.bugs.length ? "" : `<div class="empty-actions"><button class="primary-button" type="button" data-open-bug-modal>新增 BUG</button></div>`}
+        ${state.bugs.length
+    ? `<div class="empty-actions"><button class="ghost-button" type="button" data-clear-bug-filters>清空筛选</button></div>`
+    : `<div class="empty-actions"><button class="primary-button" type="button" data-open-bug-modal>新增 BUG</button></div>`}
       </div>
     `;
     els.bugList.querySelector("[data-open-bug-modal]")?.addEventListener("click", () => openBugModal());
+    els.bugList.querySelector("[data-clear-bug-filters]")?.addEventListener("click", () => {
+      els.bugBatchFilter.value = "";
+      if (els.bugSearchInput) els.bugSearchInput.value = "";
+      if (els.bugSeverityFilter) els.bugSeverityFilter.value = "";
+      if (els.bugWorkflowStatusFilter) els.bugWorkflowStatusFilter.value = "";
+      renderCaseFilters();
+      els.bugTaskFilter.value = "";
+      renderBugs();
+    });
     return;
   }
 
@@ -7075,7 +7519,6 @@ function renderReport() {
               <tr>
                 <th>版本号</th>
                 <th>版本状态</th>
-                <th>任务数</th>
                 <th>用例总数</th>
                 <th>执行进度</th>
                 <th>通过率</th>
@@ -7092,7 +7535,6 @@ function renderReport() {
                   <tr class="${isActive ? "active" : ""}">
                     <td><strong class="report-version-name">${escapeHtml(batch.version || "未命名版本")}</strong></td>
                     <td><span class="badge subtle">${escapeHtml(batch.status || "进行中")}</span></td>
-                    <td>${report.versionTaskCount}</td>
                     <td>${report.total}</td>
                     <td><strong>${report.executed}</strong><span class="report-table-muted"> / ${report.total} (${escapeHtml(report.executionRate)})</span></td>
                     <td><strong class="report-pass-rate">${escapeHtml(report.passRate)}</strong></td>
@@ -7112,7 +7554,7 @@ function renderReport() {
       : `
         <div class="empty-state empty-state-rich">
           <strong>${versionCards.length ? "没有匹配的版本报告" : "还没有可查看的版本报告"}</strong>
-          <p>${versionCards.length ? "请调整搜索内容或筛选条件。" : "先创建版本、任务并导入测试用例，这里就会自动生成版本报告。"}</p>
+          <p>${versionCards.length ? "请调整搜索内容或筛选条件。" : "先在版本管理中创建版本并关联任务，这里就会自动生成版本报告。"}</p>
         </div>
       `;
 
@@ -7458,17 +7900,252 @@ function renderReportBars(container, items) {
   `).join("");
 }
 
-async function exportReport() {
+function openReportExportPreview() {
+  const report = buildReportViewModel(getReportScopeByBatch(state.activeReportBatchId));
+  const warnings = buildReportExportChecks(report);
+  const hasReportData = Boolean(report.scope.batch && !isSystemWorkspaceBatch(report.scope.batch));
+  const conclusion = getReportConclusionForBatch(state.activeReportBatchId);
+
+  els.reportExportPreview.innerHTML = `
+    <div class="report-export-scope">
+      <div>
+        <span>当前导出范围</span>
+        <strong>${escapeHtml(report.batchVersion || "未选择版本")}</strong>
+        <p>${escapeHtml(report.scopeLabel)}</p>
+      </div>
+      <span class="badge ${report.releaseDecision.tone}">${escapeHtml(report.releaseDecision.label)}</span>
+    </div>
+    <div class="report-export-metrics">
+      <div><span>用例总数</span><strong>${report.total}</strong></div>
+      <div><span>执行进度</span><strong>${escapeHtml(report.executionRate)}</strong></div>
+      <div><span>通过率</span><strong>${escapeHtml(report.passRate)}</strong></div>
+      <div class="${report.statusCounts["失败"] ? "has-risk" : ""}"><span>失败用例</span><strong>${report.statusCounts["失败"] || 0}</strong></div>
+      <div class="${report.openBugs ? "has-warning" : ""}"><span>待跟进 BUG</span><strong>${report.openBugs}</strong></div>
+    </div>
+    <section class="report-export-checks ${warnings.length ? "has-warnings" : "is-ready"}">
+      <strong>${warnings.length ? "导出前请确认" : "报告可以导出"}</strong>
+      ${warnings.length
+        ? `<ul>${warnings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+        : "<p>当前没有未执行、失败或未关闭 BUG 的风险提醒。</p>"}
+    </section>
+    <section class="report-export-conclusion">
+      <span>补充结论</span>
+      <p>${escapeHtml(conclusion || "尚未填写补充结论，可返回报告详情继续完善。")}</p>
+    </section>
+    ${hasReportData ? "" : "<p class=\"inline-feedback warn\">当前没有可导出的版本、用例或 BUG 数据。</p>"}
+  `;
+  els.confirmReportExport.disabled = !hasReportData;
+  els.publishWebReport.disabled = !hasReportData;
+  els.publishedReportResult.classList.add("hidden-field");
+  els.publishedReportResult.innerHTML = "";
+  els.reportExportModal.classList.remove("hidden-field");
+  document.body.classList.add("dialog-open");
+  window.setTimeout(() => (hasReportData ? els.confirmReportExport : els.cancelReportExport)?.focus(), 0);
+}
+
+function closeReportExportPreview() {
+  els.reportExportModal?.classList.add("hidden-field");
+  document.body.classList.remove("dialog-open");
+}
+
+async function publishCurrentReport() {
   const report = buildReportViewModel(getReportScopeByBatch(state.activeReportBatchId));
   const reportConclusion = getReportConclusionForBatch(state.activeReportBatchId);
-  const fileBaseName = [
-    "report",
-    report.scope.batch?.version || report.batchVersion || "no-version",
-    report.scope.task?.name || report.taskName || "summary"
-  ].map(sanitizeFileName).join("-");
+  const title = report.batchVersion && report.batchVersion !== "未选择"
+    ? `${report.batchVersion} 测试报告`
+    : "测试报告";
+
+  const hasPublishedVersion = publishedReports.some((item) => item.version === report.batchVersion);
+  if (hasPublishedVersion && !window.confirm(`版本“${report.batchVersion}”已经发布过报告，确认发布新的快照吗？`)) {
+    return;
+  }
+
+  els.publishWebReport.disabled = true;
+  els.publishWebReport.setAttribute("aria-busy", "true");
+  els.publishWebReport.textContent = "正在发布…";
+  try {
+    const response = await fetch("/api/reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, report, reportConclusion })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "发布失败");
+
+    const reportUrl = new URL(result.url, window.location.origin).href;
+    els.publishedReportResult.classList.remove("hidden-field", "warn");
+    els.publishedReportResult.innerHTML = `
+      <div>
+        <strong>网页版报告已发布</strong>
+        <span>这是只读快照，可将下面的内网地址发送给同事。</span>
+      </div>
+      <div class="published-report-link">
+        <input type="text" value="${escapeHtml(reportUrl)}" readonly aria-label="网页版报告地址">
+        <button class="ghost-button" type="button" data-copy-published-report>复制链接</button>
+        <a class="primary-button" href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener">打开报告</a>
+      </div>
+    `;
+    await loadPublishedReports();
+    showToast("网页版报告已发布，可以复制链接分享。", "success");
+  } catch (error) {
+    els.publishedReportResult.classList.remove("hidden-field");
+    els.publishedReportResult.classList.add("warn");
+    els.publishedReportResult.innerHTML = `<strong>发布失败</strong><span>${escapeHtml(error.message || "请稍后重试。")}</span>`;
+  } finally {
+    els.publishWebReport.disabled = false;
+    els.publishWebReport.removeAttribute("aria-busy");
+    els.publishWebReport.textContent = "发布网页版";
+  }
+}
+
+async function handlePublishedReportAction(event) {
+  const copyButton = event.target.closest("[data-copy-published-report]");
+  if (!copyButton) return;
+  const input = els.publishedReportResult.querySelector("input");
+  if (!input) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    copyButton.textContent = "已复制";
+    showToast("报告链接已复制。", "success");
+    window.setTimeout(() => { copyButton.textContent = "复制链接"; }, 1600);
+  } catch (_error) {
+    input.select();
+    document.execCommand("copy");
+    copyButton.textContent = "已复制";
+    showToast("报告链接已复制。", "success");
+  }
+}
+
+async function loadPublishedReports() {
+  if (!els.publishedReportList) return;
+  try {
+    const response = await fetch("/api/reports");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "读取发布记录失败");
+    publishedReports = Array.isArray(result.reports) ? result.reports : [];
+    renderPublishedReports();
+  } catch (_error) {
+    els.publishedReportList.innerHTML = '<p class="empty-state">暂时无法读取已发布报告。</p>';
+  }
+}
+
+function renderPublishedReports() {
+  if (!els.publishedReportList) return;
+  const visibleReports = publishedReports.filter((item) => item.version !== DEFAULT_WORKSPACE_VERSION);
+  const searchText = String(els.publishedReportSearch?.value || "").trim().toLowerCase();
+  const filteredReports = visibleReports.filter((item) => !searchText || [item.title, item.version]
+    .some((value) => String(value || "").toLowerCase().includes(searchText)));
+  const latestReportIds = new Set();
+  const latestVersions = new Set();
+  visibleReports.forEach((item) => {
+    if (!latestVersions.has(item.version)) {
+      latestVersions.add(item.version);
+      latestReportIds.add(item.id);
+    }
+  });
+  els.publishedReportCount.textContent = searchText
+    ? `显示 ${filteredReports.length} / ${visibleReports.length}`
+    : `${visibleReports.length} 份报告`;
+  if (!filteredReports.length) {
+    els.publishedReportList.innerHTML = `
+      <div class="empty-state published-report-empty">
+        <strong>${visibleReports.length ? "没有匹配的发布记录" : "还没有发布网页版报告"}</strong>
+        <span>${visibleReports.length ? "请调整搜索内容。" : "选择版本并点击“发布网页版”，这里会保存可访问的内网链接。"}</span>
+      </div>
+    `;
+    return;
+  }
+
+  els.publishedReportList.innerHTML = `
+    <div class="table-scroll-shell">
+      <table class="published-report-table">
+        <thead><tr><th>报告名称</th><th>版本</th><th>用例数</th><th>发布结论</th><th>发布时间</th><th>操作</th></tr></thead>
+        <tbody>${filteredReports.map((item) => `
+          <tr>
+            <td><strong>${escapeHtml(item.title || "测试报告")}${latestReportIds.has(item.id) ? '<span class="latest-report-chip">最新</span>' : ""}</strong><small>${escapeHtml(item.id)}</small></td>
+            <td>${escapeHtml(item.version || "未选择")}</td>
+            <td>${Number(item.total) || 0}</td>
+            <td><span class="badge ${escapeHtml(item.decisionTone || "warn")}">${escapeHtml(item.decision || "待评估")}</span></td>
+            <td>${escapeHtml(formatPublishedReportTime(item.publishedAt))}</td>
+            <td><div class="published-report-actions">
+              <a class="ghost-button" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">打开</a>
+              <button class="ghost-button" type="button" data-copy-report-id="${escapeHtml(item.id)}">复制链接</button>
+              <button class="ghost-button danger-button" type="button" data-revoke-report-id="${escapeHtml(item.id)}">撤销</button>
+            </div></td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function handlePublishedReportListAction(event) {
+  const copyButton = event.target.closest("[data-copy-report-id]");
+  if (copyButton) {
+    const item = publishedReports.find((report) => report.id === copyButton.dataset.copyReportId);
+    if (!item) return;
+    await copyTextWithFallback(new URL(item.url, window.location.origin).href);
+    copyButton.textContent = "已复制";
+    showToast("报告链接已复制。", "success");
+    window.setTimeout(() => { copyButton.textContent = "复制链接"; }, 1600);
+    return;
+  }
+
+  const revokeButton = event.target.closest("[data-revoke-report-id]");
+  if (!revokeButton) return;
+  const item = publishedReports.find((report) => report.id === revokeButton.dataset.revokeReportId);
+  if (!item || !window.confirm(`确认撤销“${item.title}”？撤销后原链接将无法访问。`)) return;
+  revokeButton.disabled = true;
+  const response = await fetch(`/api/reports/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+  if (!response.ok) {
+    revokeButton.disabled = false;
+    showToast("撤销失败，请稍后重试。", "error");
+    return;
+  }
+  await loadPublishedReports();
+  showToast("报告已撤销，原链接不再可用。", "success");
+}
+
+async function copyTextWithFallback(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (_error) {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+}
+
+function formatPublishedReportTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function showToast(message, tone = "info") {
+  if (!els.toastRegion) return;
+  const toast = document.createElement("div");
+  toast.className = `app-toast ${tone}`;
+  toast.innerHTML = `<span class="toast-dot"></span><strong>${escapeHtml(message)}</strong>`;
+  els.toastRegion.appendChild(toast);
+  window.setTimeout(() => toast.classList.add("is-visible"), 10);
+  window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 2600);
+}
+
+async function exportReport({ skipChecks = false } = {}) {
+  const report = buildReportViewModel(getReportScopeByBatch(state.activeReportBatchId));
+  const reportConclusion = getReportConclusionForBatch(state.activeReportBatchId);
+  const fileBaseName = buildReportDocxFileBaseName(report);
   const exportChecks = buildReportExportChecks(report);
 
-  if (exportChecks.length) {
+  if (!skipChecks && exportChecks.length) {
     const confirmed = window.confirm([
       "导出前提醒：",
       ...exportChecks.map((item, index) => `${index + 1}. ${item}`),
@@ -7476,7 +8153,7 @@ async function exportReport() {
       "确认继续导出吗？"
     ].join("\n"));
     if (!confirmed) {
-      return;
+      return false;
     }
   }
 
@@ -7498,9 +8175,16 @@ async function exportReport() {
 
     const blob = await response.blob();
     downloadBlob(`${fileBaseName}.docx`, blob);
+    return true;
   } catch (error) {
     alert(`报告导出失败：${error.message}`);
+    return false;
   }
+}
+
+function buildReportDocxFileBaseName(report) {
+  const version = report?.scope?.batch?.version || report?.batchVersion || "no-version";
+  return `${sanitizeFileName(version)}-report`;
 }
 
 function buildReportExportChecks(report) {

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>测试报告</title>
+  <link rel="stylesheet" href="/report.css">
+</head>
+<body>
+  <div class="report-shell">
+    <header class="report-topbar">
+      <a class="report-brand" href="/" aria-label="返回测试工作台">
+        <span class="brand-mark">Q</span>
+        <span><strong>QA Report</strong><small>测试质量中心</small></span>
+      </a>
+      <div class="report-top-actions">
+        <span id="publishedBadge" class="published-badge">只读报告</span>
+        <button type="button" id="printReport">打印 / 保存 PDF</button>
+      </div>
+    </header>
+
+    <main id="reportRoot">
+      <section class="report-loading" id="reportLoading">
+        <span class="loading-ring"></span>
+        <strong>正在加载测试报告</strong>
+        <p>请稍候，正在读取已发布的报告快照。</p>
+      </section>
+    </main>
+  </div>
+  <script src="/report.js"></script>
+</body>
+</html>

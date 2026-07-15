@@ -13,6 +13,7 @@ const ROOT = __dirname;
 const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team-members.json");
 const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
 const BUG_ATTACHMENTS_ROOT = process.env.BUG_ATTACHMENTS_ROOT || path.join(ROOT, "data", "bug-attachments");
+const PUBLISHED_REPORTS_ROOT = process.env.PUBLISHED_REPORTS_ROOT || path.join(ROOT, "data", "published-reports");
 const MAX_BUG_IMAGE_BYTES = 5 * 1024 * 1024;
 const API_AUTOMATION_CONFIG_FILE = process.env.API_AUTOMATION_CONFIG_FILE || path.join(ROOT, "api-automation.config.json");
 const API_AUTOMATION_CONFIG_EXAMPLE_FILE = path.join(ROOT, "api-automation.config.example.json");
@@ -26,6 +27,9 @@ const STATIC_FILE_ALLOWLIST = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
   ["/styles.css", "styles.css"],
+  ["/report.html", "report.html"],
+  ["/report.css", "report.css"],
+  ["/report.js", "report.js"],
   ["/quality-rules.js", "quality-rules.js"],
   ["/app.js", "app.js"]
 ]);
@@ -678,6 +682,27 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/export-report-docx") {
       const body = await readJsonBody(req);
       return handleExportReportDocx(body, res);
+    }
+
+    if (requestUrl.pathname === "/api/reports" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      return handlePublishReport(body, res);
+    }
+
+    if (requestUrl.pathname === "/api/reports" && req.method === "GET") {
+      return handleListPublishedReports(res);
+    }
+
+    const publishedReportMatch = requestUrl.pathname.match(/^\/api\/reports\/(rpt-[a-z0-9-]+)$/);
+    if (publishedReportMatch && req.method === "GET") {
+      return handleReadPublishedReport(res, publishedReportMatch[1]);
+    }
+    if (publishedReportMatch && req.method === "DELETE") {
+      return handleDeletePublishedReport(res, publishedReportMatch[1]);
+    }
+
+    if (req.method === "GET" && /^\/report\/rpt-[a-z0-9-]+$/.test(requestUrl.pathname)) {
+      return serveStaticFile(res, "report.html");
     }
 
     if (req.method === "POST" && req.url === "/api/self-test") {
@@ -2158,6 +2183,10 @@ function serveStatic(req, res) {
     return sendJson(res, 404, { error: "Not found" });
   }
 
+  return serveStaticFile(res, allowedFile);
+}
+
+function serveStaticFile(res, allowedFile) {
   const filePath = path.join(ROOT, allowedFile);
 
   fs.readFile(filePath, (error, data) => {
@@ -2175,6 +2204,79 @@ function serveStatic(req, res) {
     });
     res.end(data);
   });
+}
+
+function handlePublishReport(body, res) {
+  const report = body && typeof body.report === "object" ? body.report : null;
+  if (!report || !report.scope || !Array.isArray(report.scope.cases) || !Array.isArray(report.scope.bugs)) {
+    return sendJson(res, 400, { error: "缺少可发布的报告数据。" });
+  }
+
+  const id = `rpt-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+  const publishedAt = new Date().toISOString();
+  const snapshot = {
+    id,
+    publishedAt,
+    title: String(body.title || "测试报告").trim() || "测试报告",
+    report,
+    reportConclusion: String(body.reportConclusion || "").trim()
+  };
+
+  ensureDir(PUBLISHED_REPORTS_ROOT);
+  fs.writeFileSync(path.join(PUBLISHED_REPORTS_ROOT, `${id}.json`), JSON.stringify(snapshot, null, 2), "utf-8");
+  return sendJson(res, 201, { ok: true, id, url: `/report/${id}`, publishedAt });
+}
+
+function handleReadPublishedReport(res, reportId) {
+  const reportPath = path.join(PUBLISHED_REPORTS_ROOT, `${reportId}.json`);
+  if (!fs.existsSync(reportPath)) {
+    return sendJson(res, 404, { error: "报告不存在或已被移除。" });
+  }
+
+  try {
+    return sendJson(res, 200, JSON.parse(fs.readFileSync(reportPath, "utf-8")));
+  } catch (_error) {
+    return sendJson(res, 500, { error: "报告读取失败。" });
+  }
+}
+
+function handleListPublishedReports(res) {
+  if (!fs.existsSync(PUBLISHED_REPORTS_ROOT)) {
+    return sendJson(res, 200, { reports: [] });
+  }
+
+  const reports = fs.readdirSync(PUBLISHED_REPORTS_ROOT)
+    .filter((fileName) => /^rpt-[a-z0-9-]+\.json$/.test(fileName))
+    .map((fileName) => {
+      try {
+        const snapshot = JSON.parse(fs.readFileSync(path.join(PUBLISHED_REPORTS_ROOT, fileName), "utf-8"));
+        return {
+          id: snapshot.id,
+          title: snapshot.title || "测试报告",
+          publishedAt: snapshot.publishedAt || "",
+          url: `/report/${snapshot.id}`,
+          version: snapshot.report?.batchVersion || "未选择",
+          decision: snapshot.report?.releaseDecision?.label || "待评估",
+          decisionTone: snapshot.report?.releaseDecision?.tone || "warn",
+          total: Number(snapshot.report?.total) || 0
+        };
+      } catch (_error) {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.publishedAt).localeCompare(String(left.publishedAt)));
+
+  return sendJson(res, 200, { reports });
+}
+
+function handleDeletePublishedReport(res, reportId) {
+  const reportPath = path.join(PUBLISHED_REPORTS_ROOT, `${reportId}.json`);
+  if (!fs.existsSync(reportPath)) {
+    return sendJson(res, 404, { error: "报告不存在或已经撤销。" });
+  }
+  fs.rmSync(reportPath, { force: true });
+  return sendJson(res, 200, { ok: true, id: reportId });
 }
 
 function readJsonBody(req) {

@@ -14,6 +14,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-report-smoke-"));
 const appStateFile = path.join(tempDir, "app-state.json");
 const teamMembersFile = path.join(tempDir, "team-members.json");
 const bugAttachmentsRoot = path.join(tempDir, "bug-attachments");
+const publishedReportsRoot = path.join(tempDir, "published-reports");
 const exportDir = path.join(ROOT, "tmp", "exports");
 const exportPrefix = `smoke-${Date.now()}`;
 
@@ -28,6 +29,7 @@ test.before(async () => {
       APP_STATE_FILE: appStateFile,
       TEAM_MEMBERS_FILE: teamMembersFile,
       BUG_ATTACHMENTS_ROOT: bugAttachmentsRoot,
+      PUBLISHED_REPORTS_ROOT: publishedReportsRoot,
       SELF_TEST_AUTORUN: "false"
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -92,11 +94,17 @@ test("serves the responsive light workspace shell", async () => {
   assert.match(html, /id="topbarTitle"/);
   assert.match(html, /id="topbarMenuBtn"/);
   assert.match(html, /id="sidebarBackdrop"/);
+  assert.match(html, /class="skip-link" href="#mainContent"/);
+  assert.match(html, /class="nav-group-label"[^>]*>创建</);
+  assert.match(html, /id="mainContent" class="content" tabindex="-1"/);
   assert.match(appSource, /function hydrateNavigationChrome\(\)/);
   assert.match(appSource, /function toggleMobileNavigation\(open\)/);
   assert.match(styles, /--ui-primary:\s*#0798a6;/);
   assert.match(styles, /\.topbar\s*\{/);
   assert.match(styles, /@media \(max-width:\s*980px\)/);
+  assert.match(html, /class="automation-beginner-path"/);
+  assert.match(html, /class="automation-advanced-mode"/);
+  assert.match(styles, /\.automation-advanced-mode\s*\{/);
 });
 
 test("combines task creation and case generation into one step", async () => {
@@ -117,10 +125,16 @@ test("combines task creation and case generation into one step", async () => {
   assert.match(appSource, /const DEFAULT_WORKSPACE_VERSION = "默认工作区";/);
   assert.match(appSource, /function ensureDefaultTaskBatch\(\)/);
   assert.match(appSource, /async function createTaskAndGenerateCases\(\)/);
+  assert.match(appSource, /function enhanceGenerationBeginnerFlow\(\)/);
+  assert.match(appSource, /function createGenerationStepBlock\(number, title, description, className\)/);
+  assert.match(appSource, /function handleWorkflowStepAction\(action\)/);
+  assert.match(appSource, /data-workflow-action=/);
   assert.match(appSource, /const focusHint = activeTask\?\.scope \|\| "";/);
   assert.doesNotMatch(appSource, /nextAction: "create-meta"/);
   assert.match(styles, /grid-template-areas: "ai task";/);
   assert.match(styles, /\.combined-generation-divider\s*\{/);
+  assert.match(styles, /\.generation-flow-steps\s*\{/);
+  assert.match(styles, /\.generation-step-submit\s*\{/);
 });
 
 test("serves version table, creation dialog, and task assignment controls", async () => {
@@ -138,10 +152,17 @@ test("serves version table, creation dialog, and task assignment controls", asyn
   assert.match(html, /id="versionStatusFilter"/);
   assert.match(html, /id="versionModal"/);
   assert.match(html, /id="versionTaskOptions"/);
+  assert.match(html, /id="versionCompleteModal"/);
+  assert.match(html, /id="versionCompleteSummary"/);
   assert.match(appSource, /function saveVersionFromManager\(event\)/);
   assert.match(appSource, /function moveTaskToBatch\(taskId, batch\)/);
+  assert.match(appSource, /function getVersionHealth\(batch\)/);
+  assert.match(appSource, /function openVersionCompleteModal\(batch\)/);
+  assert.match(appSource, /function confirmVersionCompletion\(\)/);
   assert.match(appSource, /data-version-action="link-tasks"/);
   assert.match(styles, /\.version-table\s*\{/);
+  assert.match(styles, /\.version-health-summary\s*\{/);
+  assert.match(styles, /\.version-complete-dialog\s*\{/);
   assert.match(styles, /\.version-task-option:has\(input:checked\)/);
 });
 
@@ -161,8 +182,15 @@ test("serves task management navigation and table controls", async () => {
   assert.match(html, /id="taskVersionFilter"/);
   assert.match(html, /id="taskManagerList"/);
   assert.match(appSource, /function renderTaskTableRow\(task\)/);
+  assert.match(appSource, /function getTaskCaseProgress\(task\)/);
+  assert.match(appSource, /function matchesCaseTaskSearch\(item, taskFilter\)/);
+  assert.match(appSource, /data-task-action="execute"/);
+  assert.match(appSource, /data-clear-task-filters/);
+  assert.match(appSource, /data-clear-version-filters/);
   assert.match(appSource, /tasks: '<path/);
   assert.match(styles, /\.task-table\s*\{/);
+  assert.match(styles, /\.task-case-progress\s*\{/);
+  assert.match(styles, /button\.task-execute-link/);
   assert.match(styles, /button\.version-link-task-button/);
 });
 
@@ -176,7 +204,8 @@ test("keeps completed versions and tasks read only", async () => {
 
   assert.match(appSource, /function isTaskReadonly\(task\)/);
   assert.match(appSource, /!isActive && !isReadonly/);
-  assert.match(appSource, /!isCompleted && !isActive && !isSuspended/);
+  assert.match(appSource, /\$\{!isActive && !isSuspended \?/);
+  assert.match(appSource, /batch\.status === "已完成" && \["edit", "link-tasks", "suspend", "resume", "delete"\]/);
   assert.match(appSource, /data-task-detail-toggle/);
   assert.match(appSource, /data-task-readonly-detail/);
   assert.match(styles, /\.completed-task-detail\s*\{/);
@@ -198,12 +227,19 @@ test("serves the focused two-column manual execution workspace", async () => {
   assert.match(html, /id="caseTaskFilter"[^>]+type="search"/);
   assert.match(html, /id="caseTaskOptions"/);
   assert.doesNotMatch(html, /id="caseBatchFilter"/);
+  assert.match(html, /class="case-sort-hint">P0 优先/);
   assert.match(appSource, /function renderManualExecutionProgress\(cases\)/);
+  assert.match(appSource, /data-clear-case-filters/);
+  assert.match(appSource, /case-priority-chip/);
   assert.match(appSource, /function buildCasesCsvExport\(cases, activeTask, documentName\)/);
   assert.match(appSource, /function renderActiveCaseExecution\(item, filteredCases\)/);
+  assert.match(appSource, /function getNextExecutionCaseId\(cases, currentCaseId, nextStatus\)/);
+  assert.doesNotMatch(appSource, /data-start-execution/);
+  assert.doesNotMatch(appSource, /execution-start-button/);
   assert.match(appSource, /data-case-result="通过"/);
   assert.match(appSource, /data-case-result="失败"/);
   assert.match(styles, /\.manual-execution-layout\s*\{/);
+  assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(styles, /button\.execution-result-button\.result-pass/);
   assert.match(styles, /button\.execution-result-button\.result-fail/);
 });
@@ -232,6 +268,7 @@ test("serves the ZenTao-style bug title list and modal details", async () => {
   assert.match(html, /id="bugModalCase"/);
   assert.match(html, /id="bugModalImagePreview"/);
   assert.match(appSource, /function openBugModal\(bugId = "", mode = bugId \? "view" : "create", sourceCase = null\)/);
+  assert.match(appSource, /data-clear-bug-filters/);
   assert.match(appSource, /async function saveBugFromModal\(event\)/);
   assert.match(appSource, /function handleBugNotePaste\(event\)/);
   assert.match(appSource, /\/api\/bug-images/);
@@ -273,15 +310,55 @@ test("serves the report menu as version and issue tables", async () => {
   assert.match(html, /id="reportVersionStatusFilter"/);
   assert.match(html, /id="reportReleaseFilter"/);
   assert.match(html, /id="reportVersionPagination"/);
+  assert.match(html, /id="reportExportModal"/);
+  assert.match(html, /id="reportExportPreview"/);
+  assert.match(html, /id="publishReport"/);
+  assert.match(html, /id="publishWebReport"/);
+  assert.match(html, /id="publishedReportList"/);
+  assert.match(html, /id="publishedReportCount"/);
+  assert.match(html, /id="publishedReportSearch"/);
+  assert.match(html, /id="toastRegion"/);
   assert.match(appSource, /class="report-version-table"/);
   assert.match(appSource, /class="report-detail-table"/);
   assert.match(appSource, /class="report-issue-table"/);
   assert.match(appSource, /button\[data-report-batch-id\]/);
   assert.match(appSource, /REPORT_VERSIONS_PER_PAGE = 10/);
   assert.match(appSource, /const filteredCards = versionCards\.filter/);
+  assert.match(appSource, /function openReportExportPreview\(\)/);
+  assert.match(appSource, /function closeReportExportPreview\(\)/);
+  assert.match(appSource, /function buildReportDocxFileBaseName\(report\)/);
+  assert.match(appSource, /async function publishCurrentReport\(\)/);
+  assert.match(appSource, /async function loadPublishedReports\(\)/);
+  assert.match(appSource, /async function handlePublishedReportListAction\(event\)/);
+  assert.match(appSource, /batch\.systemManaged/);
+  assert.match(appSource, /batch-default-workspace/);
+  assert.match(appSource, /function showToast\(message, tone = "info"\)/);
   assert.match(styles, /\.report-version-table\s*[,\{]/);
   assert.match(styles, /\.report-detail-table\s*[,\{]/);
   assert.match(styles, /\.report-issue-table\s*\{/);
+  assert.match(styles, /\.report-export-dialog\s*\{/);
+  assert.match(styles, /\.toast-region\s*\{/);
+});
+
+test("serves the standalone published report template", async () => {
+  const [htmlResponse, scriptResponse, styleResponse] = await Promise.all([
+    fetch(`${BASE_URL}/report.html`),
+    fetch(`${BASE_URL}/report.js`),
+    fetch(`${BASE_URL}/report.css`)
+  ]);
+  const html = await htmlResponse.text();
+  const script = await scriptResponse.text();
+  const styles = await styleResponse.text();
+
+  assert.equal(htmlResponse.status, 200);
+  assert.equal(scriptResponse.status, 200);
+  assert.equal(styleResponse.status, 200);
+  assert.match(html, /id="reportRoot"/);
+  assert.match(script, /async function loadPublishedReport\(\)/);
+  assert.match(script, /data-report-view="overview"/);
+  assert.doesNotMatch(script, /report\.scopeLabel\s*\|\|\s*"当前测试范围"/);
+  assert.match(styles, /\.metric-grid\s*\{/);
+  assert.match(styles, /@media print/);
 });
 
 test("omits operator and task owner fields from UI and exports", async () => {
@@ -490,6 +567,12 @@ test("exports a docx report", async () => {
   );
   assert.equal(fileSignature, "PK");
   assert.equal(fs.existsSync(outputPath), true);
+
+  const docxScript = fs.readFileSync(path.join(ROOT, "tmp", "export_report_docx.py"), "utf-8");
+  ["文档信息", "用例执行统计", "缺陷统计", "风险与结论", "阻塞原因汇总", "测试结论与建议", "重点关注"]
+    .forEach((heading) => assert.match(docxScript, new RegExp(heading)));
+  assert.doesNotMatch(docxScript, /报告范围/);
+  assert.doesNotMatch(docxScript, /测试范围摘要/);
 });
 
 test("rejects report export without report payload", async () => {
@@ -502,6 +585,56 @@ test("rejects report export without report payload", async () => {
 
   assert.equal(response.status, 400);
   assert.equal(data.error, "缺少报告数据。");
+});
+
+test("publishes and serves a readonly report snapshot", async () => {
+  const report = buildReportPayload();
+  report.scope = {
+    cases: [{ id: "case-1", title: "Login succeeds", executionStatus: "通过" }],
+    bugs: []
+  };
+  const publishResponse = await fetch(`${BASE_URL}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "V1.0 测试报告", report, reportConclusion: "可以发布" })
+  });
+  const published = await publishResponse.json();
+
+  assert.equal(publishResponse.status, 201);
+  assert.match(published.id, /^rpt-[a-z0-9-]+$/);
+  assert.equal(published.url, `/report/${published.id}`);
+  assert.equal(fs.existsSync(path.join(publishedReportsRoot, `${published.id}.json`)), true);
+
+  const pageResponse = await fetch(`${BASE_URL}${published.url}`);
+  const readResponse = await fetch(`${BASE_URL}/api/reports/${published.id}`);
+  const snapshot = await readResponse.json();
+  assert.equal(pageResponse.status, 200);
+  assert.match(await pageResponse.text(), /id="reportRoot"/);
+  assert.equal(readResponse.status, 200);
+  assert.equal(snapshot.title, "V1.0 测试报告");
+  assert.equal(snapshot.report.scope.cases[0].title, "Login succeeds");
+
+  const listResponse = await fetch(`${BASE_URL}/api/reports`);
+  const list = await listResponse.json();
+  assert.equal(listResponse.status, 200);
+  assert.equal(list.reports.some((item) => item.id === published.id), true);
+
+  const revokeResponse = await fetch(`${BASE_URL}/api/reports/${published.id}`, { method: "DELETE" });
+  const revokedReadResponse = await fetch(`${BASE_URL}/api/reports/${published.id}`);
+  assert.equal(revokeResponse.status, 200);
+  assert.equal(revokedReadResponse.status, 404);
+});
+
+test("rejects invalid published report payloads and missing ids", async () => {
+  const invalidResponse = await fetch(`${BASE_URL}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Missing report" })
+  });
+  const missingResponse = await fetch(`${BASE_URL}/api/reports/rpt-does-not-exist`);
+
+  assert.equal(invalidResponse.status, 400);
+  assert.equal(missingResponse.status, 404);
 });
 
 test("rejects unsupported methods for api routes", async () => {

@@ -77,10 +77,58 @@ const inferAutomationTargetFromRawStep = loadFunction("inferAutomationTargetFrom
 const buildCasesCsvExport = loadFunction("buildCasesCsvExport");
 const getCasePriorityRank = loadFunction("getCasePriorityRank");
 const sortCasesByPriority = loadFunction("sortCasesByPriority", { getCasePriorityRank });
+const getCasePriorityClass = loadFunction("getCasePriorityClass", { getCasePriorityRank });
+const getNextExecutionCaseId = loadFunction("getNextExecutionCaseId");
+const sanitizeFileName = loadFunction("sanitizeFileName");
+const buildReportDocxFileBaseName = loadFunction("buildReportDocxFileBaseName", { sanitizeFileName });
 const normalizeAutomationStep = loadFunction("normalizeAutomationStep", {
   normalizeAutomationStepType,
   normalizeAutomationLocatorType,
   inferAutomationTargetFromRawStep
+});
+
+test("getVersionHealth summarizes release risks without mutating version data", () => {
+  const state = {
+    tasks: [{ id: "task-1", batchId: "batch-1" }],
+    cases: [
+      { taskId: "task-1", executionStatus: "通过" },
+      { taskId: "task-1", executionStatus: "失败" },
+      { taskId: "task-1", executionStatus: "未执行" }
+    ],
+    bugs: [{ taskId: "task-1", status: "新建" }]
+  };
+  const getVersionHealth = loadFunction("getVersionHealth", { state });
+  const result = getVersionHealth({ id: "batch-1" });
+
+  assert.equal(result.tasks.length, 1);
+  assert.equal(result.cases.length, 3);
+  assert.equal(result.executed, 2);
+  assert.equal(result.pending, 1);
+  assert.equal(result.failed, 1);
+  assert.equal(result.openBugs, 1);
+  assert.equal(result.release.label, "有风险");
+  assert.equal(state.cases.length, 3);
+});
+
+test("completing a version preserves historical cases", () => {
+  const completionSource = extractFunctionSource("confirmVersionCompletion");
+  assert.doesNotMatch(completionSource, /state\.cases\s*=/);
+  assert.doesNotMatch(completionSource, /state\.bugs\s*=/);
+});
+
+test("manual execution advances only after a passed result", () => {
+  const cases = [{ id: "case-1" }, { id: "case-2" }, { id: "case-3" }];
+  assert.equal(getNextExecutionCaseId(cases, "case-1", "通过"), "case-2");
+  assert.equal(getNextExecutionCaseId(cases, "case-3", "通过"), "case-3");
+  assert.equal(getNextExecutionCaseId(cases, "case-1", "失败"), "case-1");
+});
+
+test("DOCX report filename uses only version and report suffix", () => {
+  assert.equal(buildReportDocxFileBaseName({ batchVersion: "V1.0.0" }), "V1.0.0-report");
+  assert.equal(
+    buildReportDocxFileBaseName({ scope: { batch: { version: "V2/Release" } }, batchVersion: "fallback" }),
+    "V2-Release-report"
+  );
 });
 
 test("buildCasesCsvExport omits version and execution state metadata", () => {
@@ -143,6 +191,13 @@ test("sortCasesByPriority orders manual cases from P0 upward stably", () => {
     "p3",
     "custom"
   ]);
+});
+
+test("getCasePriorityClass maps case levels to restrained visual tones", () => {
+  assert.equal(getCasePriorityClass("P0"), "priority-critical");
+  assert.equal(getCasePriorityClass("P1"), "priority-high");
+  assert.equal(getCasePriorityClass("P2"), "priority-normal");
+  assert.equal(getCasePriorityClass("P3"), "priority-low");
 });
 
 test("ensureDefaultTaskBatch creates and reuses a hidden workspace batch", () => {

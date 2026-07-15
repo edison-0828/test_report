@@ -9,6 +9,7 @@
 </head>
 
 <body>
+  <a class="skip-link" href="#mainContent">跳到主要内容</a>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -17,13 +18,17 @@
       </div>
 
       <nav class="nav">
+        <span class="nav-group-label" role="presentation" aria-hidden="true">创建</span>
         <button class="nav-link active" data-tab="upload">用例生成</button>
         <button class="nav-link" data-tab="quality">用例质量检查</button>
+        <span class="nav-group-label" role="presentation" aria-hidden="true">管理</span>
         <button class="nav-link" data-tab="tasks">任务管理</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
+        <span class="nav-group-label" role="presentation" aria-hidden="true">执行</span>
         <button class="nav-link" data-tab="cases">手动执行用例</button>
         <button class="nav-link" data-tab="automationCases">接口自动化</button>
         <button class="nav-link" data-tab="bugs">BUG管理</button>
+        <span class="nav-group-label" role="presentation" aria-hidden="true">交付</span>
         <button class="nav-link" data-tab="report">测试报告</button>
       </nav>
 
@@ -61,7 +66,7 @@
 
     <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="关闭导航菜单"></button>
 
-    <main class="content">
+    <main id="mainContent" class="content" tabindex="-1">
       <section class="tab-panel active upload-workspace" id="upload">
         <div class="panel-header upload-hero">
           <div>
@@ -293,7 +298,10 @@
                 <span class="execution-progress-kicker">用例目录</span>
                 <h3>选择要执行的用例</h3>
               </div>
-              <span id="caseBrowserCount" class="badge subtle">0 条</span>
+              <div class="case-browser-summary">
+                <span id="caseBrowserCount" class="badge subtle">0 条</span>
+                <span class="case-sort-hint">P0 优先</span>
+              </div>
             </div>
             <div class="case-browser-filters">
               <input id="caseTaskFilter" type="search" list="caseTaskOptions" placeholder="搜索任务名称" aria-label="搜索任务名称">
@@ -323,7 +331,7 @@
           </aside>
 
           <section class="panel case-runner-panel">
-            <p id="caseActionStatus" class="inline-feedback">从左侧选择一条用例开始执行。</p>
+            <p id="caseActionStatus" class="inline-feedback">从左侧选择一条用例，直接判断通过或失败。</p>
             <div id="caseExecutionWorkspace" class="case-execution-workspace"></div>
           </section>
         </div>
@@ -348,9 +356,14 @@
               <p class="section-note">&#20808;&#27785;&#28196;&#25509;&#21475;&#36335;&#24452;&#12289;&#35831;&#27714;&#21442;&#25968;&#21644;&#26029;&#35328;&#65292;&#21518;&#32493;&#25509;&#20837; pytest &#21518;&#30452;&#25509;&#36305; test / sandbox &#22238;&#24402;&#12290;</p>
             </div>
             <div class="api-workbench-badges">
-              <span class="state-chip subtle">pytest</span>
-              <span class="state-chip neutral">site / env</span>
+              <span class="state-chip subtle">新手模式</span>
             </div>
+          </div>
+
+          <div class="automation-beginner-path" aria-label="接口自动化新手操作流程">
+            <span><b>1</b>选择站点和环境</span>
+            <span><b>2</b>在下方选择用例</span>
+            <span><b>3</b>套用模板并运行</span>
           </div>
 
           <div class="api-workbench-grid">
@@ -368,16 +381,22 @@
                 <option value="sandbox">sandbox</option>
               </select>
             </label>
-            <label>
-              Base URL
-              <input type="text" id="apiAutomationBaseUrl" readonly placeholder="&#35835;&#21462;&#37197;&#32622;&#25991;&#20214;">
-            </label>
             <div class="api-workbench-actions">
               <button type="button" id="runApiAutomationBatch" class="ghost-button">&#25209;&#37327;&#25191;&#34892;</button>
               <button type="button" id="viewApiAutomationRuns" class="ghost-button">&#26597;&#30475;&#36816;&#34892;&#35760;&#24405;</button>
             </div>
           </div>
-          <p id="apiAutomationConfigStatus" class="inline-feedback neutral">&#35835;&#21462; api-automation.config.json &#21518;&#65292;&#20250;&#26174;&#31034;&#24403;&#21069;&#31449;&#28857;&#12289;&#29615;&#22659;&#12289;Base URL&#12289;&#31449;&#28857; Key &#21644;&#31614;&#21517; API Key &#37197;&#32622;&#29366;&#24577;&#12290;</p>
+          <details class="automation-advanced-mode">
+            <summary>
+              <span>高级模式</span>
+              <small>查看 Base URL、Key 与签名配置状态</small>
+            </summary>
+            <label class="automation-base-url-field">
+              Base URL
+              <input type="text" id="apiAutomationBaseUrl" readonly placeholder="&#35835;&#21462;&#37197;&#32622;&#25991;&#20214;">
+            </label>
+            <p id="apiAutomationConfigStatus" class="inline-feedback neutral">&#35835;&#21462; api-automation.config.json &#21518;&#65292;&#20250;&#26174;&#31034;&#24403;&#21069;&#31449;&#28857;&#12289;&#29615;&#22659;&#12289;Base URL&#12289;&#31449;&#28857; Key &#21644;&#31614;&#21517; API Key &#37197;&#32622;&#29366;&#24577;&#12290;</p>
+          </details>
         </section>
 
         <section class="panel api-case-library-panel">
@@ -542,10 +561,13 @@
             <h2>测试报告</h2>
             <p>按版本汇总执行进度、风险、重点问题和发布建议。</p>
           </div>
-          <button id="exportReport">导出DOCX</button>
+          <div class="report-header-actions">
+            <button id="exportReport" class="ghost-button" type="button">预览并导出</button>
+            <button id="publishReport" class="primary-button" type="button">发布网页版</button>
+          </div>
         </div>
 
-        <section class="panel">
+        <section class="panel report-version-panel">
           <div class="section-head">
             <div>
               <h3>版本报告列表</h3>
@@ -576,6 +598,20 @@
           </div>
         </section>
 
+        <section class="panel published-reports-panel">
+          <div class="section-head">
+            <div>
+              <h3>已发布报告</h3>
+              <p class="section-note">管理已经生成的内网只读链接；撤销后原链接将无法继续访问。</p>
+            </div>
+            <div class="published-report-toolbar">
+              <input id="publishedReportSearch" type="search" placeholder="搜索报告名称或版本" aria-label="搜索已发布报告">
+              <span id="publishedReportCount" class="badge subtle">0 份报告</span>
+            </div>
+          </div>
+          <div id="publishedReportList" class="published-report-list"></div>
+        </section>
+
         <div class="section-head report-detail-head">
           <div>
             <h3 id="reportDetailHeader">当前版本详情</h3>
@@ -602,6 +638,8 @@
       </section>
     </main>
   </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <div id="versionModal" class="dialog-backdrop hidden-field" role="presentation">
     <section class="dialog-card version-dialog" role="dialog" aria-modal="true" aria-labelledby="versionModalTitle">
@@ -637,6 +675,42 @@
           <button id="saveVersionBtn" class="primary-button" type="submit">保存版本</button>
         </div>
       </form>
+    </section>
+  </div>
+
+  <div id="versionCompleteModal" class="dialog-backdrop hidden-field" role="presentation">
+    <section class="dialog-card version-complete-dialog" role="dialog" aria-modal="true" aria-labelledby="versionCompleteTitle">
+      <div class="dialog-head">
+        <div>
+          <span class="dialog-kicker">发布检查</span>
+          <h3 id="versionCompleteTitle">完成版本</h3>
+        </div>
+        <button id="closeVersionCompleteModal" class="dialog-close" type="button" aria-label="关闭版本完成检查">×</button>
+      </div>
+      <div id="versionCompleteSummary" class="version-complete-summary"></div>
+      <div class="dialog-actions version-complete-actions">
+        <button id="cancelVersionCompleteModal" class="ghost-button" type="button">暂不完成</button>
+        <button id="confirmVersionComplete" class="primary-button" type="button">确认完成并锁定</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="reportExportModal" class="dialog-backdrop hidden-field" role="presentation">
+    <section class="dialog-card report-export-dialog" role="dialog" aria-modal="true" aria-labelledby="reportExportModalTitle">
+      <div class="dialog-head">
+        <div>
+          <span class="dialog-kicker">测试报告</span>
+          <h3 id="reportExportModalTitle">导出前预览</h3>
+        </div>
+        <button id="closeReportExportModal" class="dialog-close" type="button" aria-label="关闭报告导出预览">×</button>
+      </div>
+      <div id="reportExportPreview" class="report-export-preview"></div>
+      <div id="publishedReportResult" class="published-report-result hidden-field" aria-live="polite"></div>
+      <div class="dialog-actions report-export-actions">
+        <button id="cancelReportExport" class="ghost-button" type="button">返回检查</button>
+        <button id="publishWebReport" class="ghost-button publish-web-report" type="button">发布网页版</button>
+        <button id="confirmReportExport" class="primary-button" type="button">确认导出 DOCX</button>
+      </div>
     </section>
   </div>
 
