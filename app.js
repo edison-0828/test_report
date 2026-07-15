@@ -1343,8 +1343,16 @@ function syncSelfTestHeader() {
     return;
   }
 
+  const firstFailure = Array.isArray(selfTestState.result.failures)
+    ? String(selfTestState.result.failures[0] || "").trim()
+    : "";
   setSelfTestStatus("发现问题", "error");
-  setSelfTestFeedback("最近一次自检发现异常，建议联系管理员或在终端执行 npm test 排查。", "error");
+  setSelfTestFeedback(
+    firstFailure
+      ? `最近一次自检发现异常：${firstFailure}`
+      : "最近一次自检发现异常，建议联系管理员或在终端执行 npm test 排查。",
+    "error"
+  );
 }
 
 function persistSelfTestSnapshot() {

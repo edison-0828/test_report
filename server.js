@@ -23,6 +23,8 @@ const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
 const LARK_API_BASE_URL = process.env.LARK_API_BASE_URL || "https://open.larksuite.com";
 const SELF_TEST_INTERVAL_MS = 3 * 60 * 60 * 1000;
 const SELF_TEST_AUTORUN = process.env.SELF_TEST_AUTORUN !== "false";
+// The live server already proves HTTP startup; another web server can cause deployment-only false alarms.
+const RUNTIME_SELF_TEST_EXCLUDED_FILES = new Set(["smoke.test.js"]);
 const STATIC_FILE_ALLOWLIST = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
@@ -1056,7 +1058,7 @@ function getSelfTestFiles() {
   }
 
   return fs.readdirSync(testsDir)
-    .filter((fileName) => fileName.endsWith(".test.js"))
+    .filter((fileName) => fileName.endsWith(".test.js") && !RUNTIME_SELF_TEST_EXCLUDED_FILES.has(fileName))
     .sort()
     .map((fileName) => path.join(testsDir, fileName));
 }
@@ -1116,9 +1118,12 @@ function executeSelfTest(trigger) {
   selfTestRuntime.lastError = "";
 
   const startedAt = Date.now();
+  const selfTestEnv = { ...process.env };
+  delete selfTestEnv.NODE_TEST_CONTEXT;
   const result = spawnSync(process.execPath, ["--test", ...testFiles], {
     cwd: ROOT,
     encoding: "utf-8",
+    env: selfTestEnv,
     windowsHide: true,
     timeout: 120_000
   });
@@ -1133,8 +1138,11 @@ function executeSelfTest(trigger) {
     selfTestRuntime.lastError = payload.executionError;
   } else {
     const parsed = parseSelfTestOutput(result.stdout || "", result.stderr || "");
+    if (parsed.summary.tests === 0) {
+      parsed.failures.push("未检测到任何测试结果。");
+    }
     payload = {
-      ok: result.status === 0,
+      ok: result.status === 0 && parsed.summary.tests > 0,
       exitCode: typeof result.status === "number" ? result.status : null,
       startedAt: new Date(startedAt).toISOString(),
       finishedAt: new Date().toISOString(),

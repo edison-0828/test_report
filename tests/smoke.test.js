@@ -413,6 +413,17 @@ test("reports self-test scheduler status", async () => {
   assert.equal(data.running, false);
 });
 
+test("runs deployment-safe self-tests without starting a nested smoke server", async () => {
+  const response = await fetch(`${BASE_URL}/api/self-test`, { method: "POST" });
+  const data = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(data.ok, true);
+  assert.ok(data.summary.tests > 0);
+  assert.equal(data.summary.fail, 0);
+  assert.equal(data.trigger, "manual");
+});
+
 test("reports api automation config without exposing keys", async () => {
   const response = await fetch(`${BASE_URL}/api/api-automation/config`);
   const data = await response.json();
