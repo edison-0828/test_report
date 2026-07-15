@@ -74,10 +74,75 @@ const mergeCasesIntoState = loadFunction("mergeCasesIntoState");
 const normalizeAutomationStepType = loadFunction("normalizeAutomationStepType");
 const normalizeAutomationLocatorType = loadFunction("normalizeAutomationLocatorType");
 const inferAutomationTargetFromRawStep = loadFunction("inferAutomationTargetFromRawStep");
+const buildCasesCsvExport = loadFunction("buildCasesCsvExport");
+const getCasePriorityRank = loadFunction("getCasePriorityRank");
+const sortCasesByPriority = loadFunction("sortCasesByPriority", { getCasePriorityRank });
 const normalizeAutomationStep = loadFunction("normalizeAutomationStep", {
   normalizeAutomationStepType,
   normalizeAutomationLocatorType,
   inferAutomationTargetFromRawStep
+});
+
+test("buildCasesCsvExport omits version and execution state metadata", () => {
+  const result = buildCasesCsvExport([
+    {
+      taskName: "登录回归",
+      batchVersion: "V3.1.1",
+      title: "正确账号登录",
+      type: "正常",
+      priority: "P1",
+      preconditions: "账号已创建",
+      steps: "输入账号并登录",
+      expected: "进入首页",
+      executionStatus: "通过",
+      executionNote: "浏览器验证"
+    }
+  ], null, "需求文档");
+
+  assert.deepEqual(Array.from(result.headers), [
+    "测试任务",
+    "标题",
+    "类型",
+    "优先级",
+    "前置条件",
+    "步骤",
+    "预期结果",
+    "执行备注"
+  ]);
+  assert.equal(result.fileBaseName, "登录回归-测试用例");
+  assert.equal(Array.from(result.rows[0]).includes("V3.1.1"), false);
+  assert.equal(Array.from(result.rows[0]).includes("通过"), false);
+});
+
+test("buildCasesCsvExport labels exports spanning multiple tasks clearly", () => {
+  const result = buildCasesCsvExport([
+    { taskName: "登录回归", title: "登录" },
+    { taskName: "支付回归", title: "支付" }
+  ], { name: "当前激活任务" }, "需求文档");
+
+  assert.equal(result.fileBaseName, "多个测试任务-测试用例");
+});
+
+test("sortCasesByPriority orders manual cases from P0 upward stably", () => {
+  const cases = [
+    { id: "p2-first", priority: "P2" },
+    { id: "p0", priority: "p0" },
+    { id: "custom", priority: "紧急" },
+    { id: "p1", priority: "P1" },
+    { id: "p2-default", priority: "" },
+    { id: "p2-second", priority: "P2" },
+    { id: "p3", priority: "P3" }
+  ];
+
+  assert.deepEqual(Array.from(sortCasesByPriority(cases), (item) => item.id), [
+    "p0",
+    "p1",
+    "p2-first",
+    "p2-default",
+    "p2-second",
+    "p3",
+    "custom"
+  ]);
 });
 
 test("ensureDefaultTaskBatch creates and reuses a hidden workspace batch", () => {

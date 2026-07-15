@@ -296,12 +296,8 @@
               <span id="caseBrowserCount" class="badge subtle">0 条</span>
             </div>
             <div class="case-browser-filters">
-              <select id="caseBatchFilter" aria-label="筛选版本">
-                <option value="">全部版本</option>
-              </select>
-              <select id="caseTaskFilter" aria-label="筛选任务">
-                <option value="">全部任务</option>
-              </select>
+              <input id="caseTaskFilter" type="search" list="caseTaskOptions" placeholder="搜索任务名称" aria-label="搜索任务名称">
+              <datalist id="caseTaskOptions"></datalist>
               <select id="caseStatusFilter" aria-label="筛选执行状态">
                 <option value="">全部状态</option>
                 <option value="未执行">未执行</option>

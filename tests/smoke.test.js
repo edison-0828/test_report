@@ -195,7 +195,11 @@ test("serves the focused two-column manual execution workspace", async () => {
   assert.match(html, /id="caseProgressPercent"/);
   assert.match(html, /class="manual-execution-layout"/);
   assert.match(html, /id="caseExecutionWorkspace"/);
+  assert.match(html, /id="caseTaskFilter"[^>]+type="search"/);
+  assert.match(html, /id="caseTaskOptions"/);
+  assert.doesNotMatch(html, /id="caseBatchFilter"/);
   assert.match(appSource, /function renderManualExecutionProgress\(cases\)/);
+  assert.match(appSource, /function buildCasesCsvExport\(cases, activeTask, documentName\)/);
   assert.match(appSource, /function renderActiveCaseExecution\(item, filteredCases\)/);
   assert.match(appSource, /data-case-result="通过"/);
   assert.match(appSource, /data-case-result="失败"/);

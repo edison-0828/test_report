@@ -5561,14 +5561,15 @@ body.dialog-open {
   padding: 0 16px 14px;
 }
 
-.case-browser-filters select {
+.case-browser-filters select,
+.case-browser-filters input {
   min-width: 0;
   min-height: 40px;
   font-size: 12px;
 }
 
-.case-browser-filters #caseStatusFilter {
-  grid-column: 1 / -1;
+.case-browser-filters input[type="search"] {
+  width: 100%;
 }
 
 .case-bulk-tools {
@@ -6012,10 +6013,6 @@ button.execution-result-button.result-fail {
   .case-browser-filters,
   .focused-case-content {
     grid-template-columns: 1fr;
-  }
-
-  .case-browser-filters #caseStatusFilter {
-    grid-column: auto;
   }
 
   .focused-case-head {

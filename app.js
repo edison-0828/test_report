@@ -183,8 +183,8 @@ const els = {
   caseBrowserCount: document.getElementById("caseBrowserCount"),
   caseImportInput: document.getElementById("caseImportInput"),
   automationCaseImportInput: document.getElementById("automationCaseImportInput"),
-  caseBatchFilter: document.getElementById("caseBatchFilter"),
   caseTaskFilter: document.getElementById("caseTaskFilter"),
+  caseTaskOptions: document.getElementById("caseTaskOptions"),
   caseStatusFilter: document.getElementById("caseStatusFilter"),
   caseBulkStatus: document.getElementById("caseBulkStatus"),
   applyCaseBulkStatus: document.getElementById("applyCaseBulkStatus"),
@@ -408,11 +408,7 @@ function bindEvents() {
   els.qualityBusinessTabs.forEach((button) => {
     button.addEventListener("click", () => setCaseQualityBusiness(button.dataset.qualityBusiness));
   });
-  els.caseBatchFilter.addEventListener("change", () => {
-    renderCaseFilters();
-    renderCases();
-  });
-  els.caseTaskFilter.addEventListener("change", renderCases);
+  els.caseTaskFilter.addEventListener("input", renderCases);
   els.caseStatusFilter?.addEventListener("change", renderCases);
   els.applyCaseBulkStatus?.addEventListener("click", applyBulkCaseExecutionStatus);
   els.exportCasesBtn?.addEventListener("click", exportFilteredCases);
@@ -2189,7 +2185,7 @@ async function handleGenerateCases(mode) {
         documentName: name,
         documentType: type
       });
-      downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
+      downloadCasesCsv(generatedCases, activeTask, name);
       const qualityReport = getCaseQualityReportForBusiness(inferCaseQualityBusiness(generatedCases));
       setGenerationStatus(buildCaseQualityStatusMessage(`AI 已生成 ${generated.length} 条用例，并已导出 CSV。`, inferCaseQualityBusiness(generatedCases)), mapCaseQualityToneToFeedbackTone(qualityReport?.tone));
       return;
@@ -2220,7 +2216,7 @@ async function handleGenerateCases(mode) {
     documentName: name,
     documentType: type
   });
-  downloadCasesCsv(generatedCases, activeBatch, activeTask, name);
+  downloadCasesCsv(generatedCases, activeTask, name);
   const qualityReport = getCaseQualityReportForBusiness(inferCaseQualityBusiness(generatedCases));
   setGenerationStatus(buildCaseQualityStatusMessage(`规则生成完成，共 ${generated.length} 条用例，并已导出 CSV。`, inferCaseQualityBusiness(generatedCases)), mapCaseQualityToneToFeedbackTone(qualityReport?.tone));
 }
@@ -2774,20 +2770,35 @@ function parseCsvRows(text) {
   return rows;
 }
 
-function downloadCasesCsv(cases, activeBatch, activeTask, documentName) {
-  const headers = ["测试任务", "关联版本号", "标题", "类型", "优先级", "前置条件", "步骤", "预期结果", "执行状态", "执行备注"];
+function buildCasesCsvExport(cases, activeTask, documentName) {
+  const headers = ["测试任务", "标题", "类型", "优先级", "前置条件", "步骤", "预期结果", "执行备注"];
   const rows = cases.map((item) => [
     item.taskName || activeTask?.name || "",
-    item.batchVersion || activeBatch?.version || "",
     item.title || "",
     item.type || "",
     item.priority || "",
     item.preconditions || "",
     item.steps || "",
     item.expected || "",
-    normalizeExecutionStatus(item.executionStatus || "未执行"),
     item.executionNote || ""
   ]);
+
+  const taskNames = [...new Set(cases.map((item) => String(item.taskName || "").trim()).filter(Boolean))];
+  const taskName = taskNames.length === 1
+    ? taskNames[0]
+    : taskNames.length > 1
+      ? "多个测试任务"
+      : activeTask?.name || documentName || "测试任务";
+
+  return {
+    headers,
+    rows,
+    fileBaseName: `${taskName}-测试用例`
+  };
+}
+
+function downloadCasesCsv(cases, activeTask, documentName) {
+  const { headers, rows, fileBaseName } = buildCasesCsvExport(cases, activeTask, documentName);
 
   const csv = [headers, ...rows]
     .map((row) => row.map(csvEscape).join(","))
@@ -2797,7 +2808,6 @@ function downloadCasesCsv(cases, activeBatch, activeTask, documentName) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  const fileBaseName = [activeBatch?.version, activeTask?.name || documentName || "测试用例"].filter(Boolean).join("-");
   anchor.download = `${sanitizeFileName(fileBaseName)}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
@@ -2810,39 +2820,32 @@ function exportFilteredCases() {
     return;
   }
 
-  const batchFilter = els.caseBatchFilter?.value || "";
-  const taskFilter = els.caseTaskFilter?.value || "";
-  const activeBatch = getBatchById(batchFilter) || getBatchById(state.activeBatchId);
+  const taskFilter = els.caseTaskFilter?.value.trim() || "";
   const activeTask = state.tasks.find((item) => item.name === taskFilter) || getTaskById(state.activeTaskId);
-  downloadCasesCsv(filteredCases, activeBatch, activeTask, state.lastGeneration?.documentName || "测试用例");
+  downloadCasesCsv(filteredCases, activeTask, state.lastGeneration?.documentName || "测试任务");
   setCaseActionStatus(`已导出 ${filteredCases.length} 条当前筛选结果里的测试用例。`, "ok");
 }
 
 function downloadCaseTemplateCsv() {
   const activeTask = getTaskById(state.activeTaskId);
-  const activeBatch = getBatchById(activeTask?.batchId || state.activeBatchId);
   const headers = [
     "测试任务",
-    "关联版本号",
     "标题",
     "类型",
     "优先级",
     "前置条件",
     "步骤",
     "预期结果",
-    "执行状态",
     "执行备注"
   ];
   const exampleRow = [
     activeTask?.name || "",
-    activeBatch?.version || "",
     "",
     "正常",
     "P2",
     "",
     "",
     "",
-    "未执行",
     ""
   ];
   const csv = [headers, exampleRow]
@@ -4914,16 +4917,32 @@ function getTaskOptionsByBatchForEditor(batchId, source = "bugs") {
   }));
 }
 
+function getCasePriorityRank(priority) {
+  const normalized = String(priority || "P2").trim().toUpperCase();
+  const match = normalized.match(/^P(\d+)$/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function sortCasesByPriority(cases) {
+  return cases
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => (
+      getCasePriorityRank(left.item.priority) - getCasePriorityRank(right.item.priority)
+      || left.index - right.index
+    ))
+    .map(({ item }) => item);
+}
+
 function getFilteredCasesForView() {
-  const batchFilter = els.caseBatchFilter.value;
-  const taskFilter = els.caseTaskFilter.value;
+  const taskFilter = els.caseTaskFilter.value.trim().toLowerCase();
   const statusFilter = els.caseStatusFilter?.value || "";
 
-  return state.cases.filter((item) => {
-    return matchesBatchFilter(item, batchFilter)
-      && (!taskFilter || item.taskName === taskFilter)
+  const filteredCases = state.cases.filter((item) => {
+    return (!taskFilter || String(item.taskName || "").toLowerCase().includes(taskFilter))
       && (!statusFilter || (item.executionStatus || "未执行") === statusFilter);
   });
+
+  return sortCasesByPriority(filteredCases);
 }
 
 function getFilteredAutomationCasesForView() {
@@ -5016,27 +5035,23 @@ function getReportScopeByBatch(batchId) {
 function renderCaseFilters() {
   const caseBatchOptions = buildCaseBatchFilterOptions("cases");
   const bugBatchOptions = buildCaseBatchFilterOptions("bugs");
-  fillSelectFromItems(els.caseBatchFilter, caseBatchOptions, "全部版本", els.caseBatchFilter.value, formatTaskBatchLabel);
   fillSelectFromItems(els.automationCaseBatchFilter, caseBatchOptions, "全部版本", els.automationCaseBatchFilter?.value, formatTaskBatchLabel);
   fillSelectFromItems(els.bugBatchFilter, bugBatchOptions, "全部版本", els.bugBatchFilter.value, formatTaskBatchLabel);
 
-  const caseTasks = getTasksByBatchForFilters(els.caseBatchFilter.value, "cases");
+  const caseTasks = getTasksByBatchForFilters("", "cases");
   const automationCaseTasks = getTasksByBatchForFilters(els.automationCaseBatchFilter?.value || "", "cases");
   const bugTasks = getTasksByBatchForFilters(els.bugBatchFilter.value, "bugs");
-  const caseTaskNames = caseTasks.map((item) => item.name);
   const automationCaseTaskNames = automationCaseTasks.map((item) => item.name);
   const bugTaskNames = bugTasks.map((item) => item.name);
-  const caseTaskValue = caseTaskNames.includes(els.caseTaskFilter.value) ? els.caseTaskFilter.value : "";
   const automationCaseTaskValue = automationCaseTaskNames.includes(els.automationCaseTaskFilter?.value) ? els.automationCaseTaskFilter.value : "";
   const bugTaskValue = bugTaskNames.includes(els.bugTaskFilter.value) ? els.bugTaskFilter.value : "";
 
-  els.caseTaskFilter.innerHTML = `<option value="">全部任务</option>${caseTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
+  els.caseTaskOptions.innerHTML = caseTasks.map((item) => `<option value="${escapeHtml(item.name)}"></option>`).join("");
   if (els.automationCaseTaskFilter) {
     els.automationCaseTaskFilter.innerHTML = `<option value="">全部任务</option>${automationCaseTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
   }
   els.bugTaskFilter.innerHTML = `<option value="">全部任务</option>${bugTasks.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("")}`;
 
-  els.caseTaskFilter.value = caseTaskValue;
   if (els.automationCaseTaskFilter) {
     els.automationCaseTaskFilter.value = automationCaseTaskValue;
   }
@@ -5144,10 +5159,9 @@ function renderCases() {
   }
 
   const filtered = getFilteredCasesForView();
-  const batchFilter = els.caseBatchFilter.value;
-  const taskFilter = els.caseTaskFilter.value;
+  const taskFilter = els.caseTaskFilter.value.trim().toLowerCase();
   const progressScope = state.cases.filter((item) => (
-    matchesBatchFilter(item, batchFilter) && (!taskFilter || item.taskName === taskFilter)
+    !taskFilter || String(item.taskName || "").toLowerCase().includes(taskFilter)
   ));
   renderManualExecutionProgress(progressScope);
 
