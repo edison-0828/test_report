@@ -100,6 +100,7 @@ const AUTOMATION_QUICK_ADD_TYPES = ["openPage", "click", "input", "assertElement
 const REPORT_VERSIONS_PER_PAGE = 10;
 
 const state = loadState();
+let activeAutomationEditorCaseId = null;
 
 const els = {
   navLinks: [...document.querySelectorAll(".nav-link")],
@@ -197,6 +198,8 @@ const els = {
   exportCasesBtn: document.getElementById("exportCasesBtn"),
   caseActionStatus: document.getElementById("caseActionStatus"),
   automationCaseList: document.getElementById("automationCaseList"),
+  automationAssetSummary: document.getElementById("automationAssetSummary"),
+  automationCaseSearchInput: document.getElementById("automationCaseSearchInput"),
   automationCaseBatchFilter: document.getElementById("automationCaseBatchFilter"),
   automationCaseTaskFilter: document.getElementById("automationCaseTaskFilter"),
   automationCaseEnabledFilter: document.getElementById("automationCaseEnabledFilter"),
@@ -452,6 +455,7 @@ function bindEvents() {
   });
   els.automationCaseTaskFilter?.addEventListener("change", renderAutomationCases);
   els.automationCaseEnabledFilter?.addEventListener("change", renderAutomationCases);
+  els.automationCaseSearchInput?.addEventListener("input", renderAutomationCases);
   els.apiAutomationSite?.addEventListener("change", renderApiAutomationConfigPanel);
   els.apiAutomationEnv?.addEventListener("change", renderApiAutomationConfigPanel);
   els.runApiAutomationBatch?.addEventListener("click", handleApiAutomationBatchRun);
@@ -683,7 +687,7 @@ function hydrateWorkflowChrome() {
     const headerTitle = bugPanel.querySelector(".panel-header h2");
     const headerDesc = bugPanel.querySelector(".panel-header p");
     if (headerTitle) headerTitle.textContent = "BUG管理";
-    if (headerDesc) headerDesc.textContent = "独立管理 BUG 台账，按版本、任务、模块跟踪状态、负责人和回归进展。";
+    if (headerDesc) headerDesc.textContent = "独立管理 BUG 台账，按版本、任务和模块跟踪严重程度、状态与回归进展。";
   }
 }
 
@@ -3319,6 +3323,7 @@ function renderCaseQuality() {
           <input type="file" accept=".csv" data-quality-upload="${escapeHtml(businessName)}">
           <span>上传${escapeHtml(businessName)} CSV</span>
         </label>
+        <button type="button" class="ghost-button" data-action="download-case-template">下载 CSV 模板</button>
         <span class="quality-upload-hint">上传后只更新 ${escapeHtml(businessName)}，不会影响另一个业务。</span>
       </div>
 
@@ -3375,9 +3380,17 @@ function renderCaseQuality() {
           `}
         </div>
       ` : `
-        <div class="empty-state empty-state-rich compact-empty-state">
-          <strong>${escapeHtml(businessName)} 还没有检测记录</strong>
-          <p>请上传 ${escapeHtml(businessName)} 的 CSV，系统会把结果保存在这个业务模块里。</p>
+        <div class="quality-first-run-guide">
+          <div class="quality-first-run-copy">
+            <span class="workspace-kicker">第一次检查</span>
+            <strong>${escapeHtml(businessName)} 还没有检测记录</strong>
+            <p>下载模板填写用例，再上传 CSV。系统会立即检查完整性、重复项和基础覆盖情况。</p>
+          </div>
+          <ol class="quality-first-run-steps">
+            <li><b>1</b><span><strong>准备数据</strong><small>至少填写标题、优先级、步骤和预期结果</small></span></li>
+            <li><b>2</b><span><strong>上传检查</strong><small>仅更新当前业务，不影响其他业务数据</small></span></li>
+            <li><b>3</b><span><strong>处理问题</strong><small>按问题清单补充缺失内容或去除重复项</small></span></li>
+          </ol>
         </div>
       `}
     </section>
@@ -4569,7 +4582,7 @@ function renderTeamMembers() {
     els.teamMemberList.innerHTML = `
       <div class="empty-state empty-state-rich">
         <strong>还没有成员</strong>
-        <p>先加上测试、开发、产品等常用负责人，后面直接选择就行。</p>
+        <p>可以添加测试、开发、产品等常用成员，便于保留团队配置。</p>
       </div>
     `;
     return;
@@ -4619,7 +4632,7 @@ function deleteTeamMember(name) {
   state.bugs = state.bugs.map((item) => (item.owner === name ? { ...item, owner: "" } : item));
   persist();
   renderAll();
-  setGenerationStatus(`已删除成员：${name}。相关负责人已清空。`, "warn");
+  setGenerationStatus(`已删除成员：${name}。相关成员信息已清空。`, "warn");
 }
 
 function formatBatchLabel(batch) {
@@ -5369,17 +5382,20 @@ function getFilteredAutomationCasesForView() {
   const batchFilter = els.automationCaseBatchFilter?.value || "";
   const taskFilter = els.automationCaseTaskFilter?.value || "";
   const enabledFilter = els.automationCaseEnabledFilter?.value || "";
+  const search = els.automationCaseSearchInput?.value.trim().toLowerCase() || "";
 
   return state.cases.filter((item) => {
     const byBatch = matchesBatchFilter(item, batchFilter);
     const byTask = !taskFilter || item.taskName === taskFilter;
+    const bySearch = !search || [item.title, item.taskName, item.automationTargetPath]
+      .some((value) => String(value || "").toLowerCase().includes(search));
     const byAutomation = enabledFilter === "enabled"
       ? Boolean(item.automationEnabled)
       : enabledFilter === "disabled"
         ? !item.automationEnabled
         : true;
 
-    return byBatch && byTask && byAutomation;
+    return byBatch && byTask && byAutomation && bySearch;
   });
 }
 
@@ -5956,20 +5972,35 @@ function renderAutomationCases() {
   }
 
   const filtered = getFilteredAutomationCasesForView();
+  renderAutomationAssetSummary(filtered);
   if (!filtered.length) {
+    setAutomationCaseStatus(state.cases.length ? "没有找到匹配的用例，请调整搜索或筛选条件。" : "还没有可配置的测试用例。", state.cases.length ? "warn" : "neutral");
     els.automationCaseList.innerHTML = `
       <div class="empty-state empty-state-rich">
         <strong>${state.cases.length ? "当前筛选范围里没有匹配的自动化用例" : "这里还没有测试用例"}</strong>
-        <p>${state.cases.length ? "换个筛选条件试试，或者先在这里启用自动化。" : "先去生成用例，后面再为需要的用例启用自动化执行。"}</p>
+        <p>${state.cases.length ? "清空搜索词或调整筛选条件后再试。" : "先去生成用例，再回来配置需要重复执行的场景。"}</p>
       </div>
     `;
     return;
   }
 
+  if (activeAutomationEditorCaseId === null || (activeAutomationEditorCaseId && !filtered.some((item) => item.id === activeAutomationEditorCaseId))) {
+    activeAutomationEditorCaseId = filtered.find((item) => item.automationEnabled)?.id || filtered[0].id;
+  }
+
+  setAutomationCaseStatus(`当前显示 ${filtered.length} 条用例。点击“配置用例”后，仅展开当前这一条。`, "neutral");
   els.automationCaseList.innerHTML = "";
   filtered.forEach((item, index) => {
     const node = els.caseTemplate.content.firstElementChild.cloneNode(true);
     ensureCaseAutomationEditor(node);
+    const isEditorOpen = activeAutomationEditorCaseId === item.id;
+    node.classList.add("automation-case-card");
+    node.classList.toggle("is-configuring", isEditorOpen);
+    node.querySelector(".case-detail")?.classList.toggle("hidden-field", !isEditorOpen);
+    const cardKicker = node.querySelector(".case-card-kicker");
+    if (cardKicker) {
+      cardKicker.textContent = "自动化用例";
+    }
     const caseSequenceBadge = ensureCaseSequenceBadge(node);
     node.querySelector(".case-title-text").textContent = item.title;
     if (caseSequenceBadge) {
@@ -5980,6 +6011,15 @@ function renderAutomationCases() {
 
     const statusBadge = node.querySelector(".case-status");
     const priorityBadge = node.querySelector(".case-priority");
+    const cardMeta = node.querySelector(".case-card-meta");
+    const configBadge = document.createElement("span");
+    configBadge.className = `badge ${item.automationEnabled ? "tone-green" : "subtle"} automation-config-badge`;
+    configBadge.textContent = item.automationEnabled ? "已配置" : "待配置";
+    const runBadge = document.createElement("span");
+    const lastRunStatus = item.automationLastRun?.status || "未运行";
+    runBadge.className = `badge ${lastRunStatus === "通过" ? "tone-green" : lastRunStatus === "失败" ? "tone-red" : "subtle"} automation-result-badge`;
+    runBadge.textContent = lastRunStatus;
+    cardMeta?.append(configBadge, runBadge);
     const executionRow = node.querySelector(".case-execution-row");
     const executionBadge = node.querySelector(".case-execution-badge");
     const automationEnabled = node.querySelector(".case-automation-enabled");
@@ -6291,15 +6331,48 @@ function renderAutomationCases() {
       }
     });
 
-    bindCaseCard(node, item.id);
+    const toggleButton = node.querySelector(".toggle-case-detail");
+    if (toggleButton) {
+      toggleButton.textContent = isEditorOpen ? "收起配置" : "配置用例";
+    }
+    bindCaseCard(node, item.id, { singleAutomationEditor: true });
     els.automationCaseList.appendChild(node);
   });
 }
 
-function bindCaseCard(node, caseId) {
+function renderAutomationAssetSummary(filteredCases) {
+  if (!els.automationAssetSummary) {
+    return;
+  }
+
+  const configuredCount = state.cases.filter((item) => item.automationEnabled).length;
+  const passedCount = state.cases.filter((item) => item.automationLastRun?.status === "通过").length;
+  const attentionCount = state.cases.filter((item) => item.automationLastRun?.status === "失败").length;
+  const items = [
+    ["当前结果", filteredCases.length, `共 ${state.cases.length} 条`],
+    ["已配置", configuredCount, "已完成单条配置"],
+    ["最近通过", passedCount, "最近一次运行"],
+    ["需要处理", attentionCount, "运行失败"]
+  ];
+
+  els.automationAssetSummary.innerHTML = items.map(([label, value, note], index) => `
+    <article class="automation-asset-stat${index === 3 && Number(value) > 0 ? " needs-attention" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+      <small>${escapeHtml(note)}</small>
+    </article>
+  `).join("");
+}
+
+function bindCaseCard(node, caseId, options = {}) {
   const detail = node.querySelector(".case-detail");
   const toggle = node.querySelector(".toggle-case-detail");
   toggle.addEventListener("click", () => {
+    if (options.singleAutomationEditor) {
+      activeAutomationEditorCaseId = activeAutomationEditorCaseId === caseId ? "" : caseId;
+      renderAutomationCases();
+      return;
+    }
     const isHidden = detail.classList.contains("hidden-field");
     detail.classList.toggle("hidden-field", !isHidden);
     toggle.textContent = isHidden ? "收起详情" : "展开详情";
@@ -6481,9 +6554,9 @@ function getCaseAutomationFeedbackText(item) {
     return item.automationLastRun.summary;
   }
   if (item.automationEnabled) {
-    return "接口自动化已纳入规划，后续接入 pytest 后可保存配置并运行。";
+    return "自动化配置已保存，可以在当前环境执行试运行。";
   }
-  return "启用后，可为这条用例沉淀接口路径、请求参数和断言草稿。";
+  return "启用后，可保存目标路径、执行步骤和校验规则。";
 }
 
 function getCaseAutomationFeedbackTone(item) {

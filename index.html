@@ -115,6 +115,7 @@
                 模型
                 <select id="modelSelect">
                   <option value="gpt-5.4" selected>gpt-5.4</option>
+                  <option value="gpt-5.5">gpt-5.5</option>
                 </select>
               </label>
             </div>
@@ -341,7 +342,7 @@
         <div class="panel-header">
           <div>
             <h2>接口自动化</h2>
-            <p>面向 pytest 的接口用例资产、执行配置和运行结果。第一版先完成页面结构，后续接入真实 pytest 执行。</p>
+            <p>集中维护可重复执行的接口用例，统一选择站点与环境，并查看每条用例的配置和运行结果。</p>
           </div>
           <label class="import-button primary-import">
             <input type="file" id="automationCaseImportInput" accept=".csv">
@@ -352,18 +353,19 @@
         <section class="panel api-runtime-panel api-workbench-panel">
           <div class="section-head api-workbench-head">
             <div>
-              <h3>&#25509;&#21475;&#33258;&#21160;&#21270;&#24037;&#20316;&#21488;</h3>
-              <p class="section-note">&#20808;&#27785;&#28196;&#25509;&#21475;&#36335;&#24452;&#12289;&#35831;&#27714;&#21442;&#25968;&#21644;&#26029;&#35328;&#65292;&#21518;&#32493;&#25509;&#20837; pytest &#21518;&#30452;&#25509;&#36305; test / sandbox &#22238;&#24402;&#12290;</p>
+              <span class="workspace-kicker">运行环境</span>
+              <h3>选择本次执行目标</h3>
+              <p class="section-note">站点和环境用于校验服务端配置；单条用例可以先完成配置，批量执行将在 pytest 执行器接入后开放。</p>
             </div>
             <div class="api-workbench-badges">
-              <span class="state-chip subtle">新手模式</span>
+              <span class="state-chip subtle">批量执行器待接入</span>
             </div>
           </div>
 
           <div class="automation-beginner-path" aria-label="接口自动化新手操作流程">
-            <span><b>1</b>选择站点和环境</span>
-            <span><b>2</b>在下方选择用例</span>
-            <span><b>3</b>套用模板并运行</span>
+            <span><b>1</b>确认运行环境</span>
+            <span><b>2</b>搜索并打开用例</span>
+            <span><b>3</b>保存配置后运行</span>
           </div>
 
           <div class="api-workbench-grid">
@@ -382,8 +384,8 @@
               </select>
             </label>
             <div class="api-workbench-actions">
-              <button type="button" id="runApiAutomationBatch" class="ghost-button">&#25209;&#37327;&#25191;&#34892;</button>
-              <button type="button" id="viewApiAutomationRuns" class="ghost-button">&#26597;&#30475;&#36816;&#34892;&#35760;&#24405;</button>
+              <button type="button" id="runApiAutomationBatch" class="ghost-button" disabled title="接入 pytest 执行器后开放">批量执行（待接入）</button>
+              <button type="button" id="viewApiAutomationRuns" class="ghost-button" disabled title="执行结果落库后开放">运行记录（待接入）</button>
             </div>
           </div>
           <details class="automation-advanced-mode">
@@ -402,11 +404,14 @@
         <section class="panel api-case-library-panel">
           <div class="section-head compact-section-head">
             <div>
-              <h3>&#25509;&#21475;&#29992;&#20363;&#24211;</h3>
-              <p class="section-note">&#20174;&#24050;&#29983;&#25104;&#30340;&#27979;&#35797;&#29992;&#20363;&#20013;&#36873;&#25321;&#31283;&#23450;&#22330;&#26223;&#65292;&#36880;&#26465;&#27785;&#28196;&#25509;&#21475;&#37197;&#32622;&#12290;</p>
+              <span class="workspace-kicker">自动化资产</span>
+              <h3>接口用例库</h3>
+              <p class="section-note">优先配置稳定、高频回归场景；点击一条用例后，在原位置完成配置和试运行。</p>
             </div>
           </div>
+          <div id="automationAssetSummary" class="automation-asset-summary" aria-live="polite"></div>
           <div class="actions compact section-toolbar auto-case-toolbar">
+            <input id="automationCaseSearchInput" type="search" placeholder="搜索用例标题或任务" aria-label="搜索接口自动化用例">
             <select id="automationCaseBatchFilter">
               <option value="">全部版本</option>
             </select>
@@ -872,7 +877,7 @@
             <div class="case-automation-head">
               <div>
                 <span class="summary-label">&#25509;&#21475;&#33258;&#21160;&#21270;</span>
-                <p class="case-automation-copy">&#36866;&#21512;&#31283;&#23450;&#25509;&#21475;&#21644;&#39640;&#39057;&#22238;&#24402;&#22330;&#26223;&#65292;&#31532;&#19968;&#29256;&#20808;&#27785;&#28196;&#35831;&#27714;&#23450;&#20041;&#21644;&#26029;&#35328;&#33609;&#31295;&#12290;</p>
+                <p class="case-automation-copy">适合稳定接口和高频回归场景。填写目标路径、套用步骤模板并保存后，即可在当前环境试运行。</p>
               </div>
               <label class="case-automation-toggle">
                 <input type="checkbox" class="case-automation-enabled">
@@ -1013,11 +1018,10 @@
             </label>
           </div>
 
-          <div class="form-row bug-row-grid">
-            <label>
-              负责人
-              <input class="bug-owner" type="text" placeholder="开发或跟进人">
-            </label>
+          <div class="form-row">
+            <select class="bug-owner hidden-field" aria-hidden="true" tabindex="-1">
+              <option value=""></option>
+            </select>
             <label>
               Lark链接 / 单号
               <input class="bug-link" type="text" placeholder="可选">

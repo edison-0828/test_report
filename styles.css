@@ -6558,6 +6558,271 @@ button.execution-result-button.result-fail {
   }
 }
 
+/* Desktop automation workspace: scan the library first, expand only one editor. */
+#automationCases .workspace-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: #078b98;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#automationCases .automation-asset-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+#automationCases .automation-asset-stat {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 4px 10px;
+  min-height: 86px;
+  padding: 13px 15px;
+  border: 1px solid #dce8ea;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #ffffff 0%, #f4fafb 100%);
+}
+
+#automationCases .automation-asset-stat span {
+  color: #60747b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+#automationCases .automation-asset-stat strong {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: #12333a;
+  font-size: 27px;
+  line-height: 1;
+}
+
+#automationCases .automation-asset-stat small {
+  color: #8a9a9f;
+  font-size: 11px;
+}
+
+#automationCases .automation-asset-stat.needs-attention {
+  border-color: #f0d6d7;
+  background: linear-gradient(145deg, #ffffff 0%, #fff7f7 100%);
+}
+
+#automationCases .automation-asset-stat.needs-attention strong {
+  color: #bf3f47;
+}
+
+#automationCases .auto-case-toolbar input[type="search"] {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+}
+
+@media (min-width: 981px) {
+  #automationCaseList {
+    gap: 9px;
+  }
+
+  #automationCaseList .automation-case-card {
+    padding: 0;
+    overflow: hidden;
+    border-radius: 15px;
+    box-shadow: 0 6px 18px rgba(35, 67, 78, 0.045);
+  }
+
+  #automationCaseList .automation-case-card::before {
+    top: 0;
+    bottom: 0;
+    opacity: 0.38;
+  }
+
+  #automationCaseList .automation-case-card.is-configuring {
+    border-color: #96ccd1;
+    box-shadow: 0 15px 34px rgba(7, 139, 152, 0.11);
+  }
+
+  #automationCaseList .automation-case-card.is-configuring::before {
+    opacity: 1;
+    background: linear-gradient(180deg, #08a3b1, #067e89);
+  }
+
+  #automationCaseList .case-card-shell {
+    padding: 15px 17px 15px 21px;
+  }
+
+  #automationCaseList .case-card-top {
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  #automationCaseList .case-card-head {
+    grid-template-columns: auto minmax(260px, 1fr) auto;
+    align-items: center;
+    gap: 10px 14px;
+    width: 100%;
+  }
+
+  #automationCaseList .case-card-kicker {
+    display: none;
+  }
+
+  #automationCaseList .case-sequence-badge {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 26px;
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  #automationCaseList .case-title-text {
+    grid-column: 2;
+    grid-row: 1;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #automationCaseList .case-card-meta {
+    grid-column: 3;
+    grid-row: 1;
+    justify-content: flex-end;
+    margin: 0;
+  }
+
+  #automationCaseList .case-card-meta .badge {
+    min-height: 25px;
+    padding-inline: 8px;
+  }
+
+  #automationCaseList .case-summary-grid {
+    display: none;
+  }
+
+  #automationCaseList .case-card-actions {
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  #automationCaseList .case-card-actions .ghost-button {
+    min-width: 76px;
+  }
+
+  #automationCaseList .case-detail {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e0ebed;
+  }
+
+  #automationCaseList .case-detail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #automationCaseList .case-expected-block {
+    grid-column: auto;
+  }
+
+  #automationCaseList .case-automation-block {
+    padding: 18px;
+    border-color: #d7e5e7;
+    background: linear-gradient(180deg, #fbfefe 0%, #f4fafa 100%);
+  }
+}
+
+/* Quality checks explain the required input before the first upload. */
+.quality-first-run-guide {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(520px, 1.6fr);
+  gap: 20px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid #dce8ea;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(9, 167, 181, 0.09), transparent 34%),
+    linear-gradient(145deg, #ffffff 0%, #f5fafb 100%);
+}
+
+.quality-first-run-copy {
+  display: grid;
+  gap: 7px;
+}
+
+.quality-first-run-copy .workspace-kicker {
+  color: #078b98;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quality-first-run-copy > strong {
+  color: #14333a;
+  font-size: 18px;
+}
+
+.quality-first-run-copy p {
+  margin: 0;
+  color: #687d83;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.quality-first-run-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quality-first-run-steps li {
+  display: flex;
+  gap: 10px;
+  min-height: 88px;
+  padding: 13px;
+  border: 1px solid #dfebed;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.quality-first-run-steps li > b {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  color: #08727b;
+  border-radius: 8px;
+  background: #e3f5f6;
+  font-size: 11px;
+}
+
+.quality-first-run-steps li span {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.quality-first-run-steps li strong {
+  color: #28454c;
+  font-size: 13px;
+}
+
+.quality-first-run-steps li small {
+  color: #819197;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 /* Workflow continuity: every overview card leads directly to the next workspace. */
 #upload button.step-card {
   width: 100%;
@@ -7756,7 +8021,7 @@ button.version-link-task-button:hover {
 }
 
 #automationCases .auto-case-toolbar {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 1.45fr) repeat(3, minmax(0, 1fr));
 }
 
 #bugs .section-toolbar {

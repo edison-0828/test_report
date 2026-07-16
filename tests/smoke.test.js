@@ -110,7 +110,11 @@ test("serves the responsive light workspace shell", async () => {
   assert.match(styles, /@media \(max-width:\s*980px\)/);
   assert.match(html, /class="automation-beginner-path"/);
   assert.match(html, /class="automation-advanced-mode"/);
+  assert.match(html, /id="automationAssetSummary"/);
+  assert.match(html, /id="automationCaseSearchInput"/);
   assert.match(styles, /\.automation-advanced-mode\s*\{/);
+  assert.match(styles, /\.automation-asset-summary\s*\{/);
+  assert.match(styles, /\.automation-case-card\.is-configuring/);
 });
 
 test("combines task creation and case generation into one step", async () => {
@@ -379,7 +383,9 @@ test("omits operator and task owner fields from UI and exports", async () => {
   assert.equal(htmlResponse.status, 200);
   assert.equal(appResponse.status, 200);
   assert.doesNotMatch(html, /currentOperatorSelect/);
+  assert.doesNotMatch(html, /负责人|操作人/);
   assert.doesNotMatch(appSource, /taskOwnerSelect|任务负责人|测试负责人/);
+  assert.doesNotMatch(appSource, /负责人|操作人/);
   assert.doesNotMatch(serverSource, /"负责人"\s*:/);
 });
 
