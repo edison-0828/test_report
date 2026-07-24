@@ -2266,7 +2266,7 @@ function handleListPublishedReports(res) {
           version: snapshot.report?.batchVersion || "未选择",
           decision: snapshot.report?.releaseDecision?.label || "待评估",
           decisionTone: snapshot.report?.releaseDecision?.tone || "warn",
-          total: Number(snapshot.report?.total) || 0
+          total: resolveReportTotal(snapshot.report)
         };
       } catch (_error) {
         return null;
@@ -2276,6 +2276,20 @@ function handleListPublishedReports(res) {
     .sort((left, right) => String(right.publishedAt).localeCompare(String(left.publishedAt)));
 
   return sendJson(res, 200, { reports });
+}
+
+function resolveReportTotal(report) {
+  const directTotal = Number(report?.total);
+  if (Number.isFinite(directTotal) && directTotal > 0) {
+    return directTotal;
+  }
+  if (Array.isArray(report?.scope?.cases)) {
+    return report.scope.cases.length;
+  }
+  if (Array.isArray(report?.cases)) {
+    return report.cases.length;
+  }
+  return 0;
 }
 
 function handleDeletePublishedReport(res, reportId) {

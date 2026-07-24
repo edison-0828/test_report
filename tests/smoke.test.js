@@ -141,7 +141,7 @@ test("combines task creation and case generation into one step", async () => {
   assert.match(appSource, /data-workflow-action=/);
   assert.match(appSource, /const focusHint = activeTask\?\.scope \|\| "";/);
   assert.doesNotMatch(appSource, /nextAction: "create-meta"/);
-  assert.match(styles, /grid-template-areas: "ai task";/);
+  assert.match(styles, /grid-template-areas: "task";/);
   assert.match(styles, /\.combined-generation-divider\s*\{/);
   assert.match(styles, /\.generation-flow-steps\s*\{/);
   assert.match(styles, /\.generation-step-submit\s*\{/);

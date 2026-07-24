@@ -30,6 +30,17 @@
         <button class="nav-link" data-tab="bugs">BUG管理</button>
         <span class="nav-group-label" role="presentation" aria-hidden="true">交付</span>
         <button class="nav-link" data-tab="report">测试报告</button>
+        <span class="nav-group-label" role="presentation" aria-hidden="true">设置</span>
+        <button id="sidebarAiSettings" class="sidebar-settings-button" type="button" aria-label="打开 AI 配置" aria-expanded="false">
+          <span class="sidebar-settings-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.9 1.9-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V20h-2.7v-.01a1.7 1.7 0 0 0-1.03-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-1.9-1.9.06-.06A1.7 1.7 0 0 0 7.76 15a1.7 1.7 0 0 0-1.55-1.03H6v-2.7h.21a1.7 1.7 0 0 0 1.55-1.03 1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.9-1.9.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.55V5h2.7v.25a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.9 1.9-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.55 1.03H21v2.7h-.05A1.7 1.7 0 0 0 19.4 15Z"></path>
+            </svg>
+          </span>
+          <span>AI 配置</span>
+          <span id="sidebarAiStatus" class="sidebar-ai-status warn">未配置</span>
+        </button>
       </nav>
 
       <button id="sidebarBackToTop" class="sidebar-back-top" type="button" aria-label="返回顶部菜单" title="返回顶部菜单">

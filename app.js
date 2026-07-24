@@ -101,6 +101,9 @@ const REPORT_VERSIONS_PER_PAGE = 10;
 
 const state = loadState();
 let activeAutomationEditorCaseId = null;
+let apiSettingsDrawerReady = false;
+let apiSettingsOpen = false;
+let apiSettingsReturnFocus = null;
 
 const els = {
   navLinks: [...document.querySelectorAll(".nav-link")],
@@ -109,6 +112,7 @@ const els = {
   topbarMenuBtn: document.getElementById("topbarMenuBtn"),
   topbarSelfTest: document.getElementById("topbarSelfTest"),
   topbarSettings: document.getElementById("topbarSettings"),
+  sidebarAiSettings: document.getElementById("sidebarAiSettings"),
   sidebarBackdrop: document.getElementById("sidebarBackdrop"),
   documentInput: document.getElementById("documentInput"),
   documentUploadBox: document.getElementById("documentUploadBox"),
@@ -175,6 +179,8 @@ const els = {
   sidebarContext: document.getElementById("sidebarContext"),
   sidebarBackToTop: document.getElementById("sidebarBackToTop"),
   apiKey: document.getElementById("apiKey"),
+  apiConfigPanel: document.querySelector(".ai-config-panel"),
+  sidebarAiStatus: document.getElementById("sidebarAiStatus"),
   toggleApiKey: document.getElementById("toggleApiKey"),
   apiStatus: document.getElementById("apiStatus"),
   checkApiKey: document.getElementById("checkApiKey"),
@@ -350,6 +356,7 @@ hydrateWorkflowChrome();
 simplifyUploadFlow();
 initTextSourceUi();
 enhanceGenerationBeginnerFlow();
+initApiSettingsDrawer();
 initOwnerUi();
 bindEvents();
 renderAll();
@@ -384,11 +391,11 @@ function bindEvents() {
     els.runSelfTest?.click();
   });
   els.topbarSettings?.addEventListener("click", () => {
-    switchTab("upload");
-    window.setTimeout(() => {
-      els.apiKey?.focus();
-      els.apiKey?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 0);
+    toggleApiSettingsDrawer(true);
+  });
+  els.sidebarAiSettings?.addEventListener("click", () => {
+    toggleMobileNavigation(false);
+    toggleApiSettingsDrawer(true);
   });
 
   els.documentInput.addEventListener("change", handleFileUpload);
@@ -418,6 +425,9 @@ function bindEvents() {
     if (event.target === els.versionCompleteModal) closeVersionCompleteModal();
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && apiSettingsOpen) {
+      toggleApiSettingsDrawer(false);
+    }
     if (event.key === "Escape" && !els.versionModal?.classList.contains("hidden-field")) {
       closeVersionModal();
     }
@@ -812,6 +822,62 @@ function enhanceGenerationBeginnerFlow() {
   if (els.generationStatus) actionBlock.append(els.generationStatus);
 }
 
+function initApiSettingsDrawer() {
+  if (!els.apiConfigPanel || apiSettingsDrawerReady) {
+    return;
+  }
+
+  apiSettingsDrawerReady = true;
+  const drawer = document.createElement("div");
+  drawer.id = "apiSettingsDrawer";
+  drawer.className = "settings-drawer hidden-field";
+  drawer.setAttribute("role", "presentation");
+  drawer.innerHTML = `
+    <button class="settings-drawer-backdrop" type="button" aria-label="关闭 AI 配置"></button>
+    <aside class="settings-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="apiSettingsDrawerTitle">
+      <div class="settings-drawer-head">
+        <div>
+          <span class="settings-drawer-kicker">全局设置</span>
+          <h3 id="apiSettingsDrawerTitle">AI 配置</h3>
+          <p>保存个人 Key 并检测通过后，即可在用例生成中调用 AI。</p>
+        </div>
+        <button class="dialog-close" type="button" data-close-api-settings aria-label="关闭 AI 配置">×</button>
+      </div>
+      <div class="settings-drawer-body"></div>
+    </aside>
+  `;
+  document.body.appendChild(drawer);
+
+  const body = drawer.querySelector(".settings-drawer-body");
+  els.apiConfigPanel.classList.add("settings-drawer-config");
+  const configTitle = els.apiConfigPanel.querySelector(".section-head h3");
+  if (configTitle) configTitle.textContent = "AI Key 与模型";
+  body.appendChild(els.apiConfigPanel);
+
+  drawer.querySelector(".settings-drawer-backdrop")?.addEventListener("click", () => toggleApiSettingsDrawer(false));
+  drawer.querySelector("[data-close-api-settings]")?.addEventListener("click", () => toggleApiSettingsDrawer(false));
+}
+
+function toggleApiSettingsDrawer(open) {
+  const drawer = document.getElementById("apiSettingsDrawer");
+  if (!drawer) return;
+  if (open) {
+    apiSettingsReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  apiSettingsOpen = open;
+  drawer.classList.toggle("hidden-field", !open);
+  drawer.classList.toggle("is-open", open);
+  document.body.classList.toggle("settings-drawer-open", open);
+  els.topbarSettings?.setAttribute("aria-expanded", open ? "true" : "false");
+  els.sidebarAiSettings?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    window.setTimeout(() => els.apiKey?.focus(), 0);
+  } else {
+    apiSettingsReturnFocus?.focus?.();
+    apiSettingsReturnFocus = null;
+  }
+}
+
 function createGenerationStepBlock(number, title, description, className) {
   const block = document.createElement("section");
   block.className = `generation-step-block ${className}`;
@@ -1128,6 +1194,17 @@ async function ensureAiReadyForGeneration() {
 function setApiStatus(text, tone) {
   els.apiStatus.textContent = text;
   els.apiStatus.className = `status-pill ${tone}`;
+  if (els.sidebarAiStatus) {
+    const sidebarText = tone === "ok"
+      ? "已启用"
+      : tone === "error"
+        ? "检测失败"
+        : tone === "neutral"
+          ? "待检测"
+          : "未配置";
+    els.sidebarAiStatus.textContent = sidebarText;
+    els.sidebarAiStatus.className = `sidebar-ai-status ${tone}`;
+  }
 }
 
 function setApiFeedback(text, tone = "neutral") {
@@ -5512,12 +5589,57 @@ function applyBulkCaseExecutionStatus() {
     return;
   }
 
+  const scopeLabel = getCaseBulkScopeLabel();
+  const confirmMessage = `确认把${scopeLabel}中的 ${filteredCases.length} 条测试用例批量改为“${nextStatus}”吗？`;
+  if (!window.confirm(confirmMessage)) {
+    setCaseActionStatus("已取消批量修改。", "neutral");
+    return;
+  }
+
+  const previousCases = filteredCases.map((item) => ({
+    id: item.id,
+    executionStatus: item.executionStatus || "未执行",
+    updatedAt: item.updatedAt || "",
+    updatedBy: item.updatedBy || ""
+  }));
   filteredCases.forEach((item) => updateCaseExecutionState(item, nextStatus));
   persist();
   renderCases();
   renderQuickStats();
   renderReport();
-  setCaseActionStatus(`已将 ${filteredCases.length} 条测试用例批量更新为“${nextStatus}”。`, "ok");
+  setCaseActionStatus(`已将${scopeLabel}中的 ${filteredCases.length} 条测试用例批量更新为“${nextStatus}”。`, "ok");
+  showToast(`已批量更新 ${filteredCases.length} 条用例`, "success", {
+    actionLabel: "撤销",
+    duration: 6000,
+    onAction: () => undoBulkCaseExecutionStatus(previousCases)
+  });
+}
+
+function getCaseBulkScopeLabel() {
+  const parts = [];
+  const taskText = els.caseTaskFilter?.value.trim();
+  const status = els.caseStatusFilter?.value || "";
+  if (taskText) parts.push(`任务搜索“${taskText}”`);
+  if (status) parts.push(`状态“${status}”`);
+  return parts.length ? `当前筛选范围（${parts.join("，")}）` : "当前全部列表";
+}
+
+function undoBulkCaseExecutionStatus(previousCases) {
+  const previousById = new Map(previousCases.map((item) => [item.id, item]));
+  let restoredCount = 0;
+  state.cases.forEach((item) => {
+    const previous = previousById.get(item.id);
+    if (!previous) return;
+    item.executionStatus = previous.executionStatus;
+    if (previous.updatedAt) item.updatedAt = previous.updatedAt;
+    if (previous.updatedBy) item.updatedBy = previous.updatedBy;
+    restoredCount += 1;
+  });
+  persist();
+  renderCases();
+  renderQuickStats();
+  renderReport();
+  setCaseActionStatus(`已撤销批量修改，恢复 ${restoredCount} 条测试用例。`, "ok");
 }
 
 function getReportConclusionForBatch(batchId) {
@@ -5691,6 +5813,7 @@ function renderActiveCaseExecution(item, filteredCases) {
   const currentIndex = filteredCases.findIndex((caseItem) => caseItem.id === item.id);
   const previousCase = filteredCases[currentIndex - 1];
   const nextCase = filteredCases[currentIndex + 1];
+  const needsBugFollowup = ["失败", "阻塞"].includes(status);
 
   els.caseExecutionWorkspace.innerHTML = `
     <article class="focused-case-runner status-${tone}">
@@ -5736,8 +5859,21 @@ function renderActiveCaseExecution(item, filteredCases) {
       <div class="execution-secondary-actions">
         <button class="ghost-button" type="button" data-case-result="未执行">重置为未执行</button>
         <button class="ghost-button blocked-action" type="button" data-case-result="阻塞">标记阻塞</button>
-        ${status === "失败" ? `<button class="ghost-button case-bug-action" type="button" data-current-case-to-bug>转为 BUG</button>` : ""}
+        ${needsBugFollowup ? `<button class="ghost-button case-bug-action" type="button" data-current-case-to-bug>转为 BUG</button>` : ""}
       </div>
+
+      ${needsBugFollowup ? `
+        <section class="execution-followup-panel status-${tone}">
+          <div>
+            <strong>${status === "失败" ? "这个结果需要缺陷跟进" : "这个阻塞需要记录原因"}</strong>
+            <p>${status === "失败"
+              ? "创建 BUG 后会自动带上版本、任务、用例标题、前置条件、步骤和预期结果。"
+              : "如果阻塞来自环境、数据、权限或接口依赖，建议建 BUG/问题单，避免报告里只剩一个状态。"}
+            </p>
+          </div>
+          <button class="primary-button" type="button" data-current-case-to-bug>${status === "失败" ? "创建关联 BUG" : "记录阻塞问题"}</button>
+        </section>
+      ` : ""}
 
       <footer class="execution-case-navigation">
         <button class="ghost-button" type="button" data-previous-case ${previousCase ? "" : "disabled"}>上一条</button>
@@ -5767,9 +5903,10 @@ function renderActiveCaseExecution(item, filteredCases) {
       renderCases();
     }
   });
-  els.caseExecutionWorkspace.querySelector("[data-current-case-to-bug]")?.addEventListener("click", () => {
-    createBugRecord(item);
-    switchTab("bugs");
+  els.caseExecutionWorkspace.querySelectorAll("[data-current-case-to-bug]").forEach((button) => {
+    button.addEventListener("click", () => {
+      createBugRecord(item);
+    });
   });
   els.caseExecutionWorkspace.querySelector("[data-delete-current-case]")?.addEventListener("click", () => {
     if (!window.confirm(`确认删除用例“${item.title || "未命名用例"}”？`)) return;
@@ -5798,7 +5935,11 @@ function setFocusedCaseResult(item, nextStatus) {
     ? `「${item.title || "未命名用例"}」已通过，已自动进入下一条。`
     : nextStatus === "通过"
       ? `「${item.title || "未命名用例"}」已通过，当前已是最后一条。`
-      : `已将「${item.title || "未命名用例"}」更新为“${nextStatus}”，当前用例保持不变。`;
+      : nextStatus === "失败"
+        ? `已标记失败：可以直接创建关联 BUG，系统会自动带出当前用例上下文。`
+        : nextStatus === "阻塞"
+          ? `已标记阻塞：建议补充备注，并按需记录阻塞问题。`
+          : `已将「${item.title || "未命名用例"}」更新为“${nextStatus}”，当前用例保持不变。`;
   setCaseActionStatus(message, nextStatus === "失败" ? "warn" : "ok");
 }
 
@@ -8145,7 +8286,7 @@ function renderPublishedReports() {
           <tr>
             <td><strong>${escapeHtml(item.title || "测试报告")}${latestReportIds.has(item.id) ? '<span class="latest-report-chip">最新</span>' : ""}</strong><small>${escapeHtml(item.id)}</small></td>
             <td>${escapeHtml(item.version || "未选择")}</td>
-            <td>${Number(item.total) || 0}</td>
+            <td>${resolvePublishedReportTotal(item)}</td>
             <td><span class="badge ${escapeHtml(item.decisionTone || "warn")}">${escapeHtml(item.decision || "待评估")}</span></td>
             <td>${escapeHtml(formatPublishedReportTime(item.publishedAt))}</td>
             <td><div class="published-report-actions">
@@ -8207,17 +8348,39 @@ function formatPublishedReportTime(value) {
   return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour12: false });
 }
 
+function resolvePublishedReportTotal(item) {
+  const directTotal = Number(item?.total);
+  if (Number.isFinite(directTotal) && directTotal > 0) {
+    return directTotal;
+  }
+  const matchingBatch = state.batches.find((batch) => batch.version === item?.version);
+  if (!matchingBatch) {
+    return 0;
+  }
+  return buildReportViewModel(getReportScopeByBatch(matchingBatch.id)).total || 0;
+}
+
 function showToast(message, tone = "info") {
   if (!els.toastRegion) return;
+  const options = arguments[2] || {};
+  const { actionLabel = "", onAction = null, duration = 2600 } = options;
   const toast = document.createElement("div");
   toast.className = `app-toast ${tone}`;
-  toast.innerHTML = `<span class="toast-dot"></span><strong>${escapeHtml(message)}</strong>`;
+  toast.innerHTML = `
+    <span class="toast-dot"></span>
+    <strong>${escapeHtml(message)}</strong>
+    ${actionLabel && typeof onAction === "function" ? `<button class="toast-action" type="button">${escapeHtml(actionLabel)}</button>` : ""}
+  `;
   els.toastRegion.appendChild(toast);
+  toast.querySelector(".toast-action")?.addEventListener("click", () => {
+    onAction();
+    toast.remove();
+  });
   window.setTimeout(() => toast.classList.add("is-visible"), 10);
   window.setTimeout(() => {
     toast.classList.remove("is-visible");
     window.setTimeout(() => toast.remove(), 220);
-  }, 2600);
+  }, duration);
 }
 
 async function exportReport({ skipChecks = false } = {}) {
