@@ -4,8 +4,18 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const APP_JS_PATH = path.join(__dirname, "..", "app.js");
-const appSource = fs.readFileSync(APP_JS_PATH, "utf-8");
+const APP_JS_FILES = [
+  "app-quality.js",
+  "app-domain.js",
+  "app-automation.js",
+  "app-bugs.js",
+  "app-report.js",
+  "app-storage.js",
+  "app.js"
+];
+const appSource = APP_JS_FILES
+  .map((fileName) => fs.readFileSync(path.join(__dirname, "..", fileName), "utf-8"))
+  .join("\n");
 
 function extractFunctionSource(functionName) {
   const asyncStartToken = `async function ${functionName}(`;
@@ -14,7 +24,7 @@ function extractFunctionSource(functionName) {
     ? appSource.indexOf(asyncStartToken)
     : appSource.indexOf(syncStartToken);
   if (start === -1) {
-    throw new Error(`Unable to find ${functionName} in app.js`);
+    throw new Error(`Unable to find ${functionName} in application scripts`);
   }
 
   const paramsStart = appSource.indexOf("(", start);
@@ -200,6 +210,62 @@ test("getCasePriorityClass maps case levels to restrained visual tones", () => {
   assert.equal(getCasePriorityClass("P3"), "priority-low");
 });
 
+test("version action menu opens where all actions remain visible", () => {
+  const getFloatingMenuPosition = loadFunction("getFloatingMenuPosition");
+  const nearBottom = getFloatingMenuPosition(
+    { top: 640, bottom: 674, right: 980 },
+    { width: 168, height: 210 },
+    { width: 1024, height: 700 }
+  );
+  const nearTop = getFloatingMenuPosition(
+    { top: 40, bottom: 74, right: 980 },
+    { width: 168, height: 210 },
+    { width: 1024, height: 700 }
+  );
+  const mobile = getFloatingMenuPosition(
+    { top: 500, bottom: 534, right: 360 },
+    { width: 168, height: 230 },
+    { width: 375, height: 667 }
+  );
+
+  assert.equal(nearBottom.placement, "top");
+  assert.equal(nearBottom.top >= 12, true);
+  assert.equal(nearTop.placement, "bottom");
+  assert.equal(nearTop.top + 210 <= 688, true);
+  assert.equal(mobile.placement, "sheet");
+  assert.equal(mobile.left, 12);
+  assert.equal(mobile.width, 351);
+});
+
+test("version and task rows expose one contextual primary action", () => {
+  const getVersionPrimaryAction = loadFunction("getVersionPrimaryAction");
+  const activeBatch = { status: "进行中" };
+
+  assert.equal(getVersionPrimaryAction(activeBatch, {
+    tasks: [], cases: [], failed: 0, blocked: 0, openBugs: 0, pending: 0
+  }).action, "link-tasks");
+  assert.equal(getVersionPrimaryAction(activeBatch, {
+    tasks: [{}], cases: [], failed: 0, blocked: 0, openBugs: 0, pending: 0
+  }).action, "prepare-cases");
+  assert.equal(getVersionPrimaryAction(activeBatch, {
+    tasks: [{}], cases: [{}], failed: 0, blocked: 0, openBugs: 0, pending: 1
+  }).action, "continue-testing");
+  assert.equal(getVersionPrimaryAction(activeBatch, {
+    tasks: [{}], cases: [{}], failed: 1, blocked: 0, openBugs: 0, pending: 0
+  }).action, "manage-issues");
+  assert.equal(getVersionPrimaryAction(activeBatch, {
+    tasks: [{}], cases: [{}], failed: 0, blocked: 0, openBugs: 0, pending: 0
+  }).action, "view-report");
+
+  const getTaskPrimaryAction = loadFunction("getTaskPrimaryAction", {
+    isTaskReadonly: () => false,
+    getTaskCaseProgress: () => ({ total: 0, completed: 0 })
+  });
+  assert.equal(getTaskPrimaryAction({}, { total: 0, completed: 0 }).action, "generate");
+  assert.equal(getTaskPrimaryAction({}, { total: 3, completed: 1 }).label, "继续执行");
+  assert.equal(getTaskPrimaryAction({}, { total: 3, completed: 3 }).label, "查看结果");
+});
+
 test("ensureDefaultTaskBatch creates and reuses a hidden workspace batch", () => {
   const state = { batches: [], activeBatchId: "", generationBatchId: "" };
   const getBatchById = (batchId) => state.batches.find((item) => item.id === batchId);
@@ -225,6 +291,80 @@ test("ensureDefaultTaskBatch creates and reuses a hidden workspace batch", () =>
   assert.equal(reused, created);
   assert.equal(state.activeBatchId, created.id);
   assert.equal(state.generationBatchId, created.id);
+});
+
+test("createTask allows a task name without requiring scope or case generation", () => {
+  const state = {
+    tasks: [],
+    activeTaskId: "",
+    generationBatchId: "",
+    activeBatchId: "",
+    activeModuleId: ""
+  };
+  const els = {
+    taskNameInput: { value: "独立任务" },
+    taskScopeInput: { value: "" },
+    taskBatchSelect: { value: "" },
+    createTaskBtn: { textContent: "" }
+  };
+  const batch = {
+    id: "batch-default",
+    version: "默认工作区",
+    name: "",
+    moduleId: "",
+    moduleName: ""
+  };
+  const createTaskOnly = loadFunction("createTask", {
+    state,
+    els,
+    editingTaskId: "",
+    ensureDefaultTaskBatch: () => batch,
+    getTaskById: () => null,
+    splitOwnerValues: () => [],
+    formatBatchLabel: () => "默认工作区",
+    applyCreateAuditFields: (item) => item,
+    applyUpdateAuditFields: (item) => item,
+    setGenerationStatus: () => {},
+    autoResizeTextarea: () => {},
+    persist: () => {},
+    renderAll: () => {},
+    flashButtonSuccess: () => {}
+  });
+
+  const task = createTaskOnly();
+
+  assert.equal(task.name, "独立任务");
+  assert.equal(task.scope, "");
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.activeTaskId, task.id);
+});
+
+test("workflow state advances through generation, execution, and report phases", () => {
+  const state = {
+    activeBatchId: "batch-1",
+    activeTaskId: "task-1",
+    tasks: [{ id: "task-1" }],
+    documents: [],
+    cases: [],
+    bugs: []
+  };
+  const getWorkflowState = loadFunction("getWorkflowState", {
+    state,
+    settings: { apiKey: "test-key", apiReady: true },
+    uploadedFileContent: "",
+    els: {
+      sourceUrl: { value: "" },
+      sourceText: { value: "" }
+    }
+  });
+
+  assert.equal(getWorkflowState().nextAction, "prepare-source");
+  state.documents.push({ id: "doc-1" });
+  assert.equal(getWorkflowState().nextAction, "generate-cases");
+  state.cases.push({ id: "case-1", executionStatus: "未执行" });
+  assert.equal(getWorkflowState().nextAction, "execute-cases");
+  state.cases[0].executionStatus = "通过";
+  assert.equal(getWorkflowState().nextAction, "export-report");
 });
 
 test("moveTaskToBatch synchronizes task, case, and bug version metadata", () => {

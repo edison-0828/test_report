@@ -10,6 +10,12 @@ $ReleaseFile = Join-Path $env:TEMP "test-report-release.tar.gz"
 
 $IncludePaths = @(
   "app.js",
+  "app-quality.js",
+  "app-domain.js",
+  "app-automation.js",
+  "app-bugs.js",
+  "app-report.js",
+  "app-storage.js",
   "index.html",
   "styles.css",
   "quality-rules.js",

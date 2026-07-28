@@ -8,6 +8,15 @@ const { spawn } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const SERVER_ENTRY = path.join(ROOT, "server.js");
+const APP_SCRIPT_PATHS = [
+  "/app-quality.js",
+  "/app-domain.js",
+  "/app-automation.js",
+  "/app-bugs.js",
+  "/app-report.js",
+  "/app-storage.js",
+  "/app.js"
+];
 let testPort = 4199;
 const BASE_URL = {
   toString() {
@@ -24,6 +33,17 @@ const exportDir = path.join(ROOT, "tmp", "exports");
 const exportPrefix = `smoke-${Date.now()}`;
 
 let serverProcess;
+
+async function fetchApplicationScripts() {
+  const responses = await Promise.all(APP_SCRIPT_PATHS.map((scriptPath) => fetch(`${BASE_URL}${scriptPath}`)));
+  const sources = await Promise.all(responses.map((response) => response.text()));
+  return {
+    status: responses.every((response) => response.status === 200) ? 200 : 500,
+    async text() {
+      return sources.join("\n");
+    }
+  };
+}
 
 test.before(async () => {
   testPort = await getAvailablePort();
@@ -78,16 +98,33 @@ test("serves the app shell", async () => {
   assert.match(html, /<!DOCTYPE html>/i);
   assert.match(html, /<script src="app\.js"><\/script>/);
   assert.match(html, /<script src="quality-rules\.js"><\/script>/);
+  for (const scriptPath of APP_SCRIPT_PATHS) {
+    assert.match(html, new RegExp(`<script src="${scriptPath.slice(1).replace(".", "\\.")}"><\\/script>`));
+  }
   assert.match(html, /data-tab="report"/);
   assert.match(html, /data-quality-business="VA业务"/);
   assert.match(html, /data-quality-business="卡收单业务"/);
   assert.match(html, /id="qualityBusinessModules"/);
 });
 
+test("serves split application modules and keeps the bootstrap file focused", async () => {
+  const responses = await Promise.all(APP_SCRIPT_PATHS.map((scriptPath) => fetch(`${BASE_URL}${scriptPath}`)));
+  const appLineCount = fs.readFileSync(path.join(ROOT, "app.js"), "utf-8").split(/\r?\n/).length;
+  const storageSource = fs.readFileSync(path.join(ROOT, "app-storage.js"), "utf-8");
+
+  assert.equal(responses.every((response) => response.status === 200), true);
+  assert.equal(appLineCount < 5000, true);
+  assert.match(storageSource, /body: JSON\.stringify\(\{\s*baseRevision,/);
+  assert.match(storageSource, /response\.status === 409/);
+  assert.match(storageSource, /function handleSharedStateConflict\(conflict\)/);
+  assert.match(storageSource, /function openSharedStateConflictDialog\(\)/);
+  assert.match(storageSource, /function initDataBackupPanel\(container\)/);
+});
+
 test("serves the responsive light workspace shell", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -117,10 +154,10 @@ test("serves the responsive light workspace shell", async () => {
   assert.match(styles, /\.automation-case-card\.is-configuring/);
 });
 
-test("combines task creation and case generation into one step", async () => {
+test("separates task creation from case generation", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -128,13 +165,17 @@ test("combines task creation and case generation into one step", async () => {
   const styles = await stylesResponse.text();
 
   assert.match(html, /upload-stage-panel-version hidden-field/);
-  assert.match(html, /<h3>2\. 新建任务并生成用例<\/h3>/);
-  assert.match(html, /id="createTaskAndGenerate"/);
+  assert.match(html, /<h3>2\. 新建任务<\/h3>/);
+  assert.match(html, /id="createTaskButton"/);
+  assert.match(html, /id="generateCasesAi"/);
+  assert.match(html, /测试范围（可选）/);
   assert.doesNotMatch(html, /id="focusHint"/);
   assert.match(html, /<div class="form-row hidden-field" aria-hidden="true">\s*<label>\s*关联版本/s);
   assert.match(appSource, /const DEFAULT_WORKSPACE_VERSION = "默认工作区";/);
   assert.match(appSource, /function ensureDefaultTaskBatch\(\)/);
-  assert.match(appSource, /async function createTaskAndGenerateCases\(\)/);
+  assert.match(appSource, /els\.createTaskBtn\.addEventListener\("click", createTask\)/);
+  assert.match(appSource, /els\.generateCases\?\.addEventListener\("click", \(\) => handleGenerateCases\("ai"\)\)/);
+  assert.doesNotMatch(appSource, /function createTaskAndGenerateCases\(\)/);
   assert.match(appSource, /function enhanceGenerationBeginnerFlow\(\)/);
   assert.match(appSource, /function createGenerationStepBlock\(number, title, description, className\)/);
   assert.match(appSource, /function handleWorkflowStepAction\(action\)/);
@@ -150,7 +191,7 @@ test("combines task creation and case generation into one step", async () => {
 test("serves version table, creation dialog, and task assignment controls", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -170,8 +211,26 @@ test("serves version table, creation dialog, and task assignment controls", asyn
   assert.match(appSource, /function openVersionCompleteModal\(batch\)/);
   assert.match(appSource, /function confirmVersionCompletion\(\)/);
   assert.match(appSource, /data-version-action="link-tasks"/);
+  assert.match(appSource, /data-version-menu-trigger=/);
+  assert.match(appSource, /function openVersionActionMenu\(trigger, batchId\)/);
+  assert.match(appSource, /function getVersionPrimaryAction\(batch, health = getVersionHealth\(batch\)\)/);
+  assert.match(appSource, /data-version-detail-toggle=/);
+  assert.match(appSource, /\$\{isExpanded \? "收起" : "展开"\}<\/button>/);
+  assert.match(appSource, /button\.textContent = opening \? "收起" : "展开"/);
+  assert.match(appSource, /const expandedVersionIds = new Set\(\)/);
+  assert.match(appSource, /expandedVersionIds\.add\(batchId\)/);
+  assert.match(appSource, /const isExpanded = expandedVersionIds\.has\(batch\.id\)/);
+  assert.doesNotMatch(appSource, /<span aria-hidden="true">⌄<\/span>/);
+  assert.match(appSource, /<th class="version-action-column">下一步<\/th>/);
+  assert.match(appSource, />管理关联<\/button>/);
+  assert.doesNotMatch(appSource, />调整关联<\/button>/);
+  assert.match(appSource, /function getFloatingMenuPosition\(triggerRect, menuSize, viewport\)/);
+  assert.doesNotMatch(appSource, /<details class="version-more-menu">/);
   assert.match(styles, /\.version-table\s*\{/);
-  assert.match(styles, /\.version-health-summary\s*\{/);
+  assert.match(styles, /\.version-action-popover\s*\{[^}]*position:\s*fixed;/s);
+  assert.match(styles, /\.version-action-popover\.is-mobile-sheet\s*\{/);
+  assert.doesNotMatch(appSource, /class="version-health-summary"/);
+  assert.match(styles, /\.version-detail-meta\s*\{/);
   assert.match(styles, /\.version-complete-dialog\s*\{/);
   assert.match(styles, /\.version-task-option:has\(input:checked\)/);
 });
@@ -179,7 +238,7 @@ test("serves version table, creation dialog, and task assignment controls", asyn
 test("serves task management navigation and table controls", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -193,27 +252,30 @@ test("serves task management navigation and table controls", async () => {
   assert.match(html, /id="taskManagerList"/);
   assert.match(appSource, /function renderTaskTableRow\(task\)/);
   assert.match(appSource, /function getTaskCaseProgress\(task\)/);
+  assert.match(appSource, /function getTaskPrimaryAction\(task, progress = getTaskCaseProgress\(task\)\)/);
   assert.match(appSource, /function matchesCaseTaskSearch\(item, taskFilter\)/);
-  assert.match(appSource, /data-task-action="execute"/);
+  assert.match(appSource, /data-task-menu-trigger=/);
+  assert.match(appSource, /class="version-task-title-line">/);
+  assert.match(appSource, /class="task-current-status">当前<\/span>/);
   assert.match(appSource, /data-clear-task-filters/);
   assert.match(appSource, /data-clear-version-filters/);
   assert.match(appSource, /tasks: '<path/);
   assert.match(styles, /\.task-table\s*\{/);
   assert.match(styles, /\.task-case-progress\s*\{/);
-  assert.match(styles, /button\.task-execute-link/);
-  assert.match(styles, /button\.version-link-task-button/);
+  assert.match(styles, /\.task-primary-action\s*\{/);
+  assert.match(styles, /\.version-primary-action,/);
+  assert.match(styles, /\.row-more-trigger\s*\{/);
 });
 
 test("keeps completed versions and tasks read only", async () => {
   const [appResponse, stylesResponse] = await Promise.all([
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const appSource = await appResponse.text();
   const styles = await stylesResponse.text();
 
   assert.match(appSource, /function isTaskReadonly\(task\)/);
-  assert.match(appSource, /!isActive && !isReadonly/);
   assert.match(appSource, /\$\{!isActive && !isSuspended \?/);
   assert.match(appSource, /batch\.status === "已完成" && \["edit", "link-tasks", "suspend", "resume", "delete"\]/);
   assert.match(appSource, /data-task-detail-toggle/);
@@ -224,7 +286,7 @@ test("keeps completed versions and tasks read only", async () => {
 test("serves the focused two-column manual execution workspace", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -257,7 +319,7 @@ test("serves the focused two-column manual execution workspace", async () => {
 test("serves the ZenTao-style bug title list and modal details", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -307,7 +369,7 @@ test("keeps decorative header layers from blocking controls", async () => {
 test("serves the report menu as version and issue tables", async () => {
   const [htmlResponse, appResponse, stylesResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`),
+    fetchApplicationScripts(),
     fetch(`${BASE_URL}/styles.css`)
   ]);
   const html = await htmlResponse.text();
@@ -374,7 +436,7 @@ test("serves the standalone published report template", async () => {
 test("omits operator and task owner fields from UI and exports", async () => {
   const [htmlResponse, appResponse] = await Promise.all([
     fetch(`${BASE_URL}/`),
-    fetch(`${BASE_URL}/app.js`)
+    fetchApplicationScripts()
   ]);
   const html = await htmlResponse.text();
   const appSource = await appResponse.text();
@@ -512,6 +574,7 @@ test("stores, serves, and deletes pasted BUG images", async () => {
 
 test("persists and reloads shared app state", async () => {
   const payload = {
+    baseRevision: 0,
     state: {
       documents: [{ id: "doc-1", name: "API" }],
       cases: [{ id: "case-1", title: "returns 200" }],
@@ -534,13 +597,102 @@ test("persists and reloads shared app state", async () => {
   const loaded = await readResponse.json();
 
   assert.equal(saveResponse.status, 200);
+  assert.equal(saved.revision, 1);
   assert.deepEqual(saved.state, payload.state);
   assert.equal(readResponse.status, 200);
+  assert.equal(loaded.revision, 1);
   assert.deepEqual(loaded.state, payload.state);
 
   const storedRaw = fs.readFileSync(appStateFile, "utf-8");
   const stored = JSON.parse(storedRaw);
+  assert.equal(stored.revision, 1);
   assert.deepEqual(stored.state, payload.state);
+});
+
+test("rejects stale shared state writes without overwriting newer data", async () => {
+  const initialResponse = await fetch(`${BASE_URL}/api/app-state`);
+  const initial = await initialResponse.json();
+  const firstState = {
+    ...initial.state,
+    tasks: [{ id: "task-concurrency-1", name: "first writer" }]
+  };
+  const firstSaveResponse = await fetch(`${BASE_URL}/api/app-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseRevision: initial.revision, state: firstState })
+  });
+  const firstSaved = await firstSaveResponse.json();
+
+  const staleSaveResponse = await fetch(`${BASE_URL}/api/app-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      baseRevision: initial.revision,
+      state: { ...initial.state, tasks: [{ id: "task-concurrency-2", name: "stale writer" }] }
+    })
+  });
+  const conflict = await staleSaveResponse.json();
+  const latestResponse = await fetch(`${BASE_URL}/api/app-state`);
+  const latest = await latestResponse.json();
+
+  assert.equal(firstSaveResponse.status, 200);
+  assert.equal(staleSaveResponse.status, 409);
+  assert.equal(conflict.revision, firstSaved.revision);
+  assert.deepEqual(conflict.state, firstState);
+  assert.equal(latest.revision, firstSaved.revision);
+  assert.deepEqual(latest.state, firstState);
+});
+
+test("creates rolling backups and restores a selected shared state version", async () => {
+  const currentResponse = await fetch(`${BASE_URL}/api/app-state`);
+  const current = await currentResponse.json();
+  const firstState = {
+    ...current.state,
+    tasks: [{ id: "task-backup-1", name: "backup target" }]
+  };
+  const firstSaveResponse = await fetch(`${BASE_URL}/api/app-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseRevision: current.revision, state: firstState })
+  });
+  const firstSaved = await firstSaveResponse.json();
+  const secondState = {
+    ...firstState,
+    tasks: [{ id: "task-backup-2", name: "newer state" }]
+  };
+  const secondSaveResponse = await fetch(`${BASE_URL}/api/app-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseRevision: firstSaved.revision, state: secondState })
+  });
+  const secondSaved = await secondSaveResponse.json();
+  const listResponse = await fetch(`${BASE_URL}/api/app-state/backups`);
+  const backupList = await listResponse.json();
+  const targetBackup = backupList.backups.find((item) => item.revision === firstSaved.revision);
+
+  assert.equal(firstSaveResponse.status, 200);
+  assert.equal(secondSaveResponse.status, 200);
+  assert.equal(listResponse.status, 200);
+  assert.ok(targetBackup);
+  assert.equal(targetBackup.tasks, 1);
+
+  const restoreResponse = await fetch(`${BASE_URL}/api/app-state/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      backupId: targetBackup.id,
+      baseRevision: secondSaved.revision
+    })
+  });
+  const restored = await restoreResponse.json();
+  const latestResponse = await fetch(`${BASE_URL}/api/app-state`);
+  const latest = await latestResponse.json();
+
+  assert.equal(restoreResponse.status, 200);
+  assert.equal(restored.revision, secondSaved.revision + 1);
+  assert.deepEqual(restored.state, firstState);
+  assert.deepEqual(latest.state, firstState);
+  assert.equal(latest.revision, restored.revision);
 });
 
 test("persists normalized team members", async () => {

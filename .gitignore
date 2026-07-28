@@ -1,6 +1,7 @@
 server.out.log
 server.err.log
 app-state.json
+app-state.json.backups/
 .env
 .env.local
 api-automation.config.json

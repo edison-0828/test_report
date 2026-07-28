@@ -58,6 +58,14 @@ Then open:
 http://127.0.0.1:3000
 ```
 
+## Shared Data Safety
+
+- Shared state saves use revision checks, so a stale browser page cannot silently overwrite newer data.
+- Before replacing shared state, the server keeps a rolling history of the latest 20 versions.
+- Open the settings drawer in the app to inspect and restore a historical version.
+- Restoring a version also backs up the current state first.
+- Local conflict copies can be downloaded from the conflict dialog before loading the server version.
+
 ## Deploy To Internal Server
 
 Recommended server path:

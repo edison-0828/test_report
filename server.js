@@ -12,6 +12,8 @@ const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
 const TEAM_MEMBERS_FILE = process.env.TEAM_MEMBERS_FILE || path.join(ROOT, "team-members.json");
 const APP_STATE_FILE = process.env.APP_STATE_FILE || path.join(ROOT, "app-state.json");
+const APP_STATE_BACKUP_DIR = process.env.APP_STATE_BACKUP_DIR || `${APP_STATE_FILE}.backups`;
+const APP_STATE_BACKUP_LIMIT = 20;
 const BUG_ATTACHMENTS_ROOT = process.env.BUG_ATTACHMENTS_ROOT || path.join(ROOT, "data", "bug-attachments");
 const PUBLISHED_REPORTS_ROOT = process.env.PUBLISHED_REPORTS_ROOT || path.join(ROOT, "data", "published-reports");
 const MAX_BUG_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -33,6 +35,12 @@ const STATIC_FILE_ALLOWLIST = new Map([
   ["/report.css", "report.css"],
   ["/report.js", "report.js"],
   ["/quality-rules.js", "quality-rules.js"],
+  ["/app-quality.js", "app-quality.js"],
+  ["/app-domain.js", "app-domain.js"],
+  ["/app-automation.js", "app-automation.js"],
+  ["/app-bugs.js", "app-bugs.js"],
+  ["/app-report.js", "app-report.js"],
+  ["/app-storage.js", "app-storage.js"],
   ["/app.js", "app.js"]
 ]);
 const selfTestRuntime = {
@@ -621,9 +629,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/api/app-state") {
-      return sendJson(res, 200, {
-        state: readAppState()
-      });
+      return sendJson(res, 200, readAppStateSnapshot());
+    }
+
+    if (req.method === "GET" && req.url === "/api/app-state/backups") {
+      return sendJson(res, 200, { backups: listAppStateBackups() });
     }
 
     if (req.method === "GET" && req.url === "/api/api-automation/config") {
@@ -659,10 +669,56 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/app-state") {
       const body = await readJsonBody(req);
+      const currentSnapshot = readAppStateSnapshot();
+      const baseRevision = Number(body.baseRevision);
+      if (!Number.isInteger(baseRevision) || baseRevision < 0) {
+        return sendJson(res, 400, {
+          error: "baseRevision must be a non-negative integer",
+          revision: currentSnapshot.revision,
+          state: currentSnapshot.state
+        });
+      }
+      if (baseRevision !== currentSnapshot.revision) {
+        return sendJson(res, 409, {
+          error: "app state revision conflict",
+          revision: currentSnapshot.revision,
+          state: currentSnapshot.state
+        });
+      }
       const nextState = sanitizeSharedState(body.state);
+      const nextRevision = currentSnapshot.revision + 1;
       ensureParentDir(APP_STATE_FILE);
-      fs.writeFileSync(APP_STATE_FILE, JSON.stringify({ state: nextState }, null, 2), "utf-8");
-      return sendJson(res, 200, { ok: true, state: nextState });
+      createAppStateBackup(currentSnapshot);
+      writeJsonFileAtomic(APP_STATE_FILE, { revision: nextRevision, state: nextState });
+      return sendJson(res, 200, { ok: true, revision: nextRevision, state: nextState });
+    }
+
+    if (req.method === "POST" && req.url === "/api/app-state/restore") {
+      const body = await readJsonBody(req);
+      const currentSnapshot = readAppStateSnapshot();
+      const baseRevision = Number(body.baseRevision);
+      if (!Number.isInteger(baseRevision) || baseRevision !== currentSnapshot.revision) {
+        return sendJson(res, 409, {
+          error: "app state revision conflict",
+          revision: currentSnapshot.revision,
+          state: currentSnapshot.state
+        });
+      }
+      const backup = readAppStateBackup(body.backupId);
+      if (!backup) {
+        return sendJson(res, 404, { error: "app state backup not found" });
+      }
+      const restoredState = sanitizeSharedState(backup.state);
+      const nextRevision = currentSnapshot.revision + 1;
+      ensureParentDir(APP_STATE_FILE);
+      createAppStateBackup(currentSnapshot);
+      writeJsonFileAtomic(APP_STATE_FILE, { revision: nextRevision, state: restoredState });
+      return sendJson(res, 200, {
+        ok: true,
+        revision: nextRevision,
+        restoredFrom: body.backupId,
+        state: restoredState
+      });
     }
 
     if (requestUrl.pathname === "/api/bug-images" && req.method === "POST") {
@@ -2339,17 +2395,103 @@ function normalizeTeamMembers(list) {
   return [...new Set((Array.isArray(list) ? list : []).map((item) => String(item || "").trim()).filter(Boolean))];
 }
 
-function readAppState() {
+function readAppStateSnapshot() {
   try {
     if (!fs.existsSync(APP_STATE_FILE)) {
-      return sanitizeSharedState({});
+      return { revision: 0, state: sanitizeSharedState({}) };
     }
     const raw = fs.readFileSync(APP_STATE_FILE, "utf-8");
     const data = raw ? JSON.parse(raw) : {};
-    return sanitizeSharedState(data.state || {});
+    return {
+      revision: Number.isInteger(data.revision) && data.revision >= 0 ? data.revision : 0,
+      state: sanitizeSharedState(data.state || {})
+    };
   } catch (_error) {
-    return sanitizeSharedState({});
+    return { revision: 0, state: sanitizeSharedState({}) };
   }
+}
+
+function writeJsonFileAtomic(filePath, value) {
+  const temporaryPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), "utf-8");
+  try {
+    fs.renameSync(temporaryPath, filePath);
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch (_cleanupError) {
+      // Preserve the original write error.
+    }
+    throw error;
+  }
+}
+
+function createAppStateBackup(snapshot) {
+  if (!fs.existsSync(APP_STATE_FILE)) {
+    return null;
+  }
+  fs.mkdirSync(APP_STATE_BACKUP_DIR, { recursive: true });
+  const createdAt = new Date().toISOString();
+  const backupId = `revision-${snapshot.revision}-${createdAt.replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.json`;
+  writeJsonFileAtomic(path.join(APP_STATE_BACKUP_DIR, backupId), {
+    createdAt,
+    revision: snapshot.revision,
+    state: sanitizeSharedState(snapshot.state)
+  });
+  pruneAppStateBackups();
+  return backupId;
+}
+
+function listAppStateBackups() {
+  if (!fs.existsSync(APP_STATE_BACKUP_DIR)) {
+    return [];
+  }
+  return fs.readdirSync(APP_STATE_BACKUP_DIR)
+    .filter((fileName) => /^revision-\d+-[\w-]+\.json$/.test(fileName))
+    .map((fileName) => {
+      try {
+        const filePath = path.join(APP_STATE_BACKUP_DIR, fileName);
+        const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        const state = sanitizeSharedState(raw.state);
+        return {
+          id: fileName,
+          revision: Number.isInteger(raw.revision) ? raw.revision : 0,
+          createdAt: raw.createdAt || fs.statSync(filePath).mtime.toISOString(),
+          tasks: state.tasks.length,
+          cases: state.cases.length,
+          bugs: state.bugs.length
+        };
+      } catch (_error) {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, APP_STATE_BACKUP_LIMIT);
+}
+
+function readAppStateBackup(backupId) {
+  const fileName = String(backupId || "");
+  if (!/^revision-\d+-[\w-]+\.json$/.test(fileName)) {
+    return null;
+  }
+  const filePath = path.join(APP_STATE_BACKUP_DIR, fileName);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch (_error) {
+    return null;
+  }
+}
+
+function pruneAppStateBackups() {
+  const backups = listAppStateBackups();
+  const keepIds = new Set(backups.slice(0, APP_STATE_BACKUP_LIMIT).map((item) => item.id));
+  fs.readdirSync(APP_STATE_BACKUP_DIR)
+    .filter((fileName) => /^revision-\d+-[\w-]+\.json$/.test(fileName) && !keepIds.has(fileName))
+    .forEach((fileName) => fs.rmSync(path.join(APP_STATE_BACKUP_DIR, fileName), { force: true }));
 }
 
 function sanitizeSharedState(input) {

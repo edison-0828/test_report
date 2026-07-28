@@ -181,8 +181,8 @@
           <section class="panel upload-stage-panel upload-stage-panel-task upload-stage-panel-combined">
             <div class="section-head">
               <div>
-                <h3>2. 新建任务并生成用例</h3>
-                <p class="section-note">填写测试目标并放入需求文档，一次完成任务创建和用例生成。</p>
+                <h3>2. 新建任务</h3>
+                <p class="section-note">任务可以独立创建；需要用例时，再选择任务并提供材料生成。</p>
               </div>
             </div>
 
@@ -202,7 +202,7 @@
               </label>
 
               <label class="step-field step-field-wide">
-                <span class="step-label">你要测什么 <strong class="required-mark">*</strong></span>
+                <span class="step-label">测试范围（可选）</span>
                 <textarea id="taskScopeInput" class="md-textarea" rows="6"
                   placeholder="支持直接输入Markdown，例如：&#10;- 只测登录、验证码、锁定逻辑&#10;- 覆盖主流程、异常提示、权限边界"></textarea>
               </label>
@@ -253,7 +253,8 @@
             </div>
 
             <div class="actions">
-              <button id="createTaskAndGenerate" class="primary-button">创建任务并生成用例</button>
+              <button id="createTaskButton" class="primary-button">创建任务</button>
+              <button id="generateCasesAi" class="ghost-button">AI 生成用例</button>
               <button id="generateCasesLocal" class="ghost-button">规则生成</button>
               <button id="saveDocument" class="ghost-button">保存文档</button>
             </div>
@@ -1051,6 +1052,12 @@
   </template>
 
   <script src="quality-rules.js"></script>
+  <script src="app-quality.js"></script>
+  <script src="app-domain.js"></script>
+  <script src="app-automation.js"></script>
+  <script src="app-bugs.js"></script>
+  <script src="app-report.js"></script>
+  <script src="app-storage.js"></script>
   <script src="app.js"></script>
 </body>
 
