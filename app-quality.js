@@ -54,6 +54,7 @@ function parseCasesCsv(csvText) {
       taskName: getValue(row, ["测试任务", "任务名称", "关联任务"]),
       batchVersion: getValue(row, ["关联版本号", "版本号", "测试版本"]),
       batchName: getValue(row, ["批次", "测试批次", "版本批次"]),
+      caseNo: getValue(row, ["用例ID", "用例编号", "Case ID", "caseId"]),
       module: getValue(row, ["模块", "一级模块", "二级模块"]) || "未分类",
       title: getValue(row, ["标题", "用例标题", "测试标题"]) || "未命名用例",
       type: getValue(row, ["类型"]) || "正常",
@@ -185,8 +186,13 @@ function analyzeCaseQuality(cases, sourceLabel, fileName = "", businessName = st
     });
   }
 
-  const severeCount = [missingSteps, missingExpected].filter((count) => count > 0).length;
-  const warningCount = [duplicateTitles > 0, duplicateFlows > 0, abnormalCount === 0].filter(Boolean).length;
+  const ruleIssues = runBusinessCaseQualityRules(list, ruleContext);
+  issues.push(...ruleIssues);
+
+  const ruleErrorCount = ruleIssues.filter((issue) => issue.severity === "error").length;
+  const ruleWarningCount = ruleIssues.filter((issue) => issue.severity === "warning").length;
+  const severeCount = [missingSteps, missingExpected].filter((count) => count > 0).length + ruleErrorCount;
+  const warningCount = [duplicateTitles > 0, duplicateFlows > 0, abnormalCount === 0].filter(Boolean).length + ruleWarningCount;
 
   return {
     label: severeCount > 0 ? "有风险" : warningCount > 0 ? "需关注" : "通过",
@@ -212,7 +218,9 @@ function analyzeCaseQuality(cases, sourceLabel, fileName = "", businessName = st
       ["权限/鉴权", permissionCount],
       ["参数异常", requiredParamCount],
       ["重复项", duplicateTitles + duplicateFlows],
-      ["缺步骤/预期", missingSteps + missingExpected]
+      ["缺步骤/预期", missingSteps + missingExpected],
+      ["规则 Error", ruleErrorCount],
+      ["规则 Warning", ruleWarningCount]
     ],
     issues
   };
@@ -255,8 +263,327 @@ function resolveCaseQualityRuleContext(cases, businessName = state.caseQualityBu
     selectedBusinessName,
     businessDescription: business?.description || "当前用例未命中 VA业务 或 卡收单业务，暂时只执行通用检查。",
     activeRuleCount,
-    businessRuleCount: businessRules.length
+    businessRuleCount: businessRules.length,
+    businessRules
   };
+}
+
+function serializeCaseQualityRulesForAi(businessName = state.caseQualityBusiness) {
+  const rulesets = window.CASE_QUALITY_RULESETS || {};
+  const businesses = rulesets.businesses && typeof rulesets.businesses === "object" ? rulesets.businesses : {};
+  const business = businesses[normalizeCaseQualityBusiness(businessName)];
+  const businessRules = Array.isArray(business?.rules) ? business.rules : [];
+  return businessRules
+    .filter((rule) => rule?.status !== "draft")
+    .map((rule) => ({
+      id: rule.id,
+      category: rule.category,
+      severity: rule.severity,
+      name: rule.name,
+      description: rule.description
+    }));
+}
+
+function runBusinessCaseQualityRules(cases, ruleContext) {
+  if (ruleContext?.businessId !== "card-acquiring") {
+    return [];
+  }
+  return runCardAcquiringQualityRules(cases, ruleContext.businessRules || []);
+}
+
+function runCardAcquiringQualityRules(cases, rules = []) {
+  const list = Array.isArray(cases) ? cases : [];
+  const ruleById = new Map((Array.isArray(rules) ? rules : []).map((rule) => [rule.id, rule]));
+  const normalized = list.map((item, index) => normalizeCardAcquiringCase(item, index));
+  const issues = [];
+  const addIssue = (ruleId, detail, caseRef = "") => {
+    const rule = ruleById.get(ruleId) || {};
+    const severity = normalizeQualityRuleSeverity(rule.severity);
+    issues.push({
+      ruleId,
+      severity,
+      level: severity === "error" ? "Error" : severity === "warning" ? "Warning" : "Info",
+      tone: severity === "error" ? "tone-red" : severity === "warning" ? "tone-orange" : "tone-gray",
+      title: `${ruleId} ${rule.name || "卡收单规则"}`,
+      detail: caseRef ? `${caseRef}：${detail}` : detail
+    });
+  };
+
+  normalized.forEach((item) => {
+    const missing = [];
+    if (!item.displayId) missing.push("用例ID");
+    if (!item.title) missing.push("用例标题");
+    if (!item.dimension) missing.push("测试维度");
+    if (!item.priority) missing.push("优先级");
+    if (!item.precondition) missing.push("前置条件");
+    if (!item.stepsText) missing.push("测试步骤");
+    if (!item.expected) missing.push("预期结果");
+    if (missing.length) addIssue("A1", `缺少必填字段：${missing.join("、")}，请补全。`, item.caseLabel);
+
+    if (!/^[A-Z]+-[A-Z]+-\d{3}$/.test(item.displayId)) {
+      addIssue("A2", `用例ID「${item.displayId || "空"}」不符合 CARD-TRX-001 这类格式。`, item.caseLabel);
+    }
+    if (!["P0", "P1", "P2"].includes(item.priority)) {
+      addIssue("A3", `优先级「${item.priority || "空"}」无效，卡收单规则只允许 P0/P1/P2。`, item.caseLabel);
+    }
+    if (!item.steps.length || item.steps.some((step) => !step.trim())) {
+      addIssue("A4", "缺少可执行测试步骤，至少需要 1 个非空步骤。", item.caseLabel);
+    }
+    if (!item.expected || item.expected.length < 10) {
+      addIssue("A5", "预期结果为空或过于简短，需要包含具体可验证信息。", item.caseLabel);
+    }
+
+    if (["void", "refund"].includes(item.transactionType) && !/(原交易|original|成功交易|原始交易)/i.test(item.precondition)) {
+      addIssue("C1", "撤销/退款用例的前置条件缺少成功原交易引用。", item.caseLabel);
+    }
+    if (item.transactionType === "refund" && item.refundAmount !== null && item.originalAmount !== null && item.refundAmount > item.originalAmount) {
+      addIssue("C2", `退款金额 ${item.refundAmount} 超过原交易金额 ${item.originalAmount}。`, item.caseLabel);
+    }
+    if (item.transactionType === "void" && !/(当日|当天|T\+0|same day)/i.test(item.precondition + "\n" + item.stepsText)) {
+      addIssue("C3", "撤销未说明当日/T+0 时间窗口，跨日撤销应改为退款。", item.caseLabel);
+    }
+    if ((item.amount === 0 || item.amountBoundary === "zero") && !item.expectsFailure) {
+      addIssue("C4", "金额为 0 但预期不是失败/拒绝。", item.caseLabel);
+    }
+    if (item.amount !== null && item.amount < 0 && !item.expectsFailure) {
+      addIssue("C5", "金额为负数但预期不是失败/拒绝。", item.caseLabel);
+    }
+    if (item.amountBoundary === "over" && !item.expectsFailure) {
+      addIssue("C6", "金额超限但预期不是拒绝/失败。", item.caseLabel);
+    }
+    if (item.threeDsScenario === "3ds_failed" && !item.expectsFailure) {
+      addIssue("C7", "3DS 验证失败/放弃/超时场景的预期不是交易失败。", item.caseLabel);
+    }
+    if (item.signatureScenario && !/(拒绝|失败|fail|reject|error|验签失败|签名错误)/i.test(item.expected)) {
+      addIssue("C8", "签名/验签错误场景的预期不是拒绝。", item.caseLabel);
+    }
+    item.steps.forEach((step) => {
+      if (step.trim().length < 10 || !/(输入|点击|发送|调用|提交|选择|触发|验证|构造|发起|检查)/.test(step)) {
+        addIssue("E3", "测试步骤过于简短或缺少操作动词，需要补具体操作和输入数据。", item.caseLabel);
+      }
+    });
+    if (item.expected.length < 10 || !/(响应码|状态|金额|返回|错误|拒绝|失败|成功|response|code|status|amount|error)/i.test(item.expected)) {
+      addIssue("E4", "预期结果过于笼统，需要包含响应码、状态、金额或错误信息等可验证内容。", item.caseLabel);
+    }
+  });
+
+  addCoverageIssue("B1", normalized, "transactionType", ["payment", "void", "refund"], "缺少交易类型覆盖：{missing}，必须覆盖消费/撤销/退款。", addIssue);
+  addCoverageIssue("B2", normalized, "orderChannel", ["cashier", "direct"], "缺少下单方式覆盖：{missing}，需覆盖收银台和直连 API。", addIssue);
+  addCoverageIssue("B3", normalized, "cardBrand", ["visa", "mastercard"], "缺少卡品牌覆盖：{missing}，需覆盖 Visa 和 Mastercard。", addIssue);
+  addCoverageIssue("B6", normalized, "threeDsScenario", ["3ds_success", "3ds_failed", "non_3ds"], "缺少 3DS 场景覆盖：{missing}，需覆盖 3DS 通过/失败/非 3DS。", addIssue);
+  addCoverageIssue("B7", normalized, "callbackScenario", ["callback_success", "callback_failed", "callback_timeout_retry"], "缺少回调场景覆盖：{missing}，需覆盖成功回调/失败回调/超时重试。", addIssue);
+
+  const successCases = normalized.filter((item) => item.expectedCode === "00" || item.expectsSuccess);
+  const failCodes = new Set(normalized.filter((item) => item.expectedCode && item.expectedCode !== "00").map((item) => item.expectedCode));
+  if (successCases.length < 1 || failCodes.size < 3) {
+    addIssue("B4", `响应码覆盖不足：需至少 1 个成功场景和 3 种不同失败码，当前失败码 ${failCodes.size ? [...failCodes].join("、") : "为空"}。`);
+  }
+
+  const amountFlags = new Set(normalized.map((item) => item.amountBoundary).filter(Boolean));
+  const missingAmountFlags = ["zero", "min", "normal", "over"].filter((flag) => !amountFlags.has(flag));
+  if (missingAmountFlags.length) {
+    addIssue("B5", `金额边界覆盖不足：缺少 ${missingAmountFlags.map(formatAmountBoundary).join("、")} 场景。`);
+  }
+  if (!normalized.some((item) => item.testScenario === "idempotency")) {
+    addIssue("B8", "缺少幂等性测试用例，需要覆盖同一请求重复提交且不重复扣款。");
+  }
+
+  const idMap = new Map();
+  normalized.forEach((item) => {
+    if (!item.displayId) return;
+    if (idMap.has(item.displayId)) {
+      addIssue("D2", `用例ID「${item.displayId}」重复，ID 必须唯一。`, item.caseLabel);
+    } else {
+      idMap.set(item.displayId, item);
+    }
+  });
+
+  const signatureMap = new Map();
+  normalized.forEach((item) => {
+    const key = `${item.dimension}|${item.testCondition}`;
+    if (!item.dimension || !item.testCondition) return;
+    const existing = signatureMap.get(key);
+    if (!existing) {
+      signatureMap.set(key, item);
+      return;
+    }
+    addIssue("D1", `与 ${existing.caseLabel} 测试维度和条件相同，建议合并或明确差异。`, item.caseLabel);
+    if (existing.expectedDirection !== item.expectedDirection) {
+      addIssue("D3", `与 ${existing.caseLabel} 测试条件相同但预期方向矛盾。`, item.caseLabel);
+    }
+  });
+
+  const coreCases = normalized.filter((item) => item.dimension === "core_payment" || /(核心|下单|支付|回调)/.test(item.text));
+  if (coreCases.length && !coreCases.some((item) => item.priority === "P0")) {
+    addIssue("E1", "核心支付链路缺少 P0 优先级用例。");
+  }
+
+  const p0Count = normalized.filter((item) => item.priority === "P0").length;
+  const p0Ratio = normalized.length ? p0Count / normalized.length : 0;
+  if (normalized.length && (p0Ratio < 0.2 || p0Ratio > 0.4)) {
+    addIssue("E2", `P0 用例占比 ${Math.round(p0Ratio * 100)}%（${p0Count}/${normalized.length}），建议保持在 20%-40%。`);
+  }
+
+  return issues;
+}
+
+function addCoverageIssue(ruleId, cases, field, requiredValues, messageTemplate, addIssue) {
+  const covered = new Set(cases.map((item) => item[field]).filter(Boolean));
+  const missing = requiredValues.filter((value) => !covered.has(value));
+  if (missing.length) {
+    addIssue(ruleId, messageTemplate.replace("{missing}", missing.join("、")));
+  }
+}
+
+function formatAmountBoundary(value) {
+  return {
+    zero: "零额",
+    min: "最小金额",
+    normal: "正常金额",
+    over: "超最大限额",
+    negative: "负额"
+  }[value] || value;
+}
+
+function normalizeQualityRuleSeverity(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "error" || text === "high") return "error";
+  if (text === "warning" || text === "warn" || text === "medium") return "warning";
+  return "info";
+}
+
+function normalizeCardAcquiringCase(item, index) {
+  const displayId = String(item.caseNo || item.caseId || item.externalId || "").trim() || String(item.id || "").trim();
+  const title = String(item.title || "").trim();
+  const precondition = String(item.preconditions || item.precondition || "").trim();
+  const steps = splitCaseSteps(item.steps);
+  const stepsText = steps.join("\n");
+  const expected = String(item.expected || "").trim();
+  const text = [displayId, item.module, title, item.type, item.priority, precondition, stepsText, expected, item.executionNote].join("\n");
+  const lowerText = text.toLowerCase();
+  const amount = extractCaseAmount(text);
+  const originalAmount = extractNamedAmount(text, /(原交易金额|原始金额|original amount)\D*(-?\d+(?:\.\d+)?)/i);
+  const refundAmount = extractNamedAmount(text, /(退款金额|refund amount)\D*(-?\d+(?:\.\d+)?)/i);
+  return {
+    raw: item,
+    displayId,
+    title,
+    dimension: inferCardDimension(text),
+    priority: String(item.priority || "").trim().toUpperCase(),
+    precondition,
+    steps,
+    stepsText,
+    expected,
+    text,
+    caseLabel: displayId || title || `第 ${index + 1} 条用例`,
+    transactionType: inferTransactionType(text),
+    orderChannel: inferOrderChannel(text),
+    cardBrand: inferCardBrand(text),
+    expectedCode: inferExpectedCode(text),
+    amount,
+    originalAmount,
+    refundAmount,
+    amountBoundary: inferAmountBoundary(text, amount),
+    threeDsScenario: inferThreeDsScenario(text),
+    callbackScenario: inferCallbackScenario(text),
+    testScenario: /幂等|重复提交|重复请求|去重|idempotenc/i.test(text) ? "idempotency" : "",
+    testCondition: normalizeCaseFingerprint([title, precondition, stepsText].join("\n"), ""),
+    expectedDirection: inferExpectedDirection(expected),
+    expectsSuccess: /(成功|approved|success|响应码\s*[:：]?\s*00|code\s*[:：]?\s*00)/i.test(expected),
+    expectsFailure: /(失败|拒绝|fail|reject|declined|error|错误|响应码\s*[:：]?\s*(05|14|51|61)|code\s*[:：]?\s*(05|14|51|61))/i.test(expected),
+    signatureScenario: /(签名错误|验签错误|验签失败|invalid_signature|signature)/i.test(text) && /(错误|失败|invalid|fail|reject|拒绝)/i.test(lowerText)
+  };
+}
+
+function splitCaseSteps(value) {
+  if (Array.isArray(value)) {
+    return value.map((step) => String(step || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/\r?\n|；|;/)
+    .map((step) => step.replace(/^\s*\d+[\.\)、)]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function inferTransactionType(text) {
+  if (/(退款|refund)/i.test(text)) return "refund";
+  if (/(撤销|void|取消授权|取消交易)/i.test(text)) return "void";
+  if (/(消费|支付|收单|payment|purchase|sale)/i.test(text)) return "payment";
+  return "";
+}
+
+function inferOrderChannel(text) {
+  if (/(收银台|cashier|checkout|hosted)/i.test(text)) return "cashier";
+  if (/(直连|direct|api|接口)/i.test(text)) return "direct";
+  return "";
+}
+
+function inferCardBrand(text) {
+  if (/master\s*card|mastercard|万事达/i.test(text)) return "mastercard";
+  if (/visa/i.test(text)) return "visa";
+  return "";
+}
+
+function inferExpectedCode(text) {
+  const match = text.match(/(?:响应码|返回码|错误码|code|respCode|responseCode)\s*[:：=]?\s*([A-Za-z0-9_-]+)/i);
+  if (match) return match[1].toUpperCase();
+  const compact = text.match(/\b(00|05|14|51|61)\b/);
+  return compact ? compact[1] : "";
+}
+
+function extractCaseAmount(text) {
+  const named = extractNamedAmount(text, /(金额|amount)\D*(-?\d+(?:\.\d+)?)/i);
+  if (named !== null) return named;
+  const match = text.match(/(-?\d+(?:\.\d+)?)\s*(?:元|USD|CNY|HKD|EUR|USDT)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function extractNamedAmount(text, pattern) {
+  const match = text.match(pattern);
+  if (!match) return null;
+  const value = Number(match[match.length - 1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function inferAmountBoundary(text, amount) {
+  if (amount === 0 || /(零额|金额为0|0元)/.test(text)) return "zero";
+  if (amount !== null && amount < 0) return "negative";
+  if ((amount !== null && amount > 0 && amount <= 0.01) || /(最小金额|0\.01|min amount)/i.test(text)) return "min";
+  if (/(超限|超过.*限额|最大限额|超最大|61)/.test(text)) return "over";
+  if ((amount !== null && amount > 0.01) || /(正常金额|标准金额|常规金额)/.test(text)) return "normal";
+  return "";
+}
+
+function inferThreeDsScenario(text) {
+  if (/(非3DS|非 3DS|non[-_ ]?3ds|no 3ds)/i.test(text)) return "non_3ds";
+  if (/3DS/i.test(text) && /(失败|放弃|超时|未完成|fail|timeout|abandon|cancel)/i.test(text)) return "3ds_failed";
+  if (/3DS/i.test(text) && /(通过|成功|success|pass|complete)/i.test(text)) return "3ds_success";
+  return "";
+}
+
+function inferCallbackScenario(text) {
+  if (/(回调|通知|callback|webhook)/i.test(text) && /(超时|重试|timeout|retry)/i.test(text)) return "callback_timeout_retry";
+  if (/(回调|通知|callback|webhook)/i.test(text) && /(失败|fail|拒绝|错误|error)/i.test(text)) return "callback_failed";
+  if (/(回调|通知|callback|webhook)/i.test(text) && /(成功|success|approved|支付成功)/i.test(text)) return "callback_success";
+  return "";
+}
+
+function inferCardDimension(text) {
+  if (/(核心|下单.*支付.*回调|core_payment)/i.test(text)) return "core_payment";
+  if (/(3DS|3-D Secure)/i.test(text)) return "three_ds";
+  if (/(回调|通知|callback|webhook)/i.test(text)) return "callback";
+  if (/(退款|refund)/i.test(text)) return "refund";
+  if (/(撤销|void)/i.test(text)) return "void";
+  if (/(金额|限额|amount|边界)/i.test(text)) return "amount";
+  if (/(签名|验签|signature)/i.test(text)) return "signature";
+  if (/(支付|收单|payment)/i.test(text)) return "core_payment";
+  return "";
+}
+
+function inferExpectedDirection(expected) {
+  if (/(成功|approved|success|通过|响应码\s*[:：]?\s*00)/i.test(expected)) return "pass";
+  if (/(失败|拒绝|fail|reject|declined|error|错误)/i.test(expected)) return "fail";
+  return "unknown";
 }
 
 function buildCaseQualityQuickTip(stats) {

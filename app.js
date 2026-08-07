@@ -2390,6 +2390,8 @@ async function handleGenerateCases(mode) {
         content,
         sourceType,
         focusHint,
+        businessName: state.caseQualityBusiness,
+        qualityRules: serializeCaseQualityRulesForAi(state.caseQualityBusiness),
         apiKey: settings.apiKey,
         model: settings.model
       });
@@ -2463,6 +2465,7 @@ async function requestAiCases(payload) {
 
   return data.testCases.map((item, index) => ({
     id: `case-${Date.now()}-${index}`,
+    caseNo: item.caseNo || item.caseId || item.externalId || "",
     module: item.module || "未分类",
     title: item.title || `AI 用例 ${index + 1}`,
     type: item.type || "正常",

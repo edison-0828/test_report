@@ -809,6 +809,8 @@ async function handleGenerateCases(body, res) {
   const documentType = String(body.documentType || "").trim();
   const sourceType = String(body.sourceType || "text").trim();
   const focusHint = String(body.focusHint || "").trim();
+  const businessName = String(body.businessName || "").trim();
+  const qualityRules = normalizeQualityRulesForPrompt(body.qualityRules);
   const content = String(body.content || "").trim();
   const apiKey = String(body.apiKey || process.env.OPENAI_API_KEY || "").trim();
   const model = String(body.model || DEFAULT_MODEL).trim();
@@ -833,7 +835,7 @@ async function handleGenerateCases(body, res) {
     return sendJson(res, 400, { error: "没有拿到可用于生成的正文内容。" });
   }
 
-  const prompt = buildUserPrompt(documentName, documentType, narrowedContent, sourceType, content, focusHint);
+  const prompt = buildUserPrompt(documentName, documentType, narrowedContent, sourceType, content, focusHint, businessName, qualityRules);
   const schema = buildResponseSchema();
 
   const payload = {
@@ -1601,18 +1603,25 @@ function chunkArray(items, size) {
   return chunks;
 }
 
-function buildUserPrompt(documentName, documentType, content, sourceType, sourceValue, focusHint) {
+function buildUserPrompt(documentName, documentType, content, sourceType, sourceValue, focusHint, businessName = "", qualityRules = []) {
   const truncated = content.length > 90000 ? `${content.slice(0, 90000)}\n\n[文档已截断]` : content;
+  const ruleLines = qualityRules.length
+    ? qualityRules.map((rule) => `- ${rule.id}【${rule.category}/${rule.severity}】${rule.name}：${rule.description}`).join("\n")
+    : "";
   return [
     `文档名称：${documentName}`,
     `内容类型：${documentType === "api" ? "API内容" : "需求内容"}`,
     `内容来源：${sourceType === "url" ? "网址链接" : sourceType === "file" ? "本地文件" : "直接粘贴"}`,
+    businessName ? `业务规则分类：${businessName}` : "",
     sourceType === "url" ? `原始链接：${sourceValue}` : "",
     focusHint ? `本次测试范围提示：${focusHint}` : "",
+    ruleLines ? "\n本次必须遵守的业务质量规则如下。请先按规则生成，再自行质检并修正，最后只返回修正后的用例：" : "",
+    ruleLines,
     "",
     "请输出 8 到 20 条测试用例草稿，满足这些要求：",
+    "0. 如果业务规则分类是卡收单业务，每条用例必须提供 caseId，格式为 CARD-维度缩写-三位序号，例如 CARD-TRX-001、CARD-3DS-002。",
     "1. 标题清晰，模块命名简洁。",
-    "2. 优先级只允许 P0/P1/P2/P3。",
+    "2. 优先级只允许 P0/P1/P2；只有非卡收单业务才允许 P3。",
     "3. 类型只允许 正常/异常/边界。",
     "4. 前置条件和步骤要可执行，步骤尽量拆成 2 到 5 条。",
     "5. API 文档要覆盖参数校验、状态码、鉴权、幂等、边界值。",
@@ -1629,6 +1638,25 @@ function buildUserPrompt(documentName, documentType, content, sourceType, source
     "文档内容如下：",
     truncated
   ].filter(Boolean).join("\n");
+}
+
+function normalizeQualityRulesForPrompt(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((rule) => {
+      if (!rule || typeof rule !== "object") return null;
+      return {
+        id: String(rule.id || "").trim(),
+        category: String(rule.category || "").trim(),
+        severity: String(rule.severity || "").trim(),
+        name: String(rule.name || "").trim(),
+        description: String(rule.description || "").trim()
+      };
+    })
+    .filter((rule) => rule.id && rule.name)
+    .slice(0, 40);
 }
 
 function buildResponseSchema() {
@@ -1649,6 +1677,7 @@ function buildResponseSchema() {
           additionalProperties: false,
           properties: {
             module: { type: "string" },
+            caseId: { type: "string" },
             title: { type: "string" },
             type: {
               type: "string",
@@ -1688,7 +1717,7 @@ function buildResponseSchema() {
               }
             }
           },
-          required: ["module", "title", "type", "priority", "preconditions", "steps", "expected", "automationSteps"]
+          required: ["module", "caseId", "title", "type", "priority", "preconditions", "steps", "expected", "automationSteps"]
         }
       }
     },
@@ -1794,6 +1823,7 @@ function normalizeStructuredOutput(parsed) {
       if (!titleValue || !steps.length || !expectedValue) return null;
 
       return {
+        caseId: String(item.caseId || item.caseNo || item.id || "").trim(),
         module: moduleValue || "未分类",
         title: titleValue,
         type: normalizedType || "正常",

@@ -26,9 +26,13 @@
 - 前端 requestAiCases 自动设置 automationEnabled/automationTargetPath/automationSteps
 - inferAutomationTargetPath() 从 openPage 步骤推断目标路径
 
+## 工程约定
+- 项目用 git 管理。未提交的本地改动可直接 `git checkout -- <files>` 整体撤回（比手动反向 Edit 可靠，曾因 Edit 落盘失败踩坑）
+- 静态服务每次从磁盘读文件，前端改动无需重启进程
+
 ## 待做
 - 执行结果回写（pass/fail/skip → 用例状态）
 - 失败→自动建 Bug
 - 定时/批量执行（cron + 多任务并发）
 - 执行日志与截图留存
-- 数据统计看板
+- 数据统计看板（2026-07-31 实现过一版总览看板，已撤回；2026-08-03 用户决定不做，搁置）

@@ -91,6 +91,48 @@ const getCasePriorityClass = loadFunction("getCasePriorityClass", { getCasePrior
 const getNextExecutionCaseId = loadFunction("getNextExecutionCaseId");
 const sanitizeFileName = loadFunction("sanitizeFileName");
 const buildReportDocxFileBaseName = loadFunction("buildReportDocxFileBaseName", { sanitizeFileName });
+const normalizeCaseFingerprint = loadFunction("normalizeCaseFingerprint");
+const normalizeQualityRuleSeverity = loadFunction("normalizeQualityRuleSeverity");
+const splitCaseSteps = loadFunction("splitCaseSteps");
+const inferTransactionType = loadFunction("inferTransactionType");
+const inferOrderChannel = loadFunction("inferOrderChannel");
+const inferCardBrand = loadFunction("inferCardBrand");
+const inferExpectedCode = loadFunction("inferExpectedCode");
+const extractNamedAmount = loadFunction("extractNamedAmount");
+const extractCaseAmount = loadFunction("extractCaseAmount", { extractNamedAmount });
+const inferAmountBoundary = loadFunction("inferAmountBoundary");
+const inferThreeDsScenario = loadFunction("inferThreeDsScenario");
+const inferCallbackScenario = loadFunction("inferCallbackScenario");
+const inferCardDimension = loadFunction("inferCardDimension");
+const inferExpectedDirection = loadFunction("inferExpectedDirection");
+const normalizeCardAcquiringCase = loadFunction("normalizeCardAcquiringCase", {
+  splitCaseSteps,
+  extractCaseAmount,
+  extractNamedAmount,
+  inferCardDimension,
+  inferTransactionType,
+  inferOrderChannel,
+  inferCardBrand,
+  inferExpectedCode,
+  inferAmountBoundary,
+  inferThreeDsScenario,
+  inferCallbackScenario,
+  normalizeCaseFingerprint,
+  inferExpectedDirection
+});
+const addCoverageIssue = loadFunction("addCoverageIssue");
+const runCardAcquiringQualityRules = loadFunction("runCardAcquiringQualityRules", {
+  normalizeCardAcquiringCase,
+  normalizeQualityRuleSeverity,
+  addCoverageIssue,
+  formatAmountBoundary: (value) => ({
+    zero: "零额",
+    min: "最小金额",
+    normal: "正常金额",
+    over: "超最大限额",
+    negative: "负额"
+  }[value] || value)
+});
 const normalizeAutomationStep = loadFunction("normalizeAutomationStep", {
   normalizeAutomationStepType,
   normalizeAutomationLocatorType,
@@ -624,6 +666,64 @@ test("case quality reports are isolated by selected business", () => {
 
   assert.equal(getCaseQualityReportForBusiness("VA业务").label, "VA通过");
   assert.equal(getCaseQualityReportForBusiness("卡收单业务").label, "卡收单需关注");
+});
+
+test("card acquiring quality rules flag business coverage and logic gaps", () => {
+  const rules = [
+    { id: "A2", name: "用例ID格式", severity: "error" },
+    { id: "A3", name: "优先级枚举值", severity: "error" },
+    { id: "B1", name: "交易类型覆盖", severity: "error" },
+    { id: "B2", name: "下单方式覆盖", severity: "error" },
+    { id: "B3", name: "卡品牌覆盖", severity: "error" },
+    { id: "B4", name: "响应码覆盖", severity: "error" },
+    { id: "B5", name: "金额边界覆盖", severity: "error" },
+    { id: "B6", name: "3DS验证覆盖", severity: "error" },
+    { id: "B7", name: "回调通知覆盖", severity: "error" },
+    { id: "B8", name: "幂等性覆盖", severity: "error" },
+    { id: "C1", name: "撤销/退款需原交易", severity: "error" },
+    { id: "C4", name: "零额必失败", severity: "error" },
+    { id: "E2", name: "P0占比合理", severity: "warning" }
+  ];
+  const issues = runCardAcquiringQualityRules([
+    {
+      id: "case-runtime-1",
+      caseNo: "case-1",
+      module: "卡收单支付",
+      title: "Visa 收银台消费成功",
+      priority: "P3",
+      preconditions: "商户已开通卡收单。",
+      steps: "输入 Visa 卡号并提交金额 10 元",
+      expected: "响应码 00，支付状态 success，金额 10 元"
+    },
+    {
+      id: "case-runtime-2",
+      caseNo: "CARD-REF-002",
+      module: "卡收单退款",
+      title: "退款没有原交易",
+      priority: "P1",
+      preconditions: "商户已开通卡收单。",
+      steps: "调用退款 API，退款金额 5 元",
+      expected: "返回退款成功"
+    },
+    {
+      id: "case-runtime-3",
+      caseNo: "CARD-AMT-003",
+      module: "卡收单金额边界",
+      title: "零额交易",
+      priority: "P1",
+      preconditions: "商户已开通卡收单。",
+      steps: "直连 API 提交金额 0 元",
+      expected: "响应码 00，支付成功"
+    }
+  ], rules);
+
+  const issueIds = new Set(issues.map((issue) => issue.ruleId));
+  assert.equal(issueIds.has("A2"), true);
+  assert.equal(issueIds.has("A3"), true);
+  assert.equal(issueIds.has("B1"), true);
+  assert.equal(issueIds.has("C1"), true);
+  assert.equal(issueIds.has("C4"), true);
+  assert.equal(issues.some((issue) => issue.ruleId === "E2" && issue.severity === "warning"), true);
 });
 
 test("BUG workflow advances in order and stops after closing", () => {
