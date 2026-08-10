@@ -1,0 +1,195 @@
+sequenceDiagram
+    autonumber
+    actor QA as 测试工程师
+    actor LEAD as 测试负责人
+    participant SHELL as TCM_Shell
+    participant LIB as TCM_Library
+    participant ED as TCM_CaseEditor
+    participant PLAN as TCM_Plans
+    participant EXEC as TCM_Execution
+    participant REV as TCM_Review
+    participant DASH as TCM_Dashboard
+    participant IO as TCM_IO
+    participant MODEL as TCM_Model
+    participant STORE as TCM_Store
+    participant APP as app.js(state/persist)
+    participant SRV as server.js
+    participant FS as app-state.json
+
+    %% ============ 0. 启动与数据迁移 ============
+    rect rgb(240,246,255)
+    note over SHELL,FS: 阶段 0 · 初始化与 Schema 迁移（T01）
+    APP->>SRV: GET /api/app-state
+    SRV->>FS: readAppState()
+    FS-->>SRV: {state}
+    SRV->>SRV: sanitizeSharedState() 放行 basicCaseLibrary/testPlans/caseExecutions/reviewTickets/caseDirectories/caseVersions
+    SRV-->>APP: {state}
+    APP->>APP: applySharedState(SHARED_STATE_KEYS)
+    APP->>STORE: TCM.store.migrate()
+    STORE->>MODEL: normalizeCaseAsset(每条)
+    MODEL->>MODEL: 补 product/module/type/version/linkedRequirements<br/>testPlans(batchId[]) → linkedBatchIds
+    MODEL-->>STORE: 归一化后的资产列表
+    STORE->>APP: state.basicCaseLibrary = 迁移结果
+    APP->>SHELL: renderAll() → TCM.shell.renderActive()
+    SHELL->>LIB: render()
+    end
+
+    %% ============ 1. 用例库：多级目录 + 检索 ============
+    rect rgb(240,255,244)
+    note over QA,LIB: 阶段 1 · 用例资产管理（T02）
+    QA->>LIB: 点击目录节点 / 输入检索词
+    LIB->>MODEL: buildDirectoryTree(assets, caseDirectories)
+    MODEL-->>LIB: {business→product→module→category, counts}
+    LIB->>MODEL: applyFilters(type/priority/status/tags/automation/keyword)
+    MODEL-->>LIB: 命中列表
+    LIB-->>QA: 渲染目录树 + 列表 + 吸顶筛选标签
+
+    QA->>LIB: 重命名目录「入账」→「入账处理」
+    LIB->>MODEL: renameDirectory(level='module', from, to)
+    MODEL->>STORE: 批量更新命中资产的 module 字段 + caseDirectories 节点
+    STORE->>APP: persist()
+    APP->>SRV: POST /api/app-state（整包）
+    SRV->>FS: 覆盖写入
+
+    QA->>ED: 新建/编辑用例
+    ED->>ED: applyTemplate('接口用例') 预填字段
+    QA->>ED: 填写 type/product/module/linkedRequirements
+    ED->>MODEL: normalizeCaseAsset() + 校验必填
+    MODEL-->>ED: {ok, errors}
+    ED->>STORE: bumpVersion(asset) → version+1，写 caseVersions 快照
+    STORE->>APP: persist()
+    APP->>SRV: POST /api/app-state
+    ED-->>QA: 关闭抽屉 + 局部重渲染
+    end
+
+    %% ============ 2. 测试计划编排 ============
+    rect rgb(255,250,235)
+    note over LEAD,PLAN: 阶段 2 · 计划编排（T03·P0）
+    LEAD->>SHELL: 切到「测试计划」子 Tab
+    SHELL->>PLAN: render()
+    LEAD->>PLAN: createPlan(batchId, name)
+    PLAN->>MODEL: normalizeTestPlan({rounds:[{round:1,name:'首轮'}]})
+    MODEL->>STORE: state.testPlans.push(plan)
+    LEAD->>PLAN: 从用例库勾选用例 → addCases(planId, caseIds)
+    PLAN->>MODEL: 去重校验（同 plan 内 caseAssetId 唯一）
+    MODEL->>STORE: plan.items += PlanItem{caseAssetId, order}
+    note right of PLAN: 引用而非复制<br/>不写回 basicCaseLibrary
+    LEAD->>PLAN: assignExecutor(planId, caseIds, 'Edison - 测试')
+    PLAN->>SRV: GET /api/team-members
+    SRV-->>PLAN: teamMembers[]
+    PLAN->>STORE: plan.items[].executor = 执行人
+    STORE->>APP: persist() → POST /api/app-state
+    PLAN-->>LEAD: 计划详情（用例数/执行人分布/轮次）
+    end
+
+    %% ============ 3. 执行台闭环 + 一键建 Bug ============
+    rect rgb(255,243,243)
+    note over QA,SRV: 阶段 3 · 执行闭环（T03·P0 关键路径）
+    QA->>SHELL: 切到「测试执行」子 Tab
+    SHELL->>EXEC: render()
+    EXEC->>MODEL: 按 (planId, currentRound) 生成待办
+    MODEL->>MODEL: 对缺失的 (planId,round,caseAssetId) 惰性建 CaseExecution(status='未执行')
+    MODEL->>STORE: state.caseExecutions += 新执行实例（含 caseSnapshot）
+    MODEL-->>EXEC: 我的待办 / 全部待办
+    EXEC-->>QA: 执行清单
+
+    QA->>EXEC: markResult(execId, '通过', note)
+    EXEC->>MODEL: normalizeExecution() 写 finishedAt/executor
+    MODEL->>STORE: 仅更新 caseExecutions
+    note right of MODEL: 严禁回写 basicCaseLibrary 资产字段<br/>（PRD §6.5 硬约束）
+    STORE->>APP: persist() → POST /api/app-state
+
+    QA->>EXEC: markResult(execId, '失败') → 「一键建 Bug」
+    EXEC->>APP: 复用既有 createBug(caseSnapshot, planId, round)
+    APP->>STORE: state.bugs.push(bug)
+    EXEC->>STORE: execution.linkedDefectId = bug.id
+    EXEC->>MODEL: 反向索引：asset.linkedDefects 追加（唯一允许的资产写入，仅追加不覆盖）
+    STORE->>APP: persist() → POST /api/app-state
+
+    QA->>EXEC: attachEvidence(execId, 截图)
+    EXEC->>SRV: POST /api/bug-images?bugId={execId}
+    SRV->>SRV: detectImageType + 落盘 data/bug-attachments/{execId}/
+    SRV-->>EXEC: {image:{id,url,size}}
+    EXEC->>STORE: execution.evidence.push(Evidence)
+    STORE->>APP: persist()
+
+    EXEC->>EXEC: syncPlanProgress(planId)
+    EXEC-->>QA: 进度条（已执行/总数、通过率）
+    end
+
+    %% ============ 4. 用例评审单 ============
+    rect rgb(248,240,255)
+    note over LEAD,REV: 阶段 4 · 用例评审（T04·P1）
+    LEAD->>LIB: 批量勾选「待评审」用例 → 发起评审
+    LIB->>REV: createTicket(caseIds, reviewers, dueAt)
+    REV->>MODEL: normalizeReviewTicket(status='待评审')
+    MODEL->>STORE: state.reviewTickets.push(ticket)
+    MODEL->>STORE: 命中资产 asset.reviewId = ticket.id
+    STORE->>APP: persist()
+
+    QA->>REV: comment(ticketId, caseId, '打回', '缺少边界场景')
+    REV->>STORE: ticket.comments.push(ReviewComment)
+    LEAD->>REV: conclude(ticketId, '通过')
+    REV->>MODEL: 结论映射 通过→已确认 / 打回→草稿 / 需修改→待评审
+    MODEL->>STORE: 批量更新 asset.status + ticket.status='已完成' + finishedAt
+    STORE->>APP: persist() → POST /api/app-state
+    REV-->>LEAD: 评审留痕（谁/何时/何结论）
+    end
+
+    %% ============ 5. 统计看板 ============
+    rect rgb(240,252,255)
+    note over LEAD,DASH: 阶段 5 · 度量看板（T04·P1）
+    LEAD->>SHELL: 切到「统计看板」子 Tab
+    SHELL->>DASH: render()
+    DASH->>MODEL: computeMetrics({batchId, window})
+    MODEL->>STORE: 读 basicCaseLibrary / testPlans / caseExecutions / bugs / batches / tasks
+    MODEL->>MODEL: 需求覆盖率 = 有 linkedRequirements 命中的需求数 / 总需求数
+    MODEL->>MODEL: 执行率 = 已执行 execution / 计划条目数
+    MODEL->>MODEL: 通过率 = 通过 / 已执行
+    MODEL->>MODEL: 缺陷拦截率 = 有 linkedDefectId 的 execution / 已执行
+    MODEL->>MODEL: 自动化占比 = automationEnabled 资产 / 总资产
+    MODEL-->>DASH: {coverage, execRate, passRate, interceptRate, autoRatio, 趋势}
+    DASH-->>LEAD: 指标卡 + 分业务/分类型下钻
+    end
+
+    %% ============ 6. 导入导出 ============
+    rect rgb(252,252,240)
+    note over QA,SRV: 阶段 6 · 导入导出（T05·P1）
+    QA->>IO: 导出选中用例为 Excel
+    alt 纯前端 CSV（零依赖，默认）
+        IO->>IO: 生成 UTF-8 BOM CSV → Blob 下载
+    else 真 xlsx（服务端）
+        IO->>SRV: POST /api/case-export-xlsx {cases, columns}
+        SRV->>SRV: spawnSync(PYTHON_BIN, scripts/tcm_xlsx.py)
+        SRV-->>IO: xlsx 二进制附件
+    end
+    IO-->>QA: 文件下载
+
+    QA->>IO: 导入 Excel/CSV
+    alt CSV
+        IO->>IO: 前端解析
+    else xlsx
+        IO->>SRV: POST /api/case-import-xlsx (base64)
+        SRV->>SRV: python openpyxl 解析为行数组
+        SRV-->>IO: {rows, headers}
+    end
+    IO->>MODEL: validateImportRow(每行) 字段映射/枚举/必填/重名
+    MODEL-->>IO: {valid[], conflicts[], errors[]}
+    IO-->>QA: 映射预览 + 冲突清单（新增/覆盖/跳过）
+    QA->>IO: 确认导入
+    IO->>STORE: 批量 upsert basicCaseLibrary
+    STORE->>APP: persist() → POST /api/app-state
+    end
+
+    %% ============ 7. 追溯与自动化联动 ============
+    rect rgb(245,245,245)
+    note over QA,SRV: 阶段 7 · 追溯与自动化（T04/T05·P2）
+    LEAD->>SHELL: 切到「追溯视图」
+    SHELL->>MODEL: buildGraph('batch', batchId)
+    MODEL-->>SHELL: 需求 → 用例 → 执行 → 缺陷 邻接表
+    QA->>ED: 在用例详情触发自动化执行
+    ED->>SRV: POST /api/ui-automation/run-case {steps: automationSteps}
+    SRV-->>ED: {ok, result{status,screenshotFileName}}
+    ED->>STORE: asset.automationLastRun = result
+    ED->>EXEC: 若失败 → 建议一键建 Bug
+    end

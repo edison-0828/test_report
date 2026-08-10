@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>测试辅助工具</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tcm/tcm.css?v=20260810-21">
 </head>
 
 <body>
@@ -24,6 +25,7 @@
         <span class="nav-group-label" role="presentation" aria-hidden="true">管理</span>
         <button class="nav-link" data-tab="tasks">任务管理</button>
         <button class="nav-link" data-tab="versions">版本管理</button>
+        <button class="nav-link" data-tab="basicCases">基础用例库</button>
         <span class="nav-group-label" role="presentation" aria-hidden="true">执行</span>
         <button class="nav-link" data-tab="cases">手动执行用例</button>
         <button class="nav-link" data-tab="automationCases">接口自动化</button>
@@ -504,6 +506,86 @@
         </section>
       </section>
 
+      <section class="tab-panel" id="basicCases">
+        <!-- TCM 子 Tab 条：6 个子模块入口，内容由 tcm/tcm-shell.js 渲染 -->
+        <div id="tcmSubTabs" class="tcm-subtabs" role="tablist" aria-label="测试用例管理子模块"></div>
+
+        <!-- TCM 子视图容器：由 tcm-shell.js 控制 .is-active，各视图模块自行渲染内部 DOM -->
+        <div id="tcmLibraryView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-library" tabindex="0"></div>
+        <div id="tcmPlansView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-plans" tabindex="0"></div>
+        <div id="tcmExecutionView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-execution" tabindex="0"></div>
+        <div id="tcmReviewView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-review" tabindex="0"></div>
+        <div id="tcmDashboardView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-dashboard" tabindex="0"></div>
+        <div id="tcmTraceView" class="tcm-view" role="tabpanel" aria-labelledby="tcmSubTab-trace" tabindex="0"></div>
+
+        <!--
+          兼容层（T02）：以下为重构前的「基础用例库」DOM。
+          用例库视图已迁移至 #tcmLibraryView，由 tcm/tcm-library.js 渲染；
+          此处保留节点仅为兼容 app.js 中既有的 els.basicCaseXxx / els.batchXxx 引用（约 96 处），
+          避免 getElementById 返回 null 导致老逻辑抛错。节点不可见、不参与渲染。
+        -->
+        <div class="basic-case-layout tcm-legacy-dom" id="basicCaseLayout" hidden aria-hidden="true">
+
+          <section class="panel basic-case-panel">
+            <div class="section-head compact-section-head">
+              <div>
+                <span class="workspace-kicker">当前筛选</span>
+                <h3 id="basicCaseBusinessTitle">本地收款</h3>
+                <p class="section-note" id="basicCaseBusinessNote">仅展示当前业务类型下的基础用例。</p>
+              </div>
+              <div class="section-head-actions">
+                <span id="basicCaseCount" class="badge subtle">0 条</span>
+                <!-- UX: 主操作下沉到列表标题区，缩短操作路径 -->
+                <button id="addBasicCaseBtnInline" class="primary-button" type="button">新增基础用例</button>
+              </div>
+            </div>
+
+            <div class="actions compact section-toolbar basic-case-toolbar">
+              <input id="basicCaseSearchInput" type="search" class="basic-case-search" placeholder="搜索标题/步骤/标签/分类" aria-label="搜索基础用例">
+              <select id="basicCasePriorityFilter" class="basic-case-filter-pill">
+                <option value="">全部优先级</option>
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+              </select>
+              <select id="basicCaseStatusFilter" class="basic-case-filter-pill">
+                <option value="">全部状态</option>
+                <option value="草稿">草稿</option>
+                <option value="待评审">待评审</option>
+                <option value="已确认">已确认</option>
+                <option value="已废弃">已废弃</option>
+              </select>
+              <select id="basicCaseSortSelect" class="basic-case-filter-pill" aria-label="排序方式">
+                <option value="title">排序：标题</option>
+                <option value="priority">排序：优先级</option>
+                <option value="status">排序：用例状态</option>
+                <option value="category">排序：分类</option>
+              </select>
+            </div>
+
+            <!-- UX: 已激活筛选条件以可清除标签展示 -->
+            <div id="basicCaseActiveFilters" class="basic-case-active-filters" aria-live="polite"></div>
+
+            <div id="basicCaseBatchBar" class="basic-case-batch-bar hidden-field">
+              <span class="batch-count">已选 <strong id="basicCaseSelectedCount">0</strong> 项</span>
+              <button type="button" class="batch-action" id="batchReviewBtn">批量评审</button>
+              <button type="button" class="batch-action" id="batchPlanBtn">关联计划</button>
+              <span id="batchPlanSelectWrap" class="batch-plan-select hidden-field">
+                <select id="batchPlanSelect"></select>
+              </span>
+              <button type="button" class="batch-action" id="batchCopyBtn">批量复制</button>
+              <button type="button" class="batch-action danger" id="batchDeleteBtn">批量删除</button>
+              <button type="button" class="batch-action ghost" id="batchClearBtn">取消</button>
+            </div>
+
+          <p id="basicCaseStatus" class="inline-feedback">这里会显示当前业务类型下的基础用例。</p>
+          <div id="basicCaseList" class="list-stack"></div>
+          </section>
+        </div>
+        <!-- /兼容层 -->
+      </section>
+
       <section class="tab-panel" id="bugs">
         <div class="panel-header">
           <div>
@@ -820,6 +902,132 @@
     </section>
   </div>
 
+  <div id="basicCaseModal" class="dialog-backdrop hidden-field" role="presentation">
+    <section class="dialog-card basic-case-dialog" role="dialog" aria-modal="true" aria-labelledby="basicCaseModalTitle">
+      <div class="dialog-head basic-case-dialog-head">
+        <div>
+          <span class="dialog-kicker">基础用例库</span>
+          <h3 id="basicCaseModalTitle">新增基础用例</h3>
+          <div id="basicCaseModalBadges" class="bug-modal-badges"></div>
+        </div>
+        <button id="closeBasicCaseModal" class="dialog-close" type="button" aria-label="关闭用例弹窗">×</button>
+      </div>
+
+      <div class="basic-case-dialog-body">
+        <div class="basic-case-form-grid">
+          <label class="basic-case-field span-2">
+            <span>用例标题 <strong class="required-mark">*</strong></span>
+            <input id="bcTitle" type="text" placeholder="例如：本地收款-入账成功主流程">
+          </label>
+          <label class="basic-case-field">
+            <span>业务类型</span>
+            <select id="bcBusiness">
+              <option value="本地收款">本地收款</option>
+              <option value="本地付款">本地付款</option>
+              <option value="卡收单">卡收单</option>
+              <option value="代付（国际付款）">代付（国际付款）</option>
+              <option value="VA账户">VA账户</option>
+            </select>
+          </label>
+          <label class="basic-case-field">
+            <span>优先级</span>
+            <select id="bcPriority">
+              <option value="P0">P0</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+          </label>
+          <label class="basic-case-field">
+            <span>用例状态</span>
+            <select id="bcStatus">
+              <option value="草稿">草稿</option>
+              <option value="待评审">待评审</option>
+              <option value="已确认">已确认</option>
+              <option value="已废弃">已废弃</option>
+            </select>
+          </label>
+          <label class="basic-case-field">
+            <span>分类</span>
+            <input id="bcCategory" type="text" placeholder="例如：入账">
+          </label>
+          <label class="basic-case-field">
+            <span>组件</span>
+            <input id="bcComponent" type="text" placeholder="例如：收款核心">
+          </label>
+          <label class="basic-case-field span-2">
+            <span>标签（逗号分隔）</span>
+            <input id="bcTags" type="text" placeholder="例如：主流程, 回归">
+          </label>
+        </div>
+
+        <label class="basic-case-field">
+          <span>测试目标</span>
+          <textarea id="bcObjective" rows="2" placeholder="这条用例要验证什么"></textarea>
+        </label>
+        <label class="basic-case-field">
+          <span>前置条件</span>
+          <textarea id="bcPreconditions" rows="2" placeholder="执行前的环境与数据准备"></textarea>
+        </label>
+        <label class="basic-case-field">
+          <span>测试数据</span>
+          <textarea id="bcTestData" rows="2" placeholder="使用的账号、金额、卡号等"></textarea>
+        </label>
+        <label class="basic-case-field">
+          <span>操作步骤</span>
+          <textarea id="bcSteps" rows="4" placeholder="每行一条步骤"></textarea>
+        </label>
+        <label class="basic-case-field">
+          <span>预期结果</span>
+          <textarea id="bcExpected" rows="2" placeholder="预期的系统行为与状态变化"></textarea>
+        </label>
+
+        <label class="basic-case-field">
+          <span>所属测试计划（可多选）</span>
+          <select id="bcPlans" multiple class="basic-case-multiselect" size="4"></select>
+          <small class="basic-case-hint">按住 Ctrl / ⌘ 多选；只有「已确认」状态的用例才能进入测试执行。</small>
+        </label>
+        <label class="basic-case-field">
+          <span>关联缺陷（可多选）</span>
+          <select id="bcDefects" multiple class="basic-case-multiselect" size="4"></select>
+          <small class="basic-case-hint">从已有 BUG 中选择关联。</small>
+        </label>
+
+        <div class="basic-case-history">
+          <div class="basic-case-section-title">
+            <strong>历史执行记录</strong>
+            <button type="button" class="ghost-button tiny-button" id="bcAddHistory">添加记录</button>
+          </div>
+          <div id="bcHistoryList" class="basic-case-history-list"></div>
+          <div class="basic-case-history-form hidden-field" id="bcHistoryForm">
+            <div class="basic-case-history-form-row">
+              <select id="bcHistoryResult">
+                <option value="通过">通过</option>
+                <option value="失败">失败</option>
+                <option value="阻塞">阻塞</option>
+                <option value="跳过">跳过</option>
+              </select>
+              <input id="bcHistoryExecutor" type="text" placeholder="执行人">
+            </div>
+            <textarea id="bcHistoryNote" rows="2" placeholder="执行备注"></textarea>
+            <div class="inline-actions">
+              <button type="button" class="primary-button tiny-button" id="bcHistorySave">保存记录</button>
+              <button type="button" class="ghost-button tiny-button" id="bcHistoryCancel">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="basic-case-dialog-actions">
+        <span id="basicCaseModalFeedback" class="inline-feedback"></span>
+        <div class="basic-case-action-buttons">
+          <button type="button" class="ghost-button" id="cancelBasicCaseModal">取消</button>
+          <button type="button" class="primary-button" id="saveBasicCaseModal">保存用例</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <template id="caseTemplate">
     <article class="list-card">
       <div class="case-card-shell">
@@ -1051,6 +1259,13 @@
     </article>
   </template>
 
+  <!-- TCM 用例编辑抽屉挂载点（全局单例，由 tcm/tcm-case-editor.js 填充） -->
+  <div id="tcmCaseDrawerRoot"></div>
+  <!-- TCM 导入导出对话框挂载点（全局单例，由 tcm/tcm-io.js 填充） -->
+  <div id="tcmIoRoot"></div>
+  <!-- TCM AI 批量补全建议态挂载点（全局单例，由 tcm/tcm-ai.js 填充） -->
+  <div id="tcmAiSuggestRoot"></div>
+
   <script src="quality-rules.js"></script>
   <script src="app-quality.js"></script>
   <script src="app-domain.js"></script>
@@ -1058,6 +1273,22 @@
   <script src="app-bugs.js"></script>
   <script src="app-report.js"></script>
   <script src="app-storage.js"></script>
+  <!-- 测试用例管理模块（TCM）：加载顺序必须为 core → store → model → shell → 各视图，且全部早于 app.js -->
+  <script src="tcm/tcm-core.js?v=20260810-2"></script>
+  <script src="tcm/tcm-store.js"></script>
+  <script src="tcm/tcm-model.js?v=20260810-5"></script>
+  <script src="tcm/tcm-shell.js"></script>
+  <script src="tcm/tcm-library.js?v=20260810-18"></script>
+  <script src="tcm/tcm-plans.js"></script>
+  <script src="tcm/tcm-execution.js"></script>
+  <script src="tcm/tcm-review.js"></script>
+  <script src="tcm/tcm-dashboard.js"></script>
+  <script src="tcm/tcm-trace.js"></script>
+  <script src="tcm/tcm-case-editor.js?v=20260810-2"></script>
+  <!-- T05：结构化步骤 / AI 批量补全 / 导入导出（依赖 model + case-editor，仍早于 app.js） -->
+  <script src="tcm/tcm-steps.js"></script>
+  <script src="tcm/tcm-ai.js"></script>
+  <script src="tcm/tcm-io.js?v=20260810-7"></script>
   <script src="app.js"></script>
 </body>
 

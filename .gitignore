@@ -6,6 +6,8 @@ app-state.json.backups/
 .env.local
 api-automation.config.json
 node_modules/
+.workbuddy/
+tmp/
 npm-debug.log*
 tmp/__pycache__/
 tmp/exports/

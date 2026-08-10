@@ -1,0 +1,352 @@
+classDiagram
+    direction LR
+
+    %% ===================== 资产层（Asset） =====================
+    class CaseAsset {
+        +string id
+        +string business
+        +string product
+        +string module
+        +string category
+        +string title
+        +string type
+        +string objective
+        +string preconditions
+        +string testData
+        +string steps
+        +StepRow[] stepRows
+        +string expected
+        +string priority
+        +string status
+        +string component
+        +string[] tags
+        +bool automationEnabled
+        +object[] automationSteps
+        +string automationTargetPath
+        +object automationLastRun
+        +LinkedRequirement[] linkedRequirements
+        +LinkedDefect[] linkedDefects
+        +string[] linkedBatchIds
+        +string reviewId
+        +number version
+        +bool isBaseline
+        +string baselineFrom
+        +string createdBy
+        +string createdAt
+        +string updatedBy
+        +string updatedAt
+    }
+
+    class StepRow {
+        +number no
+        +string action
+        +string data
+        +string expected
+    }
+
+    class LinkedRequirement {
+        +string type
+        +string id
+        +string name
+    }
+
+    class LinkedDefect {
+        +string id
+        +string title
+    }
+
+    class CaseDirectory {
+        +string id
+        +string level
+        +string business
+        +string product
+        +string module
+        +string name
+        +number order
+        +string createdAt
+    }
+
+    class CaseVersion {
+        +string id
+        +string caseAssetId
+        +number version
+        +object snapshot
+        +string changedBy
+        +string changedAt
+        +string changeNote
+    }
+
+    %% ===================== 编排层（Plan） =====================
+    class TestPlan {
+        +string id
+        +string batchId
+        +string batchVersion
+        +string name
+        +string description
+        +string status
+        +string owner
+        +string startAt
+        +string endAt
+        +PlanRound[] rounds
+        +number currentRound
+        +PlanItem[] items
+        +string createdBy
+        +string createdAt
+        +string updatedBy
+        +string updatedAt
+    }
+
+    class PlanRound {
+        +number round
+        +string name
+        +string status
+        +string startedAt
+        +string finishedAt
+    }
+
+    class PlanItem {
+        +string caseAssetId
+        +string executor
+        +number order
+        +string addedBy
+        +string addedAt
+    }
+
+    %% ===================== 执行层（Execution） =====================
+    class CaseExecution {
+        +string id
+        +string caseAssetId
+        +string planId
+        +number round
+        +string executor
+        +string status
+        +string startedAt
+        +string finishedAt
+        +string resultNote
+        +string linkedDefectId
+        +Evidence[] evidence
+        +CaseSnapshot caseSnapshot
+        +string createdAt
+        +string updatedAt
+    }
+
+    class Evidence {
+        +string id
+        +string kind
+        +string name
+        +string url
+        +number size
+        +string uploadedAt
+    }
+
+    class CaseSnapshot {
+        +string title
+        +string business
+        +string product
+        +string module
+        +string type
+        +string priority
+        +number version
+    }
+
+    %% ===================== 流程层（Review） =====================
+    class ReviewTicket {
+        +string id
+        +string title
+        +string[] caseIds
+        +string[] reviewers
+        +string dueAt
+        +string status
+        +string conclusion
+        +ReviewComment[] comments
+        +string createdBy
+        +string createdAt
+        +string finishedAt
+    }
+
+    class ReviewComment {
+        +string id
+        +string caseId
+        +string author
+        +string action
+        +string content
+        +string createdAt
+    }
+
+    %% ===================== 既有集合（只读引用） =====================
+    class Batch {
+        +string id
+        +string version
+        +string status
+    }
+
+    class Task {
+        +string id
+        +string batchId
+        +string name
+        +string scope
+    }
+
+    class Bug {
+        +string id
+        +string title
+        +string severity
+        +string status
+        +string caseId
+    }
+
+    %% ===================== 前端模块（Service / View） =====================
+    class TCM_Core {
+        +object const
+        +object util
+        +object bus
+        +uid(prefix) string
+        +nowIso() string
+        +currentOperator() string
+    }
+
+    class TCM_Store {
+        +getState() object
+        +collection(name) Array
+        +commit(name, list) void
+        +persist() void
+        +migrate() object
+    }
+
+    class TCM_Model {
+        +normalizeCaseAsset(raw) CaseAsset
+        +normalizeTestPlan(raw) TestPlan
+        +normalizeExecution(raw) CaseExecution
+        +normalizeReviewTicket(raw) ReviewTicket
+        +buildDirectoryTree(assets, dirs) object
+        +computeMetrics(scope) object
+        +validateImportRow(row) object
+    }
+
+    class TCM_Shell {
+        +mount() void
+        +switchSubTab(key) void
+        +renderActive() void
+    }
+
+    class TCM_Library {
+        +render() void
+        +applyFilters(list) Array
+        +renameDirectory(level, from, to) void
+        +deleteDirectory(level, path) void
+        +moveCases(ids, target) void
+    }
+
+    class TCM_CaseEditor {
+        +open(id) void
+        +applyTemplate(key) void
+        +save() void
+        +bumpVersion(asset) void
+    }
+
+    class TCM_Plans {
+        +render() void
+        +createPlan(batchId, name) TestPlan
+        +addCases(planId, caseIds) void
+        +assignExecutor(planId, caseIds, executor) void
+        +startRound(planId, name) void
+    }
+
+    class TCM_Execution {
+        +render() void
+        +markResult(execId, status, note) void
+        +createBugFromFailure(execId) Bug
+        +attachEvidence(execId, file) Evidence
+        +syncPlanProgress(planId) void
+    }
+
+    class TCM_Review {
+        +render() void
+        +createTicket(caseIds, reviewers, dueAt) ReviewTicket
+        +comment(ticketId, caseId, action, content) void
+        +conclude(ticketId, conclusion) void
+    }
+
+    class TCM_Dashboard {
+        +render() void
+        +requirementCoverage() number
+        +planExecutionRate(planId) number
+        +passRate(planId) number
+        +defectInterceptRate(planId) number
+        +automationRatio() number
+    }
+
+    class TCM_Trace {
+        +render() void
+        +buildGraph(rootType, rootId) object
+    }
+
+    class TCM_IO {
+        +exportCsv(caseIds) void
+        +exportXlsx(caseIds) Promise
+        +exportOpml(scope) void
+        +importCsv(file) object
+        +importXlsx(file) Promise
+        +previewMapping(rows) object
+    }
+
+    class TCM_Steps {
+        +render(asset) void
+        +fromAutomationSteps(steps) StepRow[]
+        +toPlainText(rows) string
+    }
+
+    class TCM_AI {
+        +batchComplete(caseIds, field) Promise
+    }
+
+    %% ===================== 关系 =====================
+    CaseAsset "1" *-- "0..*" StepRow : 结构化步骤
+    CaseAsset "1" *-- "0..*" LinkedRequirement : 关联需求
+    CaseAsset "1" *-- "0..*" LinkedDefect : 关联缺陷
+    CaseAsset "1" o-- "0..*" CaseVersion : 版本历史
+    CaseAsset "0..*" --> "1" CaseDirectory : 归属目录(派生)
+    CaseAsset "0..*" --> "0..1" ReviewTicket : reviewId
+
+    TestPlan "1" *-- "1..*" PlanRound : 轮次
+    TestPlan "1" *-- "0..*" PlanItem : 引用条目
+    PlanItem "0..*" --> "1" CaseAsset : caseAssetId(引用不复制)
+    TestPlan "0..*" --> "0..1" Batch : batchId
+
+    CaseExecution "0..*" --> "1" CaseAsset : caseAssetId
+    CaseExecution "0..*" --> "1" TestPlan : planId
+    CaseExecution "1" *-- "0..*" Evidence : 证据
+    CaseExecution "1" *-- "1" CaseSnapshot : 执行时快照
+    CaseExecution "0..*" --> "0..1" Bug : linkedDefectId
+
+    ReviewTicket "1" *-- "0..*" ReviewComment : 评审意见
+    ReviewTicket "0..*" --> "1..*" CaseAsset : caseIds
+
+    LinkedRequirement ..> Batch : type=batch
+    LinkedRequirement ..> Task : type=task
+
+    TCM_Shell --> TCM_Library : 挂载
+    TCM_Shell --> TCM_Plans : 挂载
+    TCM_Shell --> TCM_Execution : 挂载
+    TCM_Shell --> TCM_Review : 挂载
+    TCM_Shell --> TCM_Dashboard : 挂载
+    TCM_Shell --> TCM_Trace : 挂载
+
+    TCM_Library --> TCM_CaseEditor : 打开抽屉
+    TCM_Library --> TCM_IO : 导入导出
+    TCM_CaseEditor --> TCM_Steps : 结构化步骤
+    TCM_CaseEditor --> TCM_AI : 批量补全
+    TCM_Library ..> TCM_Model : 读
+    TCM_Plans ..> TCM_Model : 读
+    TCM_Execution ..> TCM_Model : 读
+    TCM_Review ..> TCM_Model : 读
+    TCM_Dashboard ..> TCM_Model : 读
+
+    TCM_Model --> TCM_Store : 读写集合
+    TCM_Store --> TCM_Core : 工具/常量
+    TCM_Store ..> CaseAsset : basicCaseLibrary
+    TCM_Store ..> TestPlan : testPlans
+    TCM_Store ..> CaseExecution : caseExecutions
+    TCM_Store ..> ReviewTicket : reviewTickets
+    TCM_Store ..> CaseDirectory : caseDirectories
+    TCM_Store ..> CaseVersion : caseVersions

@@ -42,6 +42,24 @@ const STATIC_FILE_ALLOWLIST = new Map([
   ["/app-report.js", "app-report.js"],
   ["/app-storage.js", "app-storage.js"],
   ["/app.js", "app.js"]
+  ["/app.js", "app.js"],
+  // 测试用例管理模块（tcm/*）—— 一次性加满 14 条，避免后续任务反复改本文件触发重启。
+  // T01 只创建 core/store/model + tcm.css，其余文件由 T02-T05 补齐；文件不存在时静态服务返回 404，不影响其他资源。
+  ["/tcm/tcm.css", "tcm/tcm.css"],
+  ["/tcm/tcm-core.js", "tcm/tcm-core.js"],
+  ["/tcm/tcm-store.js", "tcm/tcm-store.js"],
+  ["/tcm/tcm-model.js", "tcm/tcm-model.js"],
+  ["/tcm/tcm-shell.js", "tcm/tcm-shell.js"],
+  ["/tcm/tcm-library.js", "tcm/tcm-library.js"],
+  ["/tcm/tcm-case-editor.js", "tcm/tcm-case-editor.js"],
+  ["/tcm/tcm-plans.js", "tcm/tcm-plans.js"],
+  ["/tcm/tcm-execution.js", "tcm/tcm-execution.js"],
+  ["/tcm/tcm-review.js", "tcm/tcm-review.js"],
+  ["/tcm/tcm-dashboard.js", "tcm/tcm-dashboard.js"],
+  ["/tcm/tcm-trace.js", "tcm/tcm-trace.js"],
+  ["/tcm/tcm-io.js", "tcm/tcm-io.js"],
+  ["/tcm/tcm-steps.js", "tcm/tcm-steps.js"],
+  ["/tcm/tcm-ai.js", "tcm/tcm-ai.js"]
 ]);
 const selfTestRuntime = {
   running: false,
@@ -789,6 +807,16 @@ const server = http.createServer(async (req, res) => {
       return await handleRunUiAutomationCase(body, res);
     }
 
+    if (req.method === "POST" && requestUrl.pathname === "/api/case-export-xlsx") {
+      const body = await readJsonBody(req);
+      return handleCaseExportXlsx(body, res);
+    }
+
+    if (req.method === "POST" && requestUrl.pathname === "/api/case-import-xlsx") {
+      const body = await readJsonBody(req);
+      return handleCaseImportXlsx(body, res);
+    }
+
     if (req.method === "GET") {
       return serveStatic(req, res);
     }
@@ -1099,6 +1127,194 @@ function handleExportReportDocx(body, res) {
     "Cache-Control": "no-store"
   });
   res.end(fileBuffer);
+}
+
+/* ==================================================================== *
+ * T05 —— 测试用例 xlsx 导入 / 导出（桥接 scripts/tcm_xlsx.py）
+ * 调用约定与 handleExportReportDocx 完全一致：
+ *   写临时 payload JSON → spawnSync(PYTHON_BIN, [script, mode, payload]) → 读产物 → 清理
+ * openpyxl 缺失时脚本以退出码 3 + TCM_XLSX_ERROR:OPENPYXL_MISSING 结束，
+ * 这里翻译成 HTTP 503 + { degrade: "csv" }，前端据此自动降级为 CSV。
+ * ==================================================================== */
+
+/** 与 scripts/tcm_xlsx.py 约定的错误标记前缀 */
+const TCM_XLSX_ERROR_PREFIX = "TCM_XLSX_ERROR:";
+/** openpyxl 缺失的约定退出码 */
+const TCM_XLSX_EXIT_OPENPYXL_MISSING = 3;
+
+/**
+ * 运行 scripts/tcm_xlsx.py。
+ * @param {"export"|"import"} mode 子命令
+ * @param {object} payload 传给脚本的 payload（会写成临时 JSON）
+ * @param {string} fileBaseName 用于生成临时文件名
+ * @returns {{ok:boolean, degrade?:string, error?:string, stdout?:string}} 执行结果
+ */
+function runTcmXlsxScript(mode, payload, fileBaseName) {
+  const scriptPath = path.join(ROOT, "scripts", "tcm_xlsx.py");
+  if (!fs.existsSync(scriptPath)) {
+    return { ok: false, degrade: "csv", error: "用例 xlsx 脚本不存在（scripts/tcm_xlsx.py），已降级为 CSV。" };
+  }
+
+  const exportDir = path.join(ROOT, "tmp", "exports");
+  fs.mkdirSync(exportDir, { recursive: true });
+  const safeBase = sanitizeFileName(fileBaseName || "tcm-cases");
+  const payloadPath = path.join(exportDir, `${Date.now()}-${safeBase}-${mode}.json`);
+
+  fs.writeFileSync(payloadPath, JSON.stringify(payload, null, 2), "utf-8");
+
+  const result = spawnSync(PYTHON_BIN, [scriptPath, mode, payloadPath], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    windowsHide: true,
+    maxBuffer: 64 * 1024 * 1024
+  });
+
+  try {
+    fs.unlinkSync(payloadPath);
+  } catch (_error) {
+    // ignore
+  }
+
+  if (result.error) {
+    // Python 解释器本身拉不起来 → 同样降级为 CSV
+    return { ok: false, degrade: "csv", error: `Python 执行失败：${result.error.message}` };
+  }
+
+  const stderr = String(result.stderr || "");
+  const stdout = String(result.stdout || "");
+
+  if (result.status === TCM_XLSX_EXIT_OPENPYXL_MISSING || stderr.includes(`${TCM_XLSX_ERROR_PREFIX}OPENPYXL_MISSING`)) {
+    return {
+      ok: false,
+      degrade: "csv",
+      error: "当前运行环境未安装 openpyxl，xlsx 能力不可用，已自动降级为 CSV。"
+    };
+  }
+
+  if (result.status !== 0) {
+    const marker = stderr.split("\n").find((line) => line.startsWith(TCM_XLSX_ERROR_PREFIX));
+    const rawMarker = marker ? marker.slice(TCM_XLSX_ERROR_PREFIX.length).trim() : "";
+    const codeMatch = rawMarker.match(/^([A-Z_]+)\s*/);
+    const code = codeMatch ? codeMatch[1] : "";
+    const detail = rawMarker
+      ? rawMarker.replace(/^[A-Z_]+\s*/, "").trim()
+      : (stderr || stdout).trim();
+    // 保留错误码，交由各路由决定 HTTP 状态：输入类错误必须回 4xx，不能一律 500。
+    return { ok: false, code, error: detail || "xlsx 脚本执行异常" };
+  }
+
+  return { ok: true, stdout: stdout.trim() };
+}
+
+/**
+ * xlsx 桥接错误码 → HTTP 状态码。
+ * 输入类错误（用户传了坏文件 / 空数据 / 缺字段）一律 4xx，
+ * 只有真正的服务端故障才 5xx，避免前端把用户错误提示成「服务异常」。
+ * @param {string} code 桥接返回的错误码
+ * @returns {number} HTTP 状态码
+ */
+function xlsxErrorStatus(code) {
+  const CLIENT_ERROR_CODES = new Set(["BAD_ARGS", "BAD_PAYLOAD", "EMPTY_DATA", "BAD_FILE"]);
+  return CLIENT_ERROR_CODES.has(String(code || "")) ? 400 : 500;
+}
+
+/**
+ * POST /api/case-export-xlsx —— 把用例行矩阵导出为 xlsx 二进制流。
+ * 请求体：{ columns:[{key,label}], rows:[[cell,...]], fileBaseName?:string, sheetName?:string }
+ * @param {object} body 请求体
+ * @param {http.ServerResponse} res 响应对象
+ * @returns {void}
+ */
+function handleCaseExportXlsx(body, res) {
+  const columns = Array.isArray(body?.columns) ? body.columns : [];
+  const rows = Array.isArray(body?.rows) ? body.rows : [];
+  const fileBaseName = String(body?.fileBaseName || "测试用例").trim() || "测试用例";
+  const sheetName = String(body?.sheetName || "测试用例").trim() || "测试用例";
+
+  if (!columns.length) {
+    return sendJson(res, 400, { error: "缺少导出列定义。" });
+  }
+  if (!rows.length) {
+    return sendJson(res, 400, { error: "没有可导出的用例。" });
+  }
+
+  const outputPath = path.join(ROOT, "tmp", "exports", `${sanitizeFileName(fileBaseName)}.xlsx`);
+  const run = runTcmXlsxScript("export", { columns, rows, sheetName, outputPath }, fileBaseName);
+
+  if (!run.ok) {
+    const status = run.degrade ? 503 : xlsxErrorStatus(run.code);
+    return sendJson(res, status, { error: run.error, code: run.code || "", degrade: run.degrade || "" });
+  }
+
+  if (!fs.existsSync(outputPath)) {
+    return sendJson(res, 500, { error: "导出失败：未生成 xlsx 文件。" });
+  }
+
+  const fileBuffer = fs.readFileSync(outputPath);
+  try {
+    fs.unlinkSync(outputPath);
+  } catch (_error) {
+    // ignore
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition": `attachment; filename="${encodeAsciiFileName(`${sanitizeFileName(fileBaseName)}.xlsx`)}"`,
+    "Cache-Control": "no-store"
+  });
+  res.end(fileBuffer);
+}
+
+/**
+ * POST /api/case-import-xlsx —— 解析上传的 xlsx，返回 { ok, headers, rows }。
+ * 请求体：{ fileName:string, contentBase64:string, sheetName?:string }
+ * @param {object} body 请求体
+ * @param {http.ServerResponse} res 响应对象
+ * @returns {void}
+ */
+function handleCaseImportXlsx(body, res) {
+  const fileName = String(body?.fileName || "upload.xlsx").trim() || "upload.xlsx";
+  const contentBase64 = String(body?.contentBase64 || "");
+  const sheetName = String(body?.sheetName || "").trim();
+
+  if (!contentBase64) {
+    return sendJson(res, 400, { error: "缺少文件内容。" });
+  }
+
+  const outputPath = path.join(ROOT, "tmp", "exports", `${Date.now()}-${sanitizeFileName(fileName)}-parsed.json`);
+  const run = runTcmXlsxScript("import", { fileName, contentBase64, sheetName, outputPath }, fileName);
+
+  if (!run.ok) {
+    const status = run.degrade ? 503 : xlsxErrorStatus(run.code);
+    return sendJson(res, status, { error: run.error, code: run.code || "", degrade: run.degrade || "" });
+  }
+
+  if (!fs.existsSync(outputPath)) {
+    return sendJson(res, 500, { error: "解析失败：未生成结果文件。" });
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
+  } catch (error) {
+    return sendJson(res, 500, { error: `解析结果读取失败：${error.message}` });
+  } finally {
+    try {
+      fs.unlinkSync(outputPath);
+    } catch (_error) {
+      // ignore
+    }
+  }
+
+  return sendJson(res, 200, {
+    ok: true,
+    fileName: parsed?.fileName || fileName,
+    sheetName: parsed?.sheetName || "",
+    headers: Array.isArray(parsed?.headers) ? parsed.headers : [],
+    rows: Array.isArray(parsed?.rows) ? parsed.rows : [],
+    rowCount: Number(parsed?.rowCount) || 0,
+    truncated: Boolean(parsed?.truncated)
+  });
 }
 
 async function handleSelfTest(res) {
@@ -2534,7 +2750,15 @@ function sanitizeSharedState(input) {
     tasks: Array.isArray(state.tasks) ? state.tasks : [],
     reportConclusion: typeof state.reportConclusion === "string" ? state.reportConclusion : "",
     reportConclusions: state.reportConclusions && typeof state.reportConclusions === "object" ? state.reportConclusions : {},
-    lastGeneration: state.lastGeneration && typeof state.lastGeneration === "object" ? state.lastGeneration : null
+    lastGeneration: state.lastGeneration && typeof state.lastGeneration === "object" ? state.lastGeneration : null,
+    // ⚠️ 以下集合必须与 app.js SHARED_STATE_KEYS 逐项对齐，漏一项 = 该集合被静默丢弃（历史 F1 的成因）。
+    basicCaseLibrary: Array.isArray(state.basicCaseLibrary) ? state.basicCaseLibrary : [],
+    testPlans: Array.isArray(state.testPlans) ? state.testPlans : [],
+    caseExecutions: Array.isArray(state.caseExecutions) ? state.caseExecutions : [],
+    reviewTickets: Array.isArray(state.reviewTickets) ? state.reviewTickets : [],
+    caseDirectories: Array.isArray(state.caseDirectories) ? state.caseDirectories : [],
+    caseVersions: Array.isArray(state.caseVersions) ? state.caseVersions : [],
+    _rev: typeof state._rev === "number" && Number.isFinite(state._rev) ? state._rev : 0
   };
 }
 
